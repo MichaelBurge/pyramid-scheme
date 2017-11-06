@@ -35,7 +35,7 @@
         ((cond? exp) (eval (cond->if exp) env))
         ((application? exp)
          (metacircular-apply (eval (operator exp) env)
-                (list-of-values (operands exp) env)))
+                             (list-of-values (operands exp) env)))
         (else
          (error "Unknown expression type -- EVAL" exp))))
 
@@ -44,11 +44,11 @@
          (apply-primitive-procedure procedure arguments))
         ((compound-procedure? procedure)
          (eval-sequence
-           (procedure-body procedure)
-           (extend-environment
-             (procedure-parameters procedure)
-             arguments
-             (procedure-environment procedure))))
+          (procedure-body procedure)
+          (extend-environment
+           (procedure-parameters procedure)
+           arguments
+           (procedure-environment procedure))))
         (else
          (error
           "Unknown procedure type -- APPLY" procedure))))
@@ -78,8 +78,8 @@
 
 (define (eval-definition exp env)
   (define-variable! (definition-variable exp)
-                    (eval (definition-value exp) env)
-                    env)
+    (eval (definition-value exp) env)
+    env)
   'ok)
 
 ;;;SECTION 4.1.2
@@ -308,7 +308,7 @@
         (list 'cdr cdr)
         (list 'cons cons)
         (list 'null? null?)
-;;      more primitives
+        ;;      more primitives
         ))
 
 (define (primitive-procedure-names)
@@ -326,31 +326,31 @@
    (primitive-implementation proc) args))
 
 
+;; Uncomment below when testing the interpreter
+;; (define input-prompt ";;; M-Eval input:")
+;; (define output-prompt ";;; M-Eval value:")
 
-(define input-prompt ";;; M-Eval input:")
-(define output-prompt ";;; M-Eval value:")
+;; (define (driver-loop)
+;;   (prompt-for-input input-prompt)
+;;   (let ((input (read)))
+;;     (let ((output (eval input the-global-environment)))
+;;       (announce-output output-prompt)
+;;       (user-print output)))
+;;   (driver-loop))
 
-(define (driver-loop)
-  (prompt-for-input input-prompt)
-  (let ((input (read)))
-    (let ((output (eval input the-global-environment)))
-      (announce-output output-prompt)
-      (user-print output)))
-  (driver-loop))
+;; (define (prompt-for-input string)
+;;   (newline) (newline) (display string) (newline))
 
-(define (prompt-for-input string)
-  (newline) (newline) (display string) (newline))
+;; (define (announce-output string)
+;;   (newline) (display string) (newline))
 
-(define (announce-output string)
-  (newline) (display string) (newline))
-
-(define (user-print object)
-  (if (compound-procedure? object)
-      (display (list 'compound-procedure
-                     (procedure-parameters object)
-                     (procedure-body object)
-                     '<procedure-env>))
-      (display object)))
+;; (define (user-print object)
+;;   (if (compound-procedure? object)
+;;       (display (list 'compound-procedure
+;;                      (procedure-parameters object)
+;;                      (procedure-body object)
+;;                      '<procedure-env>))
+;;       (display object)))
 
 ;;;Following are commented out so as not to be evaluated when
 ;;; the file is loaded.
