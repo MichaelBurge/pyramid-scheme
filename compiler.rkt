@@ -17,7 +17,7 @@
 (provide (all-defined-out))
 ;;;SECTION 5.5.1
 
-(: compile-pyramid (-> Pyramid PrimOps))
+(: compile-pyramid (-> Pyramid Instructions))
 (define (compile-pyramid exp target linkage)
   (cond ((self-evaluating? exp)
          (compile-self-evaluating exp target linkage))
@@ -318,7 +318,7 @@
 (define (modifies-register? seq reg)
   (memq reg (registers-modified seq)))
 
-
+(: append-instruction-sequences (-> (Listof Sequence) Sequence))
 (define (append-instruction-sequences . seqs)
   (define (append-2-sequences seq1 seq2)
     (make-instruction-sequence

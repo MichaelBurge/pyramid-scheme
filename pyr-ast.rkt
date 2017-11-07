@@ -1,6 +1,5 @@
 #lang typed/racket
 
-
 (define-type PyrSelfEvaluating (U Number String))
 (define-type PyrVariable Symbol)
 (define-type PyrQuote (Pairof Symbol (Pairof Pyramid Any)))
@@ -25,7 +24,6 @@
                         PyrCond
                         PyrApplication))
 
-(define-type Machine Any)
 (define-type Value Any)
 (define-type Sequence (Listof Pyramid))
 (define-type PrimOps Any)
