@@ -5,13 +5,11 @@
 (require "interpreter.rkt")
 (require "compiler.rkt")
 
-(: eval-pyramid (-> Pyramid Value))
-(define (eval-pyramid prog)
-  (eval prog))
+;; (: eval-pyramid (-> Pyramid Value))
+;; (define (eval-pyramid prog)
+;;   (eval prog))
 
-(: eval-primops (-> PrimOps Machine Machine))
-(: machine-result (-> Machine Value))
-(: compile-and-eval-pyramid (-> Pyramid Value))
+(: run-semicompiled-pyramid (-> Pyramid Value))
 (define (compile-and-eval-pyramid prog)
   (machine-result
    (eval-primops

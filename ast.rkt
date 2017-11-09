@@ -1,12 +1,15 @@
 #lang typed/racket
 
+(define-type VariableName Symbol)
+(define-type VariableNames (Listof VariableName))
+
 (define-type PyrSelfEvaluating (U Number String))
 (define-type PyrVariable Symbol)
 (define-type PyrQuote (Pairof Symbol (Pairof Pyramid Any)))
-(define-type PyrAssign (Pairof Symbol (Listof Pyramid)))
-(define-type PyrDefinition (Pairof Symbol (Pairof (Pairof Symbol (Listof Symbol)) Pyramid)))
+(define-type PyrAssign (Pairof Symbol (Pairof PyrVariable Pyramid)))
+(define-type PyrDefinition (Pairof Symbol (Pairof (Pairof VariableName (Listof VariableName)) Pyramid)))
 (define-type PyrIf (Listof (U Symbol Pyramid)))
-(define-type PyrLambda (Pairof Symbol (Pairof Sequence Sequence)))
+(define-type PyrLambda (Pairof Symbol (Pairof VariableNames Sequence)))
 (define-type PyrBegin (Pairof Symbol (Listof Pyramid)))
 (define-type PyrCondClause (U PyrCondPred PyrCondElse))
 (define-type PyrCondPred (Pairof Pyramid Sequence))
@@ -56,17 +59,17 @@
 (define (assignment? exp)
   (tagged-list? exp 'set!))
 
-(: assignment-variable (-> PyrAssign Pyramid))
+(: assignment-variable (-> PyrAssign VariableName))
 (define (assignment-variable (exp : PyrAssign)) (cadr exp))
 
 (: assignment-value (-> PyrAssign Pyramid))
-(define (assignment-value (exp : PyrAssign)) (caddr exp))
+(define (assignment-value (exp : PyrAssign)) (cddr exp))
 
 (: definition? (-> Pyramid Boolean))
 (define (definition? exp)
   (tagged-list? exp 'define))
 
-(: definition-variable (-> PyrDefinition Pyramid))
+(: definition-variable (-> PyrDefinition VariableName))
 (define (definition-variable (exp : PyrDefinition))
   (if (symbol? (cadr exp))
       (cadr exp)
@@ -93,7 +96,7 @@
 (: lambda? (-> Pyramid Boolean))
 (define (lambda? exp) (tagged-list? exp 'lambda))
 
-(: lambda-parameters (-> PyrLambda (Listof Pyramid)))
+(: lambda-parameters (-> PyrLambda VariableNames))
 (define (lambda-parameters exp) (cadr exp))
 
 (: lambda-body (-> PyrLambda Sequence))

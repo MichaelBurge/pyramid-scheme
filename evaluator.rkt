@@ -1,48 +1,48 @@
-#lang sicp
+#lang typed/racket
 
-;;;;METACIRCULAR EVALUATOR FROM CHAPTER 4 (SECTIONS 4.1.1-4.1.4) of
-;;;; STRUCTURE AND INTERPRETATION OF COMPUTER PROGRAMS
+(require typed/racket/unsafe)
+(require "ast.rkt")
+(require rnrs/mutable-pairs-6)
+(unsafe-require/typed "unsafe.rkt" [ unsafe-apply (-> Procedure Any * Any) ])
 
-;;;;Matches code in ch4.scm
+(provide (all-defined-out))
 
-;;;;This file can be loaded into Scheme as a whole.
-;;;;Then you can initialize and start the evaluator by evaluating
-;;;; the two commented-out lines at the end of the file (setting up the
-;;;; global environment and starting the driver loop).
+(define-type Frame (Pairof (MListof VariableName) (MListof Value)))
+(define-type Environment (MListof Frame))
 
-;;;;**WARNING: Don't load this file twice (or you'll lose the primitives
-;;;;  interface, due to renamings of apply).
+(define-type Values (Listof Value))
 
-;;;from section 4.1.4 -- must precede def of metacircular apply
-; NOTE: Renamed SICP's "apply" to "metacircular-apply"
-; (define apply-in-underlying-scheme apply)
+(struct primitive ([ implementation : Procedure ]))
+(struct procedure ([ parameters : VariableNames ] [ body : Sequence ] [ environment : Environment ]))
 
-;;;SECTION 4.1.1
-
-(define (eval exp env)
-  (cond ((self-evaluating? exp) exp)
-        ((variable? exp) (lookup-variable-value exp env))
-        ((quoted? exp) (text-of-quotation exp))
-        ((assignment? exp) (eval-assignment exp env))
-        ((definition? exp) (eval-definition exp env))
-        ((if? exp) (eval-if exp env))
+(: pyramid-eval (-> Pyramid Environment Value))
+(define (pyramid-eval exp env)
+  (cond ((self-evaluating? exp) (cast exp PyrSelfEvaluating))
+        ((variable? exp) (lookup-variable-value (cast exp PyrVariable) env))
+        ((quoted? exp) (text-of-quotation (cast exp PyrQuote)))
+        ((assignment? exp) (eval-assignment (cast exp PyrAssign) env))
+        ((definition? exp) (eval-definition (cast exp PyrDefinition) env))
+        ((if? exp) (eval-if (cast exp PyrIf) env))
         ((lambda? exp)
-         (make-procedure (lambda-parameters exp)
-                         (lambda-body exp)
-                         env))
+         (let ((lexp (cast exp PyrLambda)))
+           (procedure (lambda-parameters lexp)
+                      (lambda-body lexp)
+                      env)))
         ((begin? exp) 
-         (eval-sequence (begin-actions exp) env))
-        ((cond? exp) (eval (cond->if exp) env))
+         (eval-sequence (begin-actions (cast exp PyrBegin)) env))
+        ((cond? exp) (pyramid-eval (cond->if (cast exp PyrCond)) env))
         ((application? exp)
-         (metacircular-apply (eval (operator exp) env)
-                             (list-of-values (operands exp) env)))
+         (let ((aexp (cast exp PyrApplication)))
+           (metacircular-apply (cast (pyramid-eval (operator aexp) env) procedure)
+                               (list-of-values (operands aexp) env))))
         (else
          (error "Unknown expression type -- EVAL" exp))))
 
+(: metacircular-apply (-> procedure Values Any))
 (define (metacircular-apply procedure arguments)
-  (cond ((primitive-procedure? procedure)
+  (cond ((primitive? procedure)
          (apply-primitive-procedure procedure arguments))
-        ((compound-procedure? procedure)
+        ((procedure? procedure)
          (eval-sequence
           (procedure-body procedure)
           (extend-environment
@@ -53,154 +53,36 @@
          (error
           "Unknown procedure type -- APPLY" procedure))))
 
-
+(: list-of-values (-> Sequence Environment Values))
 (define (list-of-values exps env)
   (if (no-operands? exps)
       '()
-      (cons (eval (first-operand exps) env)
+      (cons (pyramid-eval (first-operand exps) env)
             (list-of-values (rest-operands exps) env))))
 
+(: eval-if (-> PyrIf Environment Value))
 (define (eval-if exp env)
-  (if (true? (eval (if-predicate exp) env))
-      (eval (if-consequent exp) env)
-      (eval (if-alternative exp) env)))
+  (if (true? (pyramid-eval (if-predicate exp) env))
+      (pyramid-eval (if-consequent exp) env)
+      (pyramid-eval (if-alternative exp) env)))
 
+(: eval-sequence (-> Sequence Environment Value))
 (define (eval-sequence exps env)
-  (cond ((last-exp? exps) (eval (first-exp exps) env))
-        (else (eval (first-exp exps) env)
+  (cond ((last-exp? exps) (pyramid-eval (first-exp exps) env))
+        (else (pyramid-eval (first-exp exps) env)
               (eval-sequence (rest-exps exps) env))))
 
+(: eval-assignment (-> PyrAssign Environment Void))
 (define (eval-assignment exp env)
   (set-variable-value! (assignment-variable exp)
-                       (eval (assignment-value exp) env)
-                       env)
-  'ok)
+                       (pyramid-eval (assignment-value exp) env)
+                       env))
 
+(: eval-definition (-> PyrDefinition Environment Value))
 (define (eval-definition exp env)
   (define-variable! (definition-variable exp)
-    (eval (definition-value exp) env)
-    env)
-  'ok)
-
-;;;SECTION 4.1.2
-
-(define (self-evaluating? exp)
-  (cond ((number? exp) true)
-        ((string? exp) true)
-        (else false)))
-
-(define (quoted? exp)
-  (tagged-list? exp 'quote))
-
-(define (text-of-quotation exp) (cadr exp))
-
-(define (tagged-list? exp tag)
-  (if (pair? exp)
-      (eq? (car exp) tag)
-      false))
-
-(define (variable? exp) (symbol? exp))
-
-(define (assignment? exp)
-  (tagged-list? exp 'set!))
-
-(define (assignment-variable exp) (cadr exp))
-
-(define (assignment-value exp) (caddr exp))
-
-
-(define (definition? exp)
-  (tagged-list? exp 'define))
-
-(define (definition-variable exp)
-  (if (symbol? (cadr exp))
-      (cadr exp)
-      (caadr exp)))
-
-(define (definition-value exp)
-  (if (symbol? (cadr exp))
-      (caddr exp)
-      (make-lambda (cdadr exp)
-                   (cddr exp))))
-
-(define (lambda? exp) (tagged-list? exp 'lambda))
-
-(define (lambda-parameters exp) (cadr exp))
-(define (lambda-body exp) (cddr exp))
-
-(define (make-lambda parameters body)
-  (cons 'lambda (cons parameters body)))
-
-
-(define (if? exp) (tagged-list? exp 'if))
-
-(define (if-predicate exp) (cadr exp))
-
-(define (if-consequent exp) (caddr exp))
-
-(define (if-alternative exp)
-  (if (not (null? (cdddr exp)))
-      (cadddr exp)
-      'false))
-
-(define (make-if predicate consequent alternative)
-  (list 'if predicate consequent alternative))
-
-
-(define (begin? exp) (tagged-list? exp 'begin))
-
-(define (begin-actions exp) (cdr exp))
-
-(define (last-exp? seq) (null? (cdr seq)))
-(define (first-exp seq) (car seq))
-(define (rest-exps seq) (cdr seq))
-
-(define (sequence->exp seq)
-  (cond ((null? seq) seq)
-        ((last-exp? seq) (first-exp seq))
-        (else (make-begin seq))))
-
-(define (make-begin seq) (cons 'begin seq))
-
-
-(define (application? exp) (pair? exp))
-(define (operator exp) (car exp))
-(define (operands exp) (cdr exp))
-
-(define (no-operands? ops) (null? ops))
-(define (first-operand ops) (car ops))
-(define (rest-operands ops) (cdr ops))
-
-
-(define (cond? exp) (tagged-list? exp 'cond))
-
-(define (cond-clauses exp) (cdr exp))
-
-(define (cond-else-clause? clause)
-  (eq? (cond-predicate clause) 'else))
-
-(define (cond-predicate clause) (car clause))
-
-(define (cond-actions clause) (cdr clause))
-
-(define (cond->if exp)
-  (expand-clauses (cond-clauses exp)))
-
-(define (expand-clauses clauses)
-  (if (null? clauses)
-      'false                          ; no else clause
-      (let ((first (car clauses))
-            (rest (cdr clauses)))
-        (if (cond-else-clause? first)
-            (if (null? rest)
-                (sequence->exp (cond-actions first))
-                (error "ELSE clause isn't last -- COND->IF"
-                       clauses))
-            (make-if (cond-predicate first)
-                     (sequence->exp (cond-actions first))
-                     (expand-clauses rest))))))
-
-;;;SECTION 4.1.3
+    (pyramid-eval (definition-value exp) env)
+    env))
 
 (define (true? x)
   (not (eq? x false)))
@@ -208,44 +90,61 @@
 (define (false? x)
   (eq? x false))
 
+(: enclosing-environment (-> Environment Environment))
+(define (enclosing-environment env) (mcdr env))
 
-(define (make-procedure parameters body env)
-  (list 'procedure parameters body env))
+(: first-frame (-> Environment Frame))
+(define (first-frame env) (mcar env))
 
-(define (compound-procedure? p)
-  (tagged-list? p 'procedure))
-
-
-(define (procedure-parameters p) (cadr p))
-(define (procedure-body p) (caddr p))
-(define (procedure-environment p) (cadddr p))
-
-
-(define (enclosing-environment env) (cdr env))
-
-(define (first-frame env) (car env))
-
+(: the-empty-environment Environment)
 (define the-empty-environment '())
 
+(: make-frame (-> (MListof VariableName) (MListof Value) Frame))
 (define (make-frame variables values)
   (cons variables values))
 
-(define (frame-variables frame) (car frame))
-(define (frame-values frame) (cdr frame))
+(: frame-variables (-> Frame VariableNames))
+(define (frame-variables frame) (mlist->list (car frame)))
+(: frame-values (-> Frame Values))
+(define (frame-values frame) (mlist->list (cdr frame)))
+                       
+(: frame-variables! (-> Frame (MListof VariableName)))
+(define (frame-variables! frame) (car frame))
+(: frame-values! (-> Frame (MListof Value)))
+(define (frame-values! frame) (cdr frame))
 
+(: add-binding-to-frame! (-> VariableName Value Frame Void))
 (define (add-binding-to-frame! var val frame)
-  (set-car! frame (cons var (car frame)))
-  (set-cdr! frame (cons val (cdr frame))))
+  (push-mlist! (car frame) var)
+  (push-mlist! (cdr frame) val))
 
+(: push-mlist! (All (A) (-> (MListof A) A Void)))
+(define (push-mlist! xs x)
+  (let ((xs2 xs))
+    (set-car! xs x)
+    (set-cdr! xs xs2)))
+
+(: list->mlist (All (A) (-> (Listof A) (MListof A))))
+(define (list->mlist xs)
+  (mcons (car xs) (list->mlist (cdr xs))))
+
+(: mlist->list (All (A) (-> (MListof A) (Listof A))))
+(define (mlist->list xs)
+  (cons (mcar xs) (mlist->list (mcdr xs))))
+
+(: extend-environment (-> VariableNames Values Environment Environment))
 (define (extend-environment vars vals base-env)
   (if (= (length vars) (length vals))
-      (cons (make-frame vars vals) base-env)
+      (mcons (make-frame (list->mlist vars) (list->mlist vals)) base-env)
       (if (< (length vars) (length vals))
           (error "Too many arguments supplied" vars vals)
           (error "Too few arguments supplied" vars vals))))
 
+(: lookup-variable-value (-> VariableName Environment Value))
 (define (lookup-variable-value var env)
+  (: env-loop (-> Environment Value))
   (define (env-loop env)
+    (: scan (-> VariableNames Values Value))
     (define (scan vars vals)
       (cond ((null? vars)
              (env-loop (enclosing-environment env)))
@@ -259,70 +158,67 @@
                 (frame-values frame)))))
   (env-loop env))
 
+(: set-variable-value! (-> VariableName Value Environment Void))
 (define (set-variable-value! var val env)
+  (: env-loop (-> Environment Void))
   (define (env-loop env)
+    (: scan (-> (MListof VariableName) (MListof Value) Void))
     (define (scan vars vals)
       (cond ((null? vars)
              (env-loop (enclosing-environment env)))
-            ((eq? var (car vars))
+            ((eq? var (mcar vars))
              (set-car! vals val))
-            (else (scan (cdr vars) (cdr vals)))))
+            (else (scan (mcdr vars) (mcdr vals)))))
     (if (eq? env the-empty-environment)
         (error "Unbound variable -- SET!" var)
         (let ((frame (first-frame env)))
-          (scan (frame-variables frame)
-                (frame-values frame)))))
+          (scan (frame-variables! frame)
+                (frame-values! frame)))))
   (env-loop env))
 
+(: define-variable! (-> VariableName Value Environment Void))
 (define (define-variable! var val env)
   (let ((frame (first-frame env)))
+    (: scan (-> (MListof VariableName) (MListof Value) Void))
     (define (scan vars vals)
       (cond ((null? vars)
              (add-binding-to-frame! var val frame))
-            ((eq? var (car vars))
+            ((eq? var (mcar vars))
              (set-car! vals val))
-            (else (scan (cdr vars) (cdr vals)))))
-    (scan (frame-variables frame)
-          (frame-values frame))))
+            (else (scan (mcdr vars) (mcdr vals)))))
+    (scan (frame-variables! frame)
+          (frame-values! frame))))
 
-;;;SECTION 4.1.4
-
+(: setup-environment (-> Environment))
 (define (setup-environment)
   (let ((initial-env
-         (extend-environment (primitive-procedure-names)
-                             (primitive-procedure-objects)
+         (extend-environment primitive-procedure-names
+                             primitive-procedure-objects
                              the-empty-environment)))
     (define-variable! 'true true initial-env)
     (define-variable! 'false false initial-env)
     initial-env))
 
-;[do later] (define the-global-environment (setup-environment))
-
-(define (primitive-procedure? proc)
-  (tagged-list? proc 'primitive))
-
-(define (primitive-implementation proc) (cadr proc))
-
+(: primitive-procedures (Listof (Pairof Symbol Procedure)))
 (define primitive-procedures
-  (list (list 'car car)
-        (list 'cdr cdr)
-        (list 'cons cons)
-        (list 'null? null?)
+  (list (cons (ann 'car Symbol) (ann car Procedure))
+        (cons 'cdr cdr)
+        (cons 'cons cons)
+        (cons 'null? null?)
         ;;      more primitives
         ))
 
-(define (primitive-procedure-names)
-  (map car
-       primitive-procedures))
+(: primitive-procedure-names (Listof Symbol))
+(define primitive-procedure-names
+  (map (ann car (-> (Pairof Symbol Procedure) Symbol)) primitive-procedures))
 
-(define (primitive-procedure-objects)
-  (map (lambda (proc) (list 'primitive (cadr proc)))
-       primitive-procedures))
+(: primitive-procedure-objects (Listof primitive))
+(define primitive-procedure-objects
+  (map primitive (map (ann cdr (-> (Pairof Symbol Procedure) Procedure)) primitive-procedures)))
 
-;[moved to start of file] (define apply-in-underlying-scheme apply)
-
+(: apply-primitive-procedure (-> primitive (Listof Any) Any))
 (define (apply-primitive-procedure proc args)
-  (apply
+  (unsafe-apply
    (primitive-implementation proc) args))
 
 
@@ -345,7 +241,7 @@
 ;;   (newline) (display string) (newline))
 
 ;; (define (user-print object)
-;;   (if (compound-procedure? object)
+;;   (if (procedure? object)
 ;;       (display (list 'compound-procedure
 ;;                      (procedure-parameters object)
 ;;                      (procedure-body object)
