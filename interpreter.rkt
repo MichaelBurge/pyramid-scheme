@@ -1,11 +1,13 @@
-#lang typed/racket/no-check
+#lang typed/racket
 
 ; Implements an abstract machine that can be interpreted.
 ; Other modules may translate the instructions for this machine
 ; to run compiled Scheme on a new architecture.
 
+(require typed/racket/unsafe)
 (require rnrs/mutable-pairs-6)
-(require "pyr-ast.rkt")
+(require "ast.rkt")
+(unsafe-require/typed "unsafe.rkt" [ unsafe-cast (All (A B) (-> A B)) ])
 (provide (all-defined-out))
 
 ; A DispatchObject is like an object in an OOP language.
@@ -19,9 +21,9 @@
 (define-type RegisterName Symbol)
 (define-type MachineOpResult Any)
 (define-type MachineOp (-> Any))
-(define-type LabelKey Symbol)
+(define-type LabelName Symbol)
 (define-type LabelVal InstructionOps)
-(define-type Label (Pairof LabelKey LabelVal))
+(define-type Label (Pairof LabelName LabelVal))
 (define-type Labels (Listof Label))
 (define-type PrimopExprHead (Pairof Symbol Symbol))
 (define-type PrimopExprTail (Listof MExpr))
@@ -35,12 +37,12 @@
 (define-type RegisterValue Any)
 (struct reg ([name : RegisterName]))
 (struct const ([ value : RegisterValue ]))
-(struct label ([ label : LabelKey ]))
+(struct label ([ label : LabelName ]))
 (struct op ([ name : Symbol] [ args : (Listof MExpr) ]))
 (define-type MExpr (U reg
                       const
                       label
-                      PrimopExpr))
+                      op))
 
 (define-type InstLabel Symbol)
 (define-type InstAssign (Pairof Symbol (Pairof RegisterName MExpr)))
@@ -166,7 +168,7 @@
               (error "Unknown register:" name))))
       (: execute (-> Void))
       (define (execute)
-        (let ((insts (cast (get-contents pc) InstructionOps)))
+        (let ((insts (unsafe-cast (get-contents pc))))
           (if (null? insts)
               (void)
               (begin
@@ -177,7 +179,7 @@
                (set-contents! pc the-instruction-sequence)
                (execute))
               ((eq? message 'install-instruction-sequence)
-               (lambda (seq) (set! the-instruction-sequence (cast seq InstructionOps))))
+               (lambda (seq) (set! the-instruction-sequence (unsafe-cast seq))))
               ((eq? message 'allocate-register) (allocate-register (cast args Symbol)))
               ((eq? message 'get-register) (lookup-register (cast args Symbol)))
               ((eq? message 'install-operations)
@@ -262,11 +264,11 @@
 (define (set-instruction-execution-proc! inst proc)
   (set-mcdr! inst proc))
 
-(: make-label-entry (-> LabelKey InstructionOps Label))
+(: make-label-entry (-> LabelName InstructionOps Label))
 (define (make-label-entry label-name insts)
   (cons label-name insts))
 
-(: lookup-label (-> Labels LabelKey LabelVal))
+(: lookup-label (-> Labels LabelName LabelVal))
 (define (lookup-label labels label-name)
   (let ((val (assoc label-name labels)))
     (if val
@@ -319,7 +321,7 @@
 
 (: advance-pc (-> Register Void))
 (define (advance-pc pc)
-  (set-contents! pc (cdr (cast (get-contents pc) InstructionOps))))
+  (set-contents! pc (cdr (unsafe-cast (get-contents pc)))))
 
 (: make-test (-> InstTest Machine Labels Primops Register Register MachineOp))
 (define (make-test inst machine labels operations flag pc)

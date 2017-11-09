@@ -6,13 +6,13 @@
 (define-type PyrAssign (Pairof Symbol (Listof Pyramid)))
 (define-type PyrDefinition (Pairof Symbol (Pairof (Pairof Symbol (Listof Symbol)) Pyramid)))
 (define-type PyrIf (Listof (U Symbol Pyramid)))
-(define-type PyrLambda (Pairof Symbol (Pairof (Listof Pyramid) Pyramid)))
+(define-type PyrLambda (Pairof Symbol (Pairof Sequence Sequence)))
 (define-type PyrBegin (Pairof Symbol (Listof Pyramid)))
 (define-type PyrCondClause (U PyrCondPred PyrCondElse))
 (define-type PyrCondPred (Pairof Pyramid Sequence))
 (define-type PyrCondElse (Pairof Symbol Sequence))
 (define-type PyrCond (Pairof Symbol (Listof PyrCondClause)))
-(define-type PyrApplication (Pairof Pyramid Pyramid))
+(define-type PyrApplication (Pairof Pyramid Sequence))
 (define-type Pyramid (U PyrSelfEvaluating
                         PyrVariable
                         PyrQuote
@@ -90,13 +90,13 @@
                    (cddr exp))))
 
 ; '(lambda (x y) (+ x y))
-(: lambda? (-> PyrLambda Boolean))
+(: lambda? (-> Pyramid Boolean))
 (define (lambda? exp) (tagged-list? exp 'lambda))
 
 (: lambda-parameters (-> PyrLambda (Listof Pyramid)))
 (define (lambda-parameters exp) (cadr exp))
 
-(: lambda-body (-> PyrLambda Pyramid))
+(: lambda-body (-> PyrLambda Sequence))
 (define (lambda-body (exp : PyrLambda)) (cddr exp))
 
 (: make-lambda (-> (Listof Pyramid) Pyramid Pyramid))
@@ -122,9 +122,9 @@
       'false))
 
 ; '(begin <actions>)
-(: begin? (-> PyrBegin Boolean))
+(: begin? (-> Pyramid Boolean))
 (define (begin? exp) (tagged-list? exp 'begin))
-(: begin-actions (-> PyrBegin Pyramid))
+(: begin-actions (-> PyrBegin Sequence))
 (define (begin-actions exp) (cdr exp))
 
 (: last-exp? (-> Sequence Boolean))
@@ -135,11 +135,11 @@
 (define (rest-exps seq) (cdr seq))
 
 ; '(f x y)
-(: application? (-> PyrApplication Boolean))
+(: application? (-> Pyramid Boolean))
 (define (application? exp) (pair? exp))
 (: operator (-> PyrApplication Pyramid))
 (define (operator exp) (car exp))
-(: operands (-> PyrApplication Pyramid))
+(: operands (-> PyrApplication Sequence))
 (define (operands exp) (cdr exp))
 
 (: no-operands? (-> (Listof Pyramid) Boolean))
@@ -168,7 +168,7 @@
 (define (make-begin seq) (cons 'begin seq))
 
 ; '(cond (pred1 (act11 act12)) (pred2 (act21 act22 act23)) ... [(else (actn1 actn2))])
-(: cond? (-> PyrCond Boolean))
+(: cond? (-> Pyramid Boolean))
 (define (cond? exp) (tagged-list? exp 'cond))
 (: cond-clauses (-> PyrCond (Listof PyrCondClause)))
 (define (cond-clauses exp) (cdr exp))
