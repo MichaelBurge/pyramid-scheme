@@ -1,16 +1,9 @@
-#lang typed/racket
+#lang typed/racket/no-check
 
+(require "types.rkt")
 (require "ast.rkt")
 (require "interpreter.rkt")
 (provide (all-defined-out))
-
-(define-type Linkage (U 'next 'return LabelName))
-(define-type Target RegisterName)
-(define-type iseq-or-label (U LabelName inst-seq))
-(struct inst-seq ([ needs : RegisterNames ] [ modifies : RegisterNames ] [ statements : Instructions ]))
-
-; Plural types
-(define-type RegisterNames (Listof RegisterName))
 
 ; Global constants
 (define reg-val : RegisterName 'val)
@@ -19,6 +12,10 @@
 
 ; Global variables
 (define label-counter 0)
+
+(: make-pyramid-machine (-> ControllerText Machine))
+(define (make-pyramid-machine text)
+  (make-machine all-regs '() text))
 
 (: compile-pyramid (-> Pyramid Target Linkage inst-seq))
 (define (compile-pyramid exp target linkage)
@@ -68,13 +65,13 @@
 (define (compile-self-evaluating exp target linkage)
   (end-with-linkage linkage
                     (inst-seq '() (list target)
-                                               `((assign ,target (const ,exp))))))
+                              `((assign ,target (const ,exp))))))
 
 (: compile-quoted (-> PyrQuote Target Linkage inst-seq))
 (define (compile-quoted exp target linkage)
   (end-with-linkage linkage
                     (inst-seq '() (list target)
-                                               `((assign ,target (const ,(text-of-quotation exp)))))))
+                              `((assign ,target (const ,(text-of-quotation exp)))))))
 
 (: compile-variable (-> PyrVariable Target Linkage inst-seq))
 (define (compile-variable exp target linkage)
@@ -267,7 +264,7 @@
                                                (reg argl)))))))
        after-call))))
 
-(: compile-procedure-call (-> Target Linkage inst-seq))
+(: compile-proc-appl (-> Target Linkage inst-seq))
 (define (compile-proc-appl target linkage)
   (cond ((and (eq? target 'val) (not (eq? linkage 'return)))
          (inst-seq '(proc) all-regs

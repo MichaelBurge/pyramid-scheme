@@ -1,4 +1,4 @@
-#lang typed/racket
+#lang typed/racket/no-check
 
 ; Implements an abstract machine that can be interpreted.
 ; Other modules may translate the instructions for this machine
@@ -6,63 +6,11 @@
 
 (require typed/racket/unsafe)
 (require rnrs/mutable-pairs-6)
+(require "types.rkt")
 (require "ast.rkt")
-(unsafe-require/typed "unsafe.rkt" [ unsafe-cast (All (A B) (-> A B)) ])
+(require "unsafe.rkt")
+; (unsafe-require/typed "unsafe.rkt" [ unsafe-cast (All (A B) (-> A B)) ])
 (provide (all-defined-out))
-
-; A DispatchObject is like an object in an OOP language.
-; It's a closure that keeps internal state and has named methods that mutate it.
-(define-type DispatchObject (-> Symbol Any * Any))
-(define-type Stack DispatchObject)
-(define-type Machine DispatchObject)
-(define-type Register DispatchObject)
-
-(define-type ControllerText (Listof Instruction))
-(define-type RegisterName Symbol)
-(define-type MachineOpResult Any)
-(define-type MachineOp (-> Any))
-(define-type LabelName Symbol)
-(define-type LabelVal InstructionOps)
-(define-type Label (Pairof LabelName LabelVal))
-(define-type Labels (Listof Label))
-(define-type PrimopExprHead (Pairof Symbol Symbol))
-(define-type PrimopExprTail (Listof MExpr))
-(define-type PrimopExpr (Pairof PrimopExprHead PrimopExprTail))
-(define-type PrimopImpl (-> MachineOpResult * MachineOpResult))
-(define-type Primop (List Symbol PrimopImpl))
-(define-type Primops (Listof Primop))
-
-(define-type StackInst (Pairof Symbol (Pairof RegisterName Any)))
-
-(define-type RegisterValue Any)
-(struct reg ([name : RegisterName]))
-(struct const ([ value : RegisterValue ]))
-(struct label ([ label : LabelName ]))
-(struct op ([ name : Symbol] [ args : (Listof MExpr) ]))
-(define-type MExpr (U reg
-                      const
-                      label
-                      op))
-
-(define-type InstLabel Symbol)
-(define-type InstAssign (Pairof Symbol (Pairof RegisterName MExpr)))
-(define-type InstTest (Pairof Symbol MExpr))
-(define-type InstBranch (Pairof Symbol (Pairof label Any)))
-(define-type InstGoto (Pairof Symbol (Pairof MExpr Any)))
-(define-type InstSave StackInst)
-(define-type InstRestore StackInst)
-(define-type InstPerform (Pairof Symbol PrimopExpr))
-(define-type Instruction (U InstLabel
-                            InstAssign
-                            InstTest
-                            InstBranch
-                            InstGoto
-                            InstSave
-                            InstRestore
-                            InstPerform))
-(define-type Instructions (Listof Instruction))
-(define-type InstructionOp (MPairof Instruction MachineOp))
-(define-type InstructionOps (Listof InstructionOp))
 
 (: make-machine (-> (Listof RegisterName) Primops ControllerText Machine))
 (define (make-machine register-names ops controller-text)
@@ -315,7 +263,7 @@
 (define (assign-reg-name assign-instruction)
   (cadr assign-instruction))
 
-(: assign-value-exp (-> InstAssign MExpr))
+(: assign-value-exp (-> InstAssign MExprs))
 (define (assign-value-exp assign-instruction)
   (cddr assign-instruction))
 
@@ -344,7 +292,7 @@
   (let ((dest (branch-dest inst)))
     (if (label? dest)
         (let ((insts
-               (lookup-label labels (label-label dest))))
+               (lookup-label labels (label-name dest))))
           (lambda ()
             (if (get-contents flag)
                 (set-contents! pc insts)
@@ -361,7 +309,7 @@
     (cond ((label? dest)
            (let ((insts
                   (lookup-label labels
-                                (label-label dest))))
+                                (label-name dest))))
              (lambda () (set-contents! pc insts))))
           ((reg? dest)
            (let ((reg
@@ -419,7 +367,7 @@
         ((label? exp)
          (let ((insts
                 (lookup-label labels
-                              (label-label exp))))
+                              (label-name exp))))
            (lambda () insts)))
         ((reg? exp)
          (let ((r (get-register machine

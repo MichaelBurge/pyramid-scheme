@@ -1,34 +1,33 @@
-#lang typed/racket
+#lang typed/racket/no-check
 
 (require test-engine/racket-tests)
+(require racket/trace)
 
+(require "types.rkt")
+(require "ast.rkt")
 (require "interpreter.rkt")
 (require "compiler.rkt")
+(require "evaluator.rkt")
+(require "io.rkt")
 
-;; (: eval-pyramid (-> Pyramid Value))
-;; (define (eval-pyramid prog)
-;;   (eval prog))
-
-(: run-semicompiled-pyramid (-> Pyramid Value))
-(define (compile-and-eval-pyramid prog)
-  (machine-result
-   (eval-primops
-    (compile-pyramid prog)
-    (make-pyramid-machine))))
-
-(: check-program (-> Pyramid Assertion))
-(define (check-program prog)
-  (let ((expected (eval-pyramid prog))
-        (actual (compile-and-eval-pyramid prog)))
-    (check-expect actual expected)))
+(: eval-semicompiled-pyramid (-> Pyramid Value))
+(define (eval-semicompiled-pyramid prog)
+  (let* ((text (inst-seq-statements (compile-pyramid prog 'val 'next)))
+         )
+         ;; (machine (make-pyramid-machine text)))
+    text))
+    ;; (machine 'start)
+    ;; (machine 'get-register 'val)))
 
 (: prog-factorial Pyramid)
-(define (prog-factorial)
+(define prog-factorial 
   '(define (factorial n)
      (if (= n 1)
          1
-         (* (factorial (- n 1)) n)))
-  'val
-  'next)
-
-(check-program prog-factorial)
+         (* (factorial (- n 1)) n))))
+(define the-global-environment (setup-environment))
+(display-all (inst-seq-statements (compile-pyramid prog-factorial 'val 'next)))
+; (eval-semicompiled-pyramid prog-factorial)
+;; (eval-pyramid prog-factorial the-global-environment)
+;; (eval-pyramid '(factorial 5) the-global-environment)
+; (check-expect 

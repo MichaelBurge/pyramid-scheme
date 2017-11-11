@@ -1,22 +1,16 @@
-#lang typed/racket
+#lang typed/racket/no-check
 
 (require typed/racket/unsafe)
-(require "ast.rkt")
 (require rnrs/mutable-pairs-6)
-(unsafe-require/typed "unsafe.rkt" [ unsafe-apply (-> Procedure Any * Any) ])
+(require "ast.rkt")
+(require "types.rkt")
+(require "unsafe.rkt")
+; (unsafe-require/typed "unsafe.rkt" [ unsafe-apply (-> Procedure Any * Any) ])
 
 (provide (all-defined-out))
 
-(define-type Frame (Pairof (MListof VariableName) (MListof Value)))
-(define-type Environment (MListof Frame))
-
-(define-type Values (Listof Value))
-
-(struct primitive ([ implementation : Procedure ]))
-(struct procedure ([ parameters : VariableNames ] [ body : Sequence ] [ environment : Environment ]))
-
-(: pyramid-eval (-> Pyramid Environment Value))
-(define (pyramid-eval exp env)
+(: eval-pyramid (-> Pyramid Environment Value))
+(define (eval-pyramid exp env)
   (cond ((self-evaluating? exp) (cast exp PyrSelfEvaluating))
         ((variable? exp) (lookup-variable-value (cast exp PyrVariable) env))
         ((quoted? exp) (text-of-quotation (cast exp PyrQuote)))
@@ -30,10 +24,10 @@
                       env)))
         ((begin? exp) 
          (eval-sequence (begin-actions (cast exp PyrBegin)) env))
-        ((cond? exp) (pyramid-eval (cond->if (cast exp PyrCond)) env))
+        ((cond? exp) (eval-pyramid (cond->if (cast exp PyrCond)) env))
         ((application? exp)
          (let ((aexp (cast exp PyrApplication)))
-           (metacircular-apply (cast (pyramid-eval (operator aexp) env) procedure)
+           (metacircular-apply (cast (eval-pyramid (operator aexp) env) procedure)
                                (list-of-values (operands aexp) env))))
         (else
          (error "Unknown expression type -- EVAL" exp))))
@@ -57,31 +51,31 @@
 (define (list-of-values exps env)
   (if (no-operands? exps)
       '()
-      (cons (pyramid-eval (first-operand exps) env)
+      (cons (eval-pyramid (first-operand exps) env)
             (list-of-values (rest-operands exps) env))))
 
 (: eval-if (-> PyrIf Environment Value))
 (define (eval-if exp env)
-  (if (true? (pyramid-eval (if-predicate exp) env))
-      (pyramid-eval (if-consequent exp) env)
-      (pyramid-eval (if-alternative exp) env)))
+  (if (true? (eval-pyramid (if-predicate exp) env))
+      (eval-pyramid (if-consequent exp) env)
+      (eval-pyramid (if-alternative exp) env)))
 
 (: eval-sequence (-> Sequence Environment Value))
 (define (eval-sequence exps env)
-  (cond ((last-exp? exps) (pyramid-eval (first-exp exps) env))
-        (else (pyramid-eval (first-exp exps) env)
+  (cond ((last-exp? exps) (eval-pyramid (first-exp exps) env))
+        (else (eval-pyramid (first-exp exps) env)
               (eval-sequence (rest-exps exps) env))))
 
 (: eval-assignment (-> PyrAssign Environment Void))
 (define (eval-assignment exp env)
   (set-variable-value! (assignment-variable exp)
-                       (pyramid-eval (assignment-value exp) env)
+                       (eval-pyramid (assignment-value exp) env)
                        env))
 
 (: eval-definition (-> PyrDefinition Environment Value))
 (define (eval-definition exp env)
   (define-variable! (definition-variable exp)
-    (pyramid-eval (definition-value exp) env)
+    (eval-pyramid (definition-value exp) env)
     env))
 
 (define (true? x)
@@ -118,19 +112,30 @@
   (push-mlist! (car frame) var)
   (push-mlist! (cdr frame) val))
 
+(: copy-mlist (All (A) (-> (MListof A) (MListof A))))
+(define (copy-mlist xs)
+  (if (null? xs)
+      '()
+      (mcons (mcar xs) (mcdr xs))))
+
 (: push-mlist! (All (A) (-> (MListof A) A Void)))
 (define (push-mlist! xs x)
-  (let ((xs2 xs))
-    (set-car! xs x)
-    (set-cdr! xs xs2)))
+  (let ((xs2 (copy-mlist xs)))
+    (set-cdr! xs xs2)
+    (set-car! xs x)))
+
 
 (: list->mlist (All (A) (-> (Listof A) (MListof A))))
 (define (list->mlist xs)
-  (mcons (car xs) (list->mlist (cdr xs))))
+  (if (null? xs)
+      '()
+      (mcons (car xs) (list->mlist (cdr xs)))))
 
 (: mlist->list (All (A) (-> (MListof A) (Listof A))))
 (define (mlist->list xs)
-  (cons (mcar xs) (mlist->list (mcdr xs))))
+  (if (null? xs)
+      '()
+      (cons (mcar xs) (mlist->list (mcdr xs)))))
 
 (: extend-environment (-> VariableNames Values Environment Environment))
 (define (extend-environment vars vals base-env)

@@ -1,36 +1,6 @@
-#lang typed/racket
+#lang typed/racket/no-check
 
-(define-type VariableName Symbol)
-(define-type VariableNames (Listof VariableName))
-
-(define-type PyrSelfEvaluating (U Number String))
-(define-type PyrVariable Symbol)
-(define-type PyrQuote (Pairof Symbol (Pairof Pyramid Any)))
-(define-type PyrAssign (Pairof Symbol (Pairof PyrVariable Pyramid)))
-(define-type PyrDefinition (Pairof Symbol (Pairof (Pairof VariableName (Listof VariableName)) Pyramid)))
-(define-type PyrIf (Listof (U Symbol Pyramid)))
-(define-type PyrLambda (Pairof Symbol (Pairof VariableNames Sequence)))
-(define-type PyrBegin (Pairof Symbol (Listof Pyramid)))
-(define-type PyrCondClause (U PyrCondPred PyrCondElse))
-(define-type PyrCondPred (Pairof Pyramid Sequence))
-(define-type PyrCondElse (Pairof Symbol Sequence))
-(define-type PyrCond (Pairof Symbol (Listof PyrCondClause)))
-(define-type PyrApplication (Pairof Pyramid Sequence))
-(define-type Pyramid (U PyrSelfEvaluating
-                        PyrVariable
-                        PyrQuote
-                        PyrAssign
-                        PyrDefinition
-                        PyrIf
-                        PyrLambda
-                        PyrBegin
-                        PyrCond
-                        PyrApplication))
-
-(define-type Value Any)
-(define-type Sequence (Listof Pyramid))
-(define-type PrimOps Any)
-(define-type Assertion Any)
+(require "types.rkt")
 
 (provide (all-defined-out))
 (define (self-evaluating? exp)
@@ -102,7 +72,7 @@
 (: lambda-body (-> PyrLambda Sequence))
 (define (lambda-body (exp : PyrLambda)) (cddr exp))
 
-(: make-lambda (-> (Listof Pyramid) Pyramid Pyramid))
+(: make-lambda (-> (Listof Pyramid) Pyramid PyrLambda))
 (define (make-lambda parameters body)
   (cons 'lambda (cons parameters body)))
 
