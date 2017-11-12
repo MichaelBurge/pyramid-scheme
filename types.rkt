@@ -85,7 +85,7 @@
 (define-type InstGoto    (List 'goto    MExpr Any))
 (define-type InstSave    (List 'save    RegisterName))
 (define-type InstRestore (List 'restore RegisterName))
-(define-type InstPerform (List 'perform PrimopExpr))
+(define-type InstPerform (List 'perform op))
 (define-type Instruction (U InstLabel
                             InstAssign
                             InstTest

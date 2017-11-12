@@ -356,7 +356,7 @@
             (advance-pc pc)))
         (error "Bad PERFORM instruction -- ASSEMBLE" inst))))
 
-(: perform-action (-> InstPerform PrimopExpr))
+(: perform-action (-> InstPerform (Listof MExpr)))
 (define (perform-action inst) (cdr inst))
 
 (: make-primitive-exp (-> MExpr Machine Labels MachineOp))
