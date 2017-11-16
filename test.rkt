@@ -25,6 +25,7 @@
      (if (= n 1)
          1
          (* (factorial (- n 1)) n))))
+
 (define the-global-environment (setup-environment))
 (display-all (inst-seq-statements (compile-pyramid prog-factorial 'val 'next)))
 ; (eval-semicompiled-pyramid prog-factorial)

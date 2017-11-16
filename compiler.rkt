@@ -243,6 +243,8 @@
         (compiled-branch (make-label 'compiled-branch))
         (after-call (make-label 'after-call)))
     (let ((compiled-linkage
+           (if (eq? linkage 'next) after-call linkage))
+          (primitive-linkage
            (if (eq? linkage 'next) after-call linkage)))
       (append-instruction-sequences
        (inst-seq '(proc) '()
@@ -256,9 +258,10 @@
         (append-instruction-sequences
          primitive-branch
          (end-with-linkage linkage
-                           (inst-seq '(proc argl)
+                           (inst-seq '(continue proc argl)
                                      (list target)
-                                     `((assign ,target
+                                     `((assign continue ,after-call)
+                                       (assign ,target
                                                (op apply-primitive-procedure)
                                                (reg proc)
                                                (reg argl)))))))
