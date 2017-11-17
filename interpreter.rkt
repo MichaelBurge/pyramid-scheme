@@ -259,35 +259,6 @@
         (set-contents! target (value-proc))
         (advance-pc pc)))))
 
-(: assign? (-> Instruction Boolean))
-(define (assign? i) (eq? 'assign (car i)))
-
-(: test? (-> Instruction Boolean))
-(define (test? i) (eq? 'test (car i)))
-
-(: branch? (-> Instruction Boolean))
-(define (branch? i) (eq? 'branch (car i)))
-
-(: goto? (-> Instruction Boolean))
-(define (goto? i) (eq? 'goto (car i)))
-
-(: save? (-> Instruction Boolean))
-(define (save? i) (eq? 'save (car i)))
-
-(: restore? (-> Instruction Boolean))
-(define (restore? i) (eq? 'restore (car i)))
-
-(: perform? (-> Instruction Boolean))
-(define (perform? i) (eq? 'perform (car i)))
-
-(: assign-reg-name (-> InstAssign RegisterName))
-(define (assign-reg-name assign-instruction)
-  (cadr assign-instruction))
-
-(: assign-value-exp (-> InstAssign MExpr))
-(define (assign-value-exp assign-instruction)
-  (caddr assign-instruction))
-
 (: advance-pc (-> Register Void))
 (define (advance-pc pc)
   (set-contents! pc (cdr (unsafe-cast (get-contents pc)))))
@@ -304,10 +275,6 @@
             (advance-pc pc)))
         (error "Bad TEST instruction -- ASSEMBLE" inst))))
 
-(: test-condition (-> InstTest MExpr))
-(define (test-condition test-instruction)
-  (cdr test-instruction))
-
 (: make-branch (-> InstBranch Machine Labels Register Register MachineOp))
 (define (make-branch inst machine labels flag pc)
   (let ((dest (branch-dest inst)))
@@ -319,10 +286,6 @@
                 (set-contents! pc insts)
                 (advance-pc pc))))
         (error "Bad BRANCH instruction -- ASSEMBLE" inst))))
-
-(: branch-dest (-> InstBranch label))
-(define (branch-dest branch-instruction)
-  (cadr branch-instruction))
 
 (: make-goto (-> InstGoto Machine Labels Register MachineOp))
 (define (make-goto inst machine labels pc)
@@ -341,29 +304,19 @@
           (else (error "Bad GOTO instruction -- ASSEMBLE"
                        inst)))))
 
-(: goto-dest (-> InstGoto MExpr))
-(define (goto-dest goto-instruction)
-  (cadr goto-instruction))
-
 (: make-save (-> InstSave Machine Stack Register MachineOp))
 (define (make-save inst machine stack pc)
-  (let ((reg (get-register machine
-                           (stack-inst-reg-name inst))))
+  (let ((reg (get-register machine (save-reg-name inst))))
     (lambda ()
       (push stack (get-contents reg))
       (advance-pc pc))))
 
 (: make-restore (-> InstRestore Machine Stack Register MachineOp))
 (define (make-restore inst machine stack pc)
-  (let ((reg (get-register machine
-                           (stack-inst-reg-name inst))))
+  (let ((reg (get-register machine (restore-reg-name inst))))
     (lambda ()
       (set-contents! reg (pop stack))    
       (advance-pc pc))))
-
-(: stack-inst-reg-name (-> StackInst RegisterName))
-(define (stack-inst-reg-name stack-instruction)
-  (cadr stack-instruction))
 
 (: make-perform (-> InstPerform Machine Labels Primops Register MachineOp))
 (define (make-perform inst machine labels operations pc)
@@ -376,9 +329,6 @@
             (action-proc)
             (advance-pc pc)))
         (error "Bad PERFORM instruction -- ASSEMBLE" inst))))
-
-(: perform-action (-> InstPerform (Listof MExpr)))
-(define (perform-action inst) (cdr inst))
 
 (: make-primitive-exp (-> MExpr Machine Labels MachineOp))
 (define (make-primitive-exp exp machine labels)

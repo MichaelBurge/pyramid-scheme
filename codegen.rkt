@@ -89,15 +89,16 @@ These optimizations are currently unimplemented:
 (: codegen-one (Generator Instruction))
 (define (codegen-one i)
   (cond ((label?   i) (cg-label   i))
+        ((symbol?  i) (cg-label `(,(label i))))
         ((assign?  i) (cg-assign  i))
         ((test?    i) (cg-test    i))
-        ((branch?  i) (cg-branch  (branch-dest i)))
+        ((branch?  i) (cg-branch  (branch-dest i) stack))
         ((goto?    i) (cg-goto    (goto-dest i)))
         ((save?    i) (cg-save    i))
         ((restore? i) (cg-restore i))
         ((perform? i) (cg-perform i))
         (else
-         (error "Unknown instruction type -- CODEGEN" i))))
+         (error "Unknown instruction type -- codegen-one:" i))))
 (: cg-label   (Generator InstLabel))
 (define (cg-label i) i)
 
@@ -105,8 +106,7 @@ These optimizations are currently unimplemented:
 (define (cg-assign i)
   (let ((value   (assign-value-exp i))
         (target (assign-reg-name i)))
-    (append (cg-mexpr value)
-            (cg-write (reg target)))))
+    (cg-write-reg (reg target) value)))
 
 (: cg-test    (Generator InstTest))
 (define (cg-test i)
@@ -114,12 +114,11 @@ These optimizations are currently unimplemented:
 
 (: cg-save    (Generator InstSave))
 (define (cg-save i)
-  (append (cg-mexpr (reg (stack-inst-reg-name i)))
-          (cg-write (reg 'val))))
+  (cg-write-reg (reg 'val) (reg (save-reg-name i))))
 
 (: cg-restore (Generator InstRestore))
 (define (cg-restore i)
-  (cg-write (reg (stack-inst-reg-name i)) (reg 'val)))
+  (cg-write-reg (reg (restore-reg-name i)) (reg 'val)))
 
 (: cg-perform (Generator InstPerform))
 (define (cg-perform i)
@@ -127,6 +126,7 @@ These optimizations are currently unimplemented:
 
 ;;; Primitive operations emitted by the abstract compiler
 
+(: cg-op-extend-environment        (Generator3 MExpr MExpr MExpr)) ; Adds a frame to the environment.
 (: cg-op-make-compiled-procedure   (Generator2 MExpr MExpr)) ; A lambda creates a runtime value from a code pointer & closure.
 (: cg-op-compiled-procedure-entry  (Generator  MExpr))       ; The code pointer from a make-compiled-procedure object.
 (: cg-op-compiled-procedure-env    (Generator  MExpr))       ; The environment address from a make-compiled-procedure object.
@@ -137,17 +137,19 @@ These optimizations are currently unimplemented:
 (: cg-op-false?                    (Generator  MExpr))       ; Evaluates to 1 if the expression is 0
 (: cg-op-list                      (Generator  MExpr))       ; Creates a 1-element vector with the given object.
 
+(define (cg-op-extend-environment vars vals env)
+  (append (cg-intros (list vars vals env))
+          (cg-make-pair stack stack)
+          (cg-make-pair stack stack)))
 
 (define (cg-op-make-compiled-procedure code env)
   (cg-make-compiled-procedure code env))
 
 (define (cg-op-compiled-procedure-entry obj)
-  (append (cg-mexpr obj)
-          (cg-read-address-offset (const 1))))
+  (cg-read-address-offset obj (const 1)))
 
 (define (cg-op-compiled-procedure-env obj)
-  (append (cg-mexpr obj)
-          (cg-read-address-offset (const 2))))
+  (cg-read-address-offset obj (const 2)))
   
 (define (cg-op-primitive-procedure? obj)
   (append 
@@ -184,7 +186,7 @@ These optimizations are currently unimplemented:
     (append
      (cg-intros (list name env))
      ; Stack: [ var, env ]                          ; len = 2
-     (label env-loop)
+     `(,(label env-loop))
      (asm 'DUP2)    ; [ +env ]                      ; len = 3
      (cg-car stack) ; [ -env, +frame ]              ; len = 3
      (asm 'DUP1)    ; [ +frame ]                    ; len = 4
@@ -192,7 +194,7 @@ These optimizations are currently unimplemented:
      (asm 'SWAP1)   ; [ fvars <-> frame ]           ; len = 4
      (cg-cdr stack) ; [ -frame ; +fvals ]           ; len = 4
      ; Stack: [ fvals, fvars, var, env ]            ; len = 4
-     (label scan)
+     `(,(label scan))
      (asm 'DUP1)      ; [ +fvals ]                  ; len = 5
      (cg-null? stack) ; [ -fvals; +null? ]          ; len = 5
      (asm 'ISZERO)    ; [ -null?; +non-null? ]      ; len = 5
@@ -203,7 +205,7 @@ These optimizations are currently unimplemented:
      (asm 'SWAP1)     ; [ var <-> env ]             ; len = 2
      (cg-goto (const env-loop)) ;[ var, (cdr env) ] ; len = 2
      ; Stack: [ fvals, fvars, var, env ]            ; len = 4
-     (label scan-else-1)
+     `(,(label scan-else-1))
      (asm 'DUP2)       ; [ +fvars ]                 ; len = 5
      (cg-car stack)    ; [ -fvars; +var' ]          ; len = 5
      (asm 'DUP4)       ; [ +var ]                   ; len = 5
@@ -215,13 +217,13 @@ These optimizations are currently unimplemented:
      (cg-pop 3)        ; [ -fvars; -var; -env ]     ; len = 1
      (cg-goto (const term)) ; [ val ]               ; len = 1
      ; Stack: [ fvals, fvars, var, env ]            ; len = 4
-     (label scan-else-2)
+     `(,(label scan-else-2))
      (cg-cdr stack) ; [ -fvals; +(cdr fvals)  ]     ; len = 4
      (asm 'SWAP1)   ; [ (cdr fvals) <-> fvars ]     ; len = 4
      (cg-cdr stack) ; [ -fvars; +(cdr fvars)  ]     ; len = 4
      (asm 'SWAP1)   ; [ (cdr fvals) <-> (cdr fvars) ] ; len = 4
      (cg-goto (const scan)) ; [ fvals, fvars, var, env ]
-     (label term))))
+     `(,(label term)))))
   
 
 ; PSEUDOCODE:
@@ -252,7 +254,7 @@ These optimizations are currently unimplemented:
      (asm 'SWAP1)      ; [ frame <=> fvals ]               ; len = 5
      (cg-car stack)    ; [ -frame; +fvars ]                ; len = 5
      ; Stack:            [ fvars; fvals; name; value; env ]; len = 5
-     (label scan)
+     `(,(label scan))
      (asm 'DUP1)       ; [ +fvars ]                        ; len = 6
      (cg-null? stack)  ; [ -fvars; +null? ]                ; len = 6
      (asm 'ISZERO)     ; [ -null? ; + !null? ]             ; len = 6
@@ -261,7 +263,7 @@ These optimizations are currently unimplemented:
      (cg-add-binding-to-frame stack stack stack) ; [ -name; -value; -env ] ; len = 0
      (cg-goto (const term)) ; []                           ; len = 0
      ; Stack:            [ fvars; fvals; name; value; env ]; len = 5
-     (label scan-else-1)
+     `(,(label scan-else-1))
      (asm 'DUP3)       ; [ +name ]                         ; len = 6
      (asm 'DUP1)       ; [ +fvars ]                        ; len = 7
      (cg-car stack)    ; [ -fvars; name' ]                 ; len = 7
@@ -276,13 +278,13 @@ These optimizations are currently unimplemented:
      (cg-pop 3)        ; [ -name; -value; -env ]           ; len = 0
      (cg-goto (const term))                                ; len = 0
      ; Stack             [ fvars; fvals; name; value; env ]; len = 5
-     (label scan-else-2)
+     `(,(label scan-else-2))
      (cg-cdr stack)    ; [ -fvars; +(cdr fvars) ]          ; len = 5
      (cg-reverse 2)    ; [ fvals <-> fvars ]               ; len = 5
      (cg-cdr stack)    ; [ -fvals; +(cdr fvals) ]          ; len = 5
      (cg-reverse 2)    ; [ fvals <-> fvars ]               ; len = 5
      (cg-goto scan)
-     (label term))))
+     `(,(label term)))))
 
 (define (cg-op-false? exp)
   (append (cg-mexpr exp)
@@ -296,11 +298,13 @@ These optimizations are currently unimplemented:
 
 (: cg-mexpr (Generator MExpr))
 (define (cg-mexpr exp)
-  (cond ((reg?   exp) (cg-mexpr-reg   exp))
-        ((const? exp) (cg-mexpr-const exp))
-        ((op?    exp) (cg-mexpr-op    exp))
+  (cond ((reg?   exp)  (cg-mexpr-reg   exp))
+        ((const? exp)  (cg-mexpr-const exp))
+        ((op?    exp)  (cg-mexpr-op    exp))
+        ((symbol? exp) (cg-mexpr-label (label exp)))
+        ((label? exp)  (cg-mexpr-label exp))
         (else
-         (error "Unknown mexpr - cg-mexpr" exp))))
+         (error "Unknown mexpr - cg-mexpr" exp (list? exp)))))
 
 (: cg-mexpr-reg   (Generator reg))
 (define (cg-mexpr-reg dest)
@@ -327,30 +331,29 @@ These optimizations are currently unimplemented:
   (let ((name (op-name exp))
         (args (op-args exp)))
     (cond
+      ; Procedures
       ((eq? name 'make-compiled-procedure)   (cg-op-make-compiled-procedure   (car args) (cadr args)))
+      ((eq? name 'define-variable!)          (cg-op-define-variable!          (car args) (cadr args) (caddr args)))
+      ; Expressions
+      ((eq? name 'extend-environment)        (cg-op-extend-environment        (car args) (cadr args) (caddr args)))
       ((eq? name 'compiled-procedure-entry)  (cg-op-compiled-procedure-entry  (car args)))
       ((eq? name 'compiled-procedure-env)    (cg-op-compiled-procedure-env    (car args)))
-      ((eq? name 'primitive-procedure?)      (cg-op-primitive-procedure?      (car args) (cadr args)))
+      ((eq? name 'primitive-procedure?)      (cg-op-primitive-procedure?      (car args)))
       ((eq? name 'apply-primitive-procedure) (cg-op-apply-primitive-procedure (car args) (cadr args)))
       ((eq? name 'lookup-variable-value)     (cg-op-lookup-variable-value     (car args) (cadr args)))
-      ((eq? name 'define-variable!)          (cg-op-define-variable!          (car args) (cadr args) (caddr args)))
       ((eq? name 'false?)                    (cg-op-false?                    (car args)))
       ((eq? name 'list)                      (cg-op-list                      (car args)))
       (else
        (error "Unknown primitive op - cg-mexpr-op" name args)))))
 
-(: cg-mexpr-stack (Generator Nothing))
-(define cg-mexpr-stack '())
+(: cg-mexpr-label (Generator label))
+(define (cg-mexpr-label exp) (list exp))
 
-; Writes the top of the stack to the given destination
-(: cg-write (Generator MExpr))
-(define (cg-write dest)
-  (cond ((reg? exp) (cg-write-reg dest))
-        (else
-         (error "Can only write to registers - cg-write" dest))))
+(: cg-mexpr-stack (Generator Nothing))
+(define (cg-mexpr-stack) '())
 
 (: cg-write-stack (Generator Nothing))
-(define cg-write-stack (void))
+(define (cg-write-stack) '())
 
 (: cg-goto                 (Generator  MExpr))
 (: cg-branch               (Generator2 MExpr MExpr))
@@ -497,7 +500,7 @@ These optimizations are currently unimplemented:
      (cg-make-vector stack '())          ; [ -len; +vector ]
      ; 3. Loop through the list, setting vector elements.
      ; STACK:                            [ i; vector; list ]
-     (label loop)
+     `(,(label loop))
      ; 4. Check if loop should be terminated
      (asm 'SWAP2)                        ; [ list; vector; i ]
      (asm 'DUP1)                         ; [ list; list; vector; i]
@@ -518,14 +521,14 @@ These optimizations are currently unimplemented:
      (asm 'SWAP2)                        ; [ i'; vector; list' ]
      (cg-goto loop)
      ; STACK:                              [ list; vector; i ]
-     (label term)
+     `(,(label term))
      (cg-pop 3))))                       ; [ ]
 
-(define (cg-set-car! exp)
-  (cg-write-address-offset exp (const 1)))
+(define (cg-set-car! addr val)
+  (cg-write-address-offset addr (const 1) val))
 
-(define (cg-set-cdr! exp)
-  (cg-write-address-offset exp (const 2)))
+(define (cg-set-cdr! addr val)
+  (cg-write-address-offset addr (const 2) val))
 
 ; PSEUDOCODE
 #|
@@ -543,7 +546,7 @@ These optimizations are currently unimplemented:
      (eth-push 1 0)           ; [ +len ]
      (cg-mexpr exp)           ; [ +list ]
      ; STACK                    [ list ; len ]
-     (label loop)
+     `(,(label loop))
      (asm 'DUP1)              ; [ +list ]
      (cg-pair? exp)           ; [ -list; + pair? ]
      (cg-op-false? stack)     ; [ -pair?; + ! pair? ]
@@ -554,7 +557,7 @@ These optimizations are currently unimplemented:
      (cg-cdr stack)           ; [ -list; +list' ]
      (cg-goto (const 'loop))  ; [ list'; len' ]
      ; STACK                    [ list; len ]
-     (label terminate)
+     `(,(label terminate))
      (cg-pop 1))))            ; [ len ]
 
 ;;; Vectors
@@ -585,7 +588,7 @@ These optimizations are currently unimplemented:
      (cg-mexpr vec)               ; [ vec ]
      (asm 'DUP1)                  ; [ vec; vec ]
      (cg-vector-len stack)        ; [ i; vec ]
-     (label loop)
+     `(,(label loop))
      (asm 'DUP1)                  ; [ i; i; vec ]
      (cg-eq? stack (const 0))     ; [ eq?; i; vec ]
      (cg-branch term stack)       ; [ i; vec ]
@@ -596,7 +599,7 @@ These optimizations are currently unimplemented:
      (asm 'SWAP2)                 ; [ vec; i; x ]
      (asm 'SWAP1)                 ; [ i; vec; x ]
      (cg-goto loop)               ; [ i; vec; x ]
-     (label term)
+     `(,(label term))
      (cg-pop 2))))                ; [ xs ]
 
 (define (cg-vector-len vec)

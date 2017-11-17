@@ -69,10 +69,10 @@
 (define-type StackInst (Pairof Symbol (Pairof RegisterName Any)))
 
 (define-type RegisterValue Any)
-(struct reg ([name : RegisterName]))
-(struct const ([ value : RegisterValue ]))
-(struct label ([ name : LabelName ]))
-(struct op ([ name : Symbol] [ args : MExprs ]))
+(struct reg ([name : RegisterName]) #:transparent)
+(struct const ([ value : RegisterValue ]) #:transparent)
+(struct label ([ name : LabelName ]) #:transparent)
+(struct op ([ name : Symbol] [ args : MExprs ]) #:transparent)
 (define-type MExpr (U reg
                       const
                       label
@@ -80,21 +80,21 @@
 (define-type MExprs (Listof MExpr))
 
 (define-type InstLabel         Symbol)
-(define-type InstAssign  (Pairof 'assign  (Pairof RegisterName MExpr)))
-(define-type InstTest    (Pairof 'test    MExpr))
-(define-type InstBranch  (Pairof 'branch  label))
-(define-type InstGoto    (Pairof 'goto    MExpr))
-(define-type InstSave    (Pairof 'save    RegisterName))
-(define-type InstRestore (Pairof 'restore RegisterName))
-(define-type InstPerform (Pairof 'perform op))
+(struct assign ([ reg-name : RegisterName ] [ value-exp : MExpr ]) #:transparent)
+(struct test ([ condition : MExpr ]) #:transparent)
+(struct branch ([ dest : MExpr ]) #:transparent)
+(struct goto ([ dest : MExpr ]) #:transparent)
+(struct save ([ reg-name : RegisterName ]) #:transparent)
+(struct restore ([ reg-name : RegisterName ]) #:transparent)
+(struct perform ([ action : op ]) #:transparent)
 (define-type Instruction (U InstLabel
-                            InstAssign
-                            InstTest
-                            InstBranch
-                            InstGoto
-                            InstSave
-                            InstRestore
-                            InstPerform))
+                            assign
+                            test
+                            branch
+                            goto
+                            save
+                            restore
+                            perform))
 (define-type Instructions (Listof Instruction))
 (define-type InstructionOp (MPairof Instruction MachineOp))
 (define-type InstructionOps (Listof InstructionOp))
@@ -109,9 +109,9 @@
 
 ; Code generator
 (define-type Address Fixnum)
-(struct eth-asm     ([ name : Symbol ]))
-(struct eth-push    ([ size : Fixnum ] [ value : Integer ]))
-(struct eth-unknown ([ opcode : Fixnum ]))
+(struct eth-asm     ([ name : Symbol ]) #:transparent)
+(struct eth-push    ([ size : Fixnum ] [ value : Integer ]) #:transparent)
+(struct eth-unknown ([ opcode : Fixnum ]) #:transparent)
 (define-type EthInstruction     (U eth-asm eth-push eth-unknown label))
 (define-type EthInstructions    (Listof   EthInstruction))
 (define-type (Generator  A)     (-> A     EthInstructions))

@@ -1,6 +1,6 @@
 #lang typed/racket/no-check
 
-(require test-engine/racket-tests)
+; (require test-engine/racket-tests)
 (require racket/trace)
 
 (require "types.rkt")
@@ -31,17 +31,13 @@
 
 (define instructions (compile-pyramid prog-factorial 'val 'next))
 
-(display-all (inst-seq-statements instructions))
+; (display-all (inst-seq-statements instructions))
 
-(display (op? (assign-value-exp `(assign val ,(op 'make-compiled-procedure '((label entry1) (reg env)))))))
-(display (op? `(,(op 'make-compiled-procedure '((label entry1) (reg env))))))
-(display (op? (op 'make-compiled-procedure '((label entry1) (reg env)))))
-(display (op? '(op make-compiled-procedure ((label entry1) (reg env)))))
 (define eth-instructions (codegen (inst-seq-statements instructions)))
 
+; (struct->vector (op 'derp (const 5)))
 
-
-;; (display-all eth-instructions)
+(display-all eth-instructions)
 
 
 ; (eval-semicompiled-pyramid prog-factorial)
