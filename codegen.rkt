@@ -3,6 +3,7 @@
 (require "evaluator.rkt")
 (require "types.rkt")
 (require "interpreter.rkt")
+(require racket/list)
 
 ; WORD = 0x20
 
@@ -50,10 +51,17 @@ Some procedures are written in EVM assembly. To help validate them, they are ann
 There is a standard library of primitive operations.
 * Some ops are emitted by the compiler. Others are available for users.
 * Primitive operations are always inlined. A later update may instead emit a single copy and save/restore the 'continue register
+* Because they are always inlined, their linkage is implicity 'next. 
+
+-- Optimizations --
+These optimizations are currently unimplemented:
+* Nil values are currently allocated. These can instead refer to a single shared instance.
+* Values that are allocated and used within a lexical scope should not have infinite extent. Roll back the allocator pointer.
+* Refer to a single copy of primitive operations, rather than always inlining them.
 |#
 
 (define-type Address Fixnum)
-(struct asm         ([ name : Symbol ]))
+(struct eth-asm     ([ name : Symbol ]))
 (struct eth-push    ([ size : Fixnum ]) ([ value : Integer ]))
 (struct eth-unknown ([ opcode : Fixnum ]))
 (define-type EthInstruction     (U asm eth-push eth-unknown label))
@@ -71,17 +79,13 @@ There is a standard library of primitive operations.
 (define TAG-VECTOR              5)
 (define TAG-NIL                 6)
 
-(define PRIM-LOOKUP-VARIABLE-VALUE 1)
-
-(define MEM-ENV      #x0)
-(define MEM-CONTINUE #x20)
-(define MEM-ALLOCATOR #x40)
+(define MEM-ENV           #x0)
+(define MEM-CONTINUE      #x20)
+(define MEM-ALLOCATOR     #x40)
 (define MEM-DYNAMIC-START #x60) ; This should be the highest hardcoded memory address.
 
 ; Global variables
-(define WORD       #x20) ; 256-bit words / 8 bit granularity addresses
-(define byte-index 0)    ; Used to turn labels into code addresses
-(define mem-index  0)    ; Used to allocate memory
+(define WORD       #x20) ; 256-bit words / 8 bit granularity addresses = 32 8-bit words, or 0x20.
 
 (: codegen (Generator Instructions))
 (define (codegen is)
@@ -163,9 +167,13 @@ There is a standard library of primitive operations.
         ((eq? (reg-name dest) 'continue) (cg-write-address (const #x20) exp))
         (else                            (cg-write-stack))))
 
+; TODO: Dynamically adjust push size based on value
 (: cg-mexpr-const (Generator const))
-(define (cg-mexpr-const val)
-  (eth-push 32 val)) ; TODO: Dynamically adjust size based on value
+(define (cg-mexpr-const exp)
+  (let ((val (const-value exp)))
+    (if (symbol? val)
+        (eth-push 32 (symbol->integer val))
+        (eth-push 32 val))))
 
 (: cg-mexpr-op    (Generator op))
 (define (cg-mexpr-op exp)
@@ -249,11 +257,11 @@ There is a standard library of primitive operations.
   (let ((env-loop    (make-label 'env-loop))
         (scan        (make-label 'scan))
         (scan-else-1 (make-label 'scan))
-        (scan-else-2 (make-label 'scan)))
-    (let ((lookup-variable-value (make-label 'lookup-variable-value)))
-    ; Stack: [ var, env ]
+        (scan-else-2 (make-label 'scan))
+        (term        (make-label 'term))
+        )
     (append
-     (label (const PRIM-LOOKUP-VARIABLE-VALUE))
+     (cg-intros '(name env))
      ; Stack: [ var, env ]                          ; len = 2
      (label env-loop)
      (asm 'DUP2)    ; [ +env ]                      ; len = 3
@@ -284,14 +292,16 @@ There is a standard library of primitive operations.
      (cg-car stack)    ; [ -fvals; +val ]           ; len = 4
      (asm 'SWAP4)      ; [ fvars, var, env, val ]   ; len = 4
      (cg-pop 3)        ; [ -fvars; -var; -env ]     ; len = 1
-     (cg-goto (reg 'continue)) ; [ val ]            ; len = 1
+     (cg-goto (const term)) ; [ val ]               ; len = 1
      ; Stack: [ fvals, fvars, var, env ]            ; len = 4
      (label scan-else-2)
      (cg-cdr stack) ; [ -fvals; +(cdr fvals)  ]     ; len = 4
      (asm 'SWAP1)   ; [ (cdr fvals) <-> fvars ]     ; len = 4
      (cg-cdr stack) ; [ -fvars; +(cdr fvars)  ]     ; len = 4
      (asm 'SWAP1)   ; [ (cdr fvals) <-> (cdr fvars) ] ; len = 4
-     (cg-goto (const scan))))) ; [ fvals, fvars, var, env ]
+     (cg-goto (const scan)) ; [ fvals, fvars, var, env ]
+     (label term)))))
+  
 
 ; PSEUDOCODE:
 ;; (define (cg-op-define-variable! var val env)
@@ -309,9 +319,7 @@ There is a standard library of primitive operations.
         (scan-else-1 (make-label 'scan))
         (scan-else-2 (make-label 'scan)))
     (append
-     (cg-mexpr env)    ; [ +env ]
-     (cg-mexpr value)  ; [ +value ]
-     (cg-mexpr name)   ; [ +name ]
+     (cg-intros '(name value env))
      ; Stack:            [ name; value; env ]              ; len = 3
      (asm 'DUP3)       ; [ +env; ]                         ; len = 4
      (cg-car stack)    ; [ -env; +frame ]                  ; len = 4
@@ -328,7 +336,7 @@ There is a standard library of primitive operations.
      (cg-branch scan-else-1 stack) ; [ - ! null? ]         ; len = 5
      (cg-pop 2)        ; [ -fvars; -fvals ]                ; len = 3
      (cg-add-binding-to-frame stack stack stack) ; [ -name; -value; -env ] ; len = 0
-     (cg-goto (reg 'continue)) ; []                        ; len = 0
+     (cg-goto (const term)) ; []                           ; len = 0
      ; Stack:            [ fvars; fvals; name; value; env ]; len = 5
      (label scan-else-1)
      (asm 'DUP3)       ; [ +name ]                         ; len = 6
@@ -343,14 +351,16 @@ There is a standard library of primitive operations.
      (cg-reverse 2)    ; [ fvals <-> value ]               ; len = 5
      (cg-set-car! stack stack) ; [ -value; -fvals ]        ; len = 3
      (cg-pop 3)        ; [ -name; -value; -env ]           ; len = 0
-     (cg-goto (reg 'continue))                             ; len = 0
+     (cg-goto (const term))                                ; len = 0
      ; Stack             [ fvars; fvals; name; value; env ]; len = 5
      (label scan-else-2)
      (cg-cdr stack)    ; [ -fvars; +(cdr fvars) ]          ; len = 5
      (cg-reverse 2)    ; [ fvals <-> fvars ]               ; len = 5
      (cg-cdr stack)    ; [ -fvals; +(cdr fvals) ]          ; len = 5
      (cg-reverse 2)    ; [ fvals <-> fvars ]               ; len = 5
-     (cg-jump scan))))
+     (cg-jump scan)
+     (label term))))
+     
 
 ;;; Lists
 
@@ -426,8 +436,7 @@ There is a standard library of primitive operations.
      (cg-goto loop)
      ; STACK:                              [ list; vector; i ]
      (label term)
-     (cg-pop 3)                          ; [ ]
-     (cg-goto 'continue)
+     (cg-pop 3))))                       ; [ ]
      
     
 (define cg-cons cg-make-pair)
@@ -466,8 +475,7 @@ There is a standard library of primitive operations.
      (cg-goto (const 'loop))  ; [ list'; len' ]
      ; STACK                    [ list; len ]
      (label terminate)
-     (cg-pop 1)               ; [ len ]
-     (cg-goto (reg 'continue)))))
+     (cg-pop 1))))            ; [ len ]
 
 ;;; Vectors
 
@@ -509,33 +517,26 @@ There is a standard library of primitive operations.
      (asm 'SWAP1)                 ; [ i; vec; x ]
      (cg-goto loop)               ; [ i; vec; x ]
      (label term)
-     (cg-pop 2)                   ; [ xs ]
-     (cg-goto 'continue))))
+     (cg-pop 2))))                ; [ xs ]
 
 (define (cg-vector-len vec)
   (cg-read-address-offset vec (const 2)))
 
 (define (cg-vector-write vec os val)
   (append
-   (cg-mexpr val)           ; [ val ]
-   (cg-mexpr os)            ; [ os; val ]
-   (cg-mexpr vec)           ; [ vec; os; val ]
+   (cg-intros '(vec os val))
    (asm 'SWAP1)             ; [ os; vec; val ]
    (cg-add stack (const 3)) ; [ os'; vec; val ]
    (asm 'SWAP1)             ; [ vec; os'; val ]
-   (cg-write-address stack stack stack) ; [ ]
-   (cg-goto 'continue)))
+   (cg-write-address stack stack stack))) ; [ ]
    
 (define (cg-vector-read vec os)
   (append
-   (cg-mexpr os)                 ; [ os ]
-   (cg-mexpr vec)                ; [ vec; os ]
+   (cg-intros '(vec os))
    (asm 'SWAP1)                  ; [ os; vec ]
    (cg-add stack (const 3))      ; [ os'; vec ]
    (asm 'SWAP1)                  ; [ vec; os' ]
-   (cg-read-address stack stack) ; [ x ]
-   (cg-goto 'continue)))
-   
+   (cg-read-address stack stack))) ; [ x ]
 
 ;;; Arithmetic
 
@@ -543,6 +544,10 @@ There is a standard library of primitive operations.
 ; So, cg-eq has a net stack impact of 2 pops
    
 (: cg-eq? (Generator2 MExpr MExpr))
+(define (cg-eq? a b)
+  (append (cg-mexpr b)
+          (cg-mexpr a)
+          (asm 'EQ)))
 (: cg-mul (Generator2 MExpr MExpr))
 (: cg-add (Generator2 MExpr MExpr))
 
@@ -551,13 +556,40 @@ There is a standard library of primitive operations.
 (: cg-make-fixnum              (Generator  MExpr))
 (: cg-make-symbol              (Generator  MExpr))
 (: cg-make-compiled-procedure  (Generator2 MExpr MExpr))
-(: cg-make-primitive-procedure (Generator2 MExpr))
+;(: cg-make-primitive-procedure (Generator2 MExpr))
 (: cg-make-pair                (Generator2 MExpr MExpr))
 (: cg-make-vector              (Generator2 MExpr MExprs))
 (: cg-make-nil                 (Generator  Nothing))
 (: cg-add-binding-to-frame     (Generator3 MExpr MExpr Mexpr))
+(: cg-allocate                 (Generator MExpr))              ; Returns a pointer to a newly-allocated block of 256-bit words.
+(: cg-allocate-initialize      (Generator2 MExpr MExprs))      ; Allocates memory and initializes each word from the argument list.
 
+(define (cg-make-fixnum val)
+  (cg-allocate-initialize (const 2) (list (const TAG-FIXNUM) val)))
 
+(define (cg-make-symbol sym)
+  (cg-allocate-initialize (const 2) (list (const TAG-SYMBOL) sym)))
+
+(define (cg-make-compiled-procedure code env)
+  (cg-allocate-initialize (const 2) (list (const TAG-COMPILED-PROCEDURE) code env)))
+
+;(define (cg-make-primitive-procedure code env)
+
+(define (cg-make-pair fst snd)
+  (cg-allocate-initialize (const 3) (list (const TAG-PAIR) fst snd)))
+
+(define (cg-make-vector capacity exps)
+  (append (cg-mexpr capacity)
+          (asm 'DUP1)
+          (cg-add stack (const 3))
+          (cg-allocate-initialize stack
+                                  (append (list TAG-VECTOR
+                                                stack
+                                                (const (length exps)))
+                                          exps))))
+
+(define (cg-make-nil)
+  (cg-allocate-initialize (const 1) (list TAG-NIL)))
 
 ; PSEUDOCODE
 ;; (define (add-binding-to-frame! var val frame)
@@ -581,13 +613,8 @@ There is a standard library of primitive operations.
           (cg-cons stack stack )    ; [ -vals; -value; vals'] ; len = 2
           (asm 'SWAP1)              ; [ frame <-> vals' ]     ; len = 2
           (cg-set-car! stack stack) ; [ -frame; -vals' ]      ; len = 0
-          ))
+          ))   
 
-(define (cg-make-compiled-procedure code env)
-  (cg-allocate-initialize (const 2) (list code env)))
-   
-; Returns a pointer to a newly-allocated block of 256-bit words.
-(: cg-allocate (Generator MExpr))
 (define (cg-allocate size)
   (append
    (cg-mexpr exp)                                 ; [ size ]
@@ -596,25 +623,7 @@ There is a standard library of primitive operations.
    (asm 'SWAP2)                                   ; [ size; ptr; ptr ]
    (cg-add stack stack)                           ; [ ptr'; ptr ]
    (cg-write-address (const MEM-ALLOCATOR) stack) ; [ ptr ]
-   (cg-goto 'continue)))
-
-; Allocates a block of memory and initializes each word from the argument list.
-(: cg-allocate-initialize (Generator2 MExpr MExprs))
-
-(: cg-read-address        (Generator MExpr))
-(: cg-read-address-offset (Generator2 MExpr MExpr))
-
-(: cg-read-address (Generator MExpr))
-(define (cg-read-address addr)
-  (append (cg-mexpr addr)
-          (asm 'MLOAD)))
-
-(: cg-write-address (Generator2 MExpr MExpr))
-(define (cg-write-address dest val)
-  (append
-   (cg-mexpr val)
-   (cg-mexpr dest)
-   (asm 'MSTORE)))
+   ))
 
 ; Record that a label is located at a specific Ethereum bytecode offset.
 (: mark-label (-> LabelName Address Void))
@@ -623,13 +632,84 @@ There is a standard library of primitive operations.
 
 ; Instructions
 
-(: cg-goto    (Generator  MExpr))
-(: cg-branch  (Generator2 MExpr MExpr))
-(: cg-reverse (Generator  Fixnum))
-(: cg-pop     (Generator  Fixnum))
-(: cg-shuffle (Generator (Listof Fixnum)))
-#|
-SHUFFLE ALGORITHM
+(: cg-goto    (Generator   MExpr))
+(: cg-branch  (Generator2  MExpr MExpr))
+(: cg-reverse (Generator   Fixnum))
+(: cg-pop     (Generator   Fixnum))
+(: cg-read-address         (Generator MExpr))
+(: cg-read-address-offset  (Generator2 MExpr MExpr))
+(: cg-write-address        (Generator2 MExpr MExpr))
+(: cg-write-address-offset (Generator3 MExpr MExpr MExpr))
+(: cg-intros               (Generator MExprs)) ; Use at start of a primitive op. Ensures all arguments are on the stack first-to-last.
+(: cg-insert               (Generator2 Fixnum MExpr)) ; 
+(: symbol->integer        (-> Symbol Integer)) ; TODO: I think the "official" ABI uses a Keccak hash for this.
+(: asm                    (-> Symbol EthInstructions))
+(: stack                  MExpr)
+
+(define (cg-goto dest)
+  (append (cg-mexpr dest)
+          (asm 'JUMP)))
+
+(define (cg-branch dest pred)
+  (append (cg-intros '(dest pred))
+          (asm 'JUMPI)))
+
+(define (cg-reverse size)
+  (if (eq? size 2)
+      (asm 'SWAP1)
+      (error "Unsupported size -- cg-reverse" size)))
+
+(define (cg-pop size)
+  (if (eq? size 0)
+      '()
+      (cons (eth-asm 'POP)
+            (cg-pop (size-1)))))
+
+(define (cg-read-address addr)
+  (append (cg-mexpr addr)
+          (asm 'MLOAD)))
+
+(define (cg-read-address-offset addr os)
+  (append (cg-intros '(addr os))
+          (cg-add stack stack)
+          (cg-read-address stack)))
+
+(define (cg-write-address dest val)
+  (append
+   (cg-mexpr val)
+   (cg-mexpr dest)
+   (asm 'MSTORE)))
+
+(define (cg-write-address-offset dest os val)
+  (append (cg-intros '(dest os val))
+          (cg-add stack stack)
+          (cg-write-address stack stack)))
+
+
+
+(define (symbol->integer sym)
+  (let ((lst (string->list (symbol->string sym))))
+    (define (loop lst i)
+      (if (null? lst)
+          i
+          (loop (cdr lst)
+                (+ (char->integer (car lst))
+                   (* 256 i)))))
+    (loop lst 0)))
+
+(define (asm sym) (list (eth-asm sym)))
+
+; TODO: (+ stack (const 5)) would leave a 5 on the top of the stack, which is incorrect.
+(define stack (reg 'val))
+
+#| DOCUMENTED FUNCTIONS
+The functions below were non-obvious enough that I wrote documentation & examples. They are separated
+from most other functions to not break the flow when reading.
+
+; (: cg-shuffle (Generator (Listof Fixnum)))
+-- Shuffle Algorithm --
+cg-shuffle is used to rearrange the top few stack elements to an arbitrary order.
+
 We want to emit a sequence of top-level stack swaps that changes [1,2,3,4] to [3,4,1,2]
 1. Locate the element that should be relocated to the deepest spot.
 2. Swap it to the front, or do nothing if it's already there.
@@ -640,6 +720,49 @@ Example:
 [1,2,3,4] -> 2 is the deepest element of [3,4,1,2]
 [2,1,3,4] -> swap 2 to the front
 [4,1,3,2] -> swap 2 to the back
-Rename [4,1,3] to [1,2,3] in the desired solution, and repeat
+Rename [4,1,3] to [1,2,3] in the desired solution, and iterate:
+(shuffle [ 2,3,1 ])
 |#
-(define stack (reg 'val))
+
+#|
+There are two calling conventions: "Normal" Scheme dynamic memory, and the stack-based primitive operations.
+The stack-based ones allow constants and other primitive operations to be passed as arguments.
+Arguments passed on the stack are no-ops, while constants and primitives need to have code emitted.
+This function emits the code to get all arguments onto the stack first-to-last.
+
+PSEUDOCODE:
+(intros '()) = '()
+(intros (snoc xs x)) = [ if (stack-write? x) (cg-insert x (length xs)) '(), intros xs ]
+
+Example:
+exprs = [ stk, stk, stk, 5, stk, 10 ]
+Stack: [ x1, x2, x3, x4 ]
+10 writes to stack, so insert it at 4: [ x1, x2, x3, x4, 10 ]
+Iterate on [ stk, stk, stk, 5, stk ]
+stk is a no-op, so immediately recurse: [ stk, stk, stk, 5 ]
+5 inserted at 3: [ x1,x2,x3,5,x4,10]
+Remaining 3 stk arguments ignored. 
+|#
+(define (cg-intros exprs)
+  (define (loop exprs)
+    (let ((x (car exprs))
+          (xs (cdr exprs)))
+      (append (if (stack-write? x)
+                  (cg-insert x (length xs))
+                  '())
+              (loop xs))))
+  (loop (reverse exprs)))
+
+#|
+1. Evaluate the expression so it's on the front: [ c; x1; x2; x3; ]
+2. Emit N swaps. For (cg-insert c 3):
+  SWAP3 -> [ x3; x1; x2; c ]
+  SWAP2 -> [ x2; x1; x3; c ]
+  SWAP1 -> [ x1; x2; x3; c ]
+|#
+(define (cg-insert expr pos)
+  (define (loop n)
+    (append (cg-swap n)
+            (loop (- n 1))))
+  (append (cg-mexpr expr)
+          (loop pos)))
