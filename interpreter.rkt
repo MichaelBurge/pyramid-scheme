@@ -259,6 +259,27 @@
         (set-contents! target (value-proc))
         (advance-pc pc)))))
 
+(: assign? (-> Instruction Boolean))
+(define (assign? i) (eq? 'assign (car i)))
+
+(: test? (-> Instruction Boolean))
+(define (test? i) (eq? 'test (car i)))
+
+(: branch? (-> Instruction Boolean))
+(define (branch? i) (eq? 'branch (car i)))
+
+(: goto? (-> Instruction Boolean))
+(define (goto? i) (eq? 'goto (car i)))
+
+(: save? (-> Instruction Boolean))
+(define (save? i) (eq? 'save (car i)))
+
+(: restore? (-> Instruction Boolean))
+(define (restore? i) (eq? 'restore (car i)))
+
+(: perform? (-> Instruction Boolean))
+(define (perform? i) (eq? 'perform (car i)))
+
 (: assign-reg-name (-> InstAssign RegisterName))
 (define (assign-reg-name assign-instruction)
   (cadr assign-instruction))

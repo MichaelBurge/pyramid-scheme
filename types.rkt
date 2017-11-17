@@ -105,3 +105,14 @@
 
 (struct primitive ([ implementation : Procedure ]))
 (struct procedure ([ parameters : VariableNames ] [ body : Sequence ] [ environment : Environment ]))
+
+; Code generator
+(define-type Address Fixnum)
+(struct eth-asm     ([ name : Symbol ]))
+(struct eth-push    ([ size : Fixnum ] [ value : Integer ]))
+(struct eth-unknown ([ opcode : Fixnum ]))
+(define-type EthInstruction     (U eth-asm eth-push eth-unknown label))
+(define-type EthInstructions    (Listof   EthInstruction))
+(define-type (Generator  A)     (-> A     EthInstructions))
+(define-type (Generator2 A B)   (-> A B   EthInstructions))
+(define-type (Generator3 A B C) (-> A B C EthInstructions))

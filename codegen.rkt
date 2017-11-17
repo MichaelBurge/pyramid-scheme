@@ -1,11 +1,13 @@
 #lang typed/racket/no-check
 
+(require "compiler.rkt")
 (require "evaluator.rkt")
 (require "types.rkt")
 (require "interpreter.rkt")
 (require racket/list)
 
-; WORD = 0x20
+(provide (all-defined-out))
+(provide (all-defined-out))
 
 #|
 -- Registers -> Stack --
@@ -59,17 +61,7 @@ These optimizations are currently unimplemented:
 * Values that are allocated and used within a lexical scope should not have infinite extent. Roll back the allocator pointer.
 * Refer to a single copy of primitive operations, rather than always inlining them.
 |#
-
-(define-type Address Fixnum)
-(struct eth-asm     ([ name : Symbol ]))
-(struct eth-push    ([ size : Fixnum ]) ([ value : Integer ]))
-(struct eth-unknown ([ opcode : Fixnum ]))
-(define-type EthInstruction     (U asm eth-push eth-unknown label))
-(define-type EthInstructions    (Listof   EthInstruction))
-(define-type (Generator  A)     (-> A     EthInstructions))
-(define-type (Generator2 A B)   (-> A B   EthInstructions))
-(define-type (Generator3 A B C) (-> A B C EthInstructions))
-
+    
 ; Constants
 (define TAG-FIXNUM              0)
 (define TAG-SYMBOL              1)
@@ -87,129 +79,12 @@ These optimizations are currently unimplemented:
 ; Global variables
 (define WORD       #x20) ; 256-bit words / 8 bit granularity addresses = 32 8-bit words, or 0x20.
 
-(: codegen (Generator Instructions))
-(define (codegen is)
-  (if (null? is)
-      '()
-      (append (codegen-one (car is))
-              (codegen     (cdr is)))))
-       
-
-(: codegen-one (Generator Instruction))
-(define (codegen-one i)
-  (cond ((label?   i) (cg-label   i))
-        ((assign?  i) (cg-assign  i))
-        ((test?    i) (cg-test    i))
-        ((branch?  i) (cg-branch  i))
-        ((goto?    i) (cg-goto    i))
-        ((save?    i) (cg-save    i))
-        ((restore? i) (cg-restore i))
-        ((perform? i) (cg-perform i))
-        (else
-         (error "Unknown instruction type -- CODEGEN" i))))
-
-(: cg-label   (Generator InstLabel)
-(: cg-assign  (Generator InstAssign))
-(: cg-test    (Generator InstTest))
-(: cg-branch  (Generator InstBranch))
-(: cg-goto    (Generator InstGoto))
-(: cg-save    (Generator InstSave))
-(: cg-restore (Generator InstRestore))
-(: cg-perform (Generator InstPerform))
-
-(define (cg-label i) i)
-
-(define (cg-assign i)
-  (let ((value   (assign-value-exp i))
-        (target (assign-reg-name i)))
-    (append (cg-mexpr value)
-            (cg-write (reg target)))))
-
-(define (cg-test i)
-  (cg-mexpr (test-condition i)))
-
-(define (cg-branch i)
-  (cg-mexpr (branch-dest i))
-  (asm 'JUMPI))
-
-(define (cg-goto i)
-  (cg-mexpr (goto-dest i))
-  (asm 'JUMP))
-
-(define (cg-save i)
-  (append (cg-mexpr (reg (stack-inst-reg-name i)))
-          (cg-write (reg 'val))))
-
-(define (cg-restore i)
-  (cg-write (reg (stack-inst-reg-name i)) (reg 'val)))
-
-(define (cg-perform i)
-  (cg-op (perform-action i)))
-  
-
-(: cg-mexpr (Generator MExpr))
-(define (cg-mexpr exp)
-  (cond ((reg?   exp) (cg-mexpr-reg   exp))
-        ((const? exp) (cg-mexpr-const exp))
-        ((op?    exp) (cg-mexpr-op    exp))
-        (else
-         (error "Unknown mexpr - cg-mexpr" exp))))
-
-(: cg-mexpr-reg   (Generator reg))
-(define (cg-mexpr-reg exp)
-  (cond ((eq? (reg-name dest) 'env)      (cg-read-address (const #x0)))
-        ((eq? (reg-name dest) 'continue) (cg-read-address (const #x20)))
-        (else                            (cg-mexpr-stack))))
-
-(: cg-write-reg (Generator2 reg MExpr))
-(define (cg-write-reg dest exp)
-  (cond ((eq? (reg-name dest) 'env)      (cg-write-address (const #x0)  exp))
-        ((eq? (reg-name dest) 'continue) (cg-write-address (const #x20) exp))
-        (else                            (cg-write-stack))))
-
-; TODO: Dynamically adjust push size based on value
-(: cg-mexpr-const (Generator const))
-(define (cg-mexpr-const exp)
-  (let ((val (const-value exp)))
-    (if (symbol? val)
-        (eth-push 32 (symbol->integer val))
-        (eth-push 32 val))))
-
-(: cg-mexpr-op    (Generator op))
-(define (cg-mexpr-op exp)
-  (let ((name (op-name exp))
-        (args (op-args exp)))
-    (cond ((eq? name 'compiled-procedure-entry)  (cg-compiled-procedure-entry  (car args)))
-          ((eq? name 'compiled-procedure-env)    (cg-compiled-procedure-env    (car args)))
-          ((eq? name 'primitive-procedure?)      (cg-primitive-procedure?      (car args) (cadr args)))
-          ((eq? name 'apply-primitive-procedure) (cg-apply-primitive-procedure (car args) (cadr args)))
-          ((eq? name 'lookup-variable-value)     (cg-lookup-variable-value     (car args) (cadr args)))
-          ((eq? name 'define-variable!)          (cg-define-variable!          (car args) (cadr args) (caddr args)))
-          ((eq? name 'false?)                    (cg-false?                    (car args)))
-          ((eq? name 'list)                      (cg-list                      (car args)))
-          (else
-           (error "Unknown primitive op - cg-mexpr-op" exp)))))
-          
-(: cg-mexpr-stack (Generator Nothing))
-(define cg-mexpr-stack (void))
-
-; Writes the top of the stack to the given destination
-(: cg-write (Generator MExpr))
-(define (cg-write dest)
-  (cond ((reg? exp) (cg-write-reg dest))
-        (else
-         (error "Can only write to registers - cg-write" dest))))
-
-(: cg-write-stack (Generator Nothing))
-(define cg-write-stack (void))
-  
 
 ;;; Primitive operations emitted by the abstract compiler
 
-
 (: cg-op-make-compiled-procedure   (Generator2 MExpr MExpr)) ; A lambda creates a runtime value from a code pointer & closure.
 (: cg-op-compiled-procedure-entry  (Generator  MExpr))       ; The code pointer from a make-compiled-procedure object.
-(: cg-op-compiled-procedure-env)   (Generator  MExpr))       ; The environment address from a make-compiled-procedure object.
+(: cg-op-compiled-procedure-env    (Generator  MExpr))       ; The environment address from a make-compiled-procedure object.
 (: cg-op-primitive-procedure?      (Generator  MExpr))       ; Is the object at an address a primitive procedure?
 (: cg-op-apply-primitive-procedure (Generator2 MExpr MExpr)) ; Calls the primitive procedure with a code pointer and argument list.
 (: cg-op-lookup-variable-value     (Generator2 MExpr MExpr)) ; Returns the object with the given name in the given environment.
@@ -230,9 +105,10 @@ These optimizations are currently unimplemented:
           (cg-read-address-offset (const 2))))
   
 (define (cg-op-primitive-procedure? obj)
-  (append (cg-mexpr (const TAG-PRIMITIVE-PROCEDURE))
-          (cg-mexpr obj)
-          (cg-eq-binop)))
+  (append 
+   (cg-mexpr obj)
+   (cg-mexpr (const TAG-PRIMITIVE-PROCEDURE))
+   (cg-eq? stack stack)))
 
 (define (cg-op-apply-primitive-procedure proc argl)
   (append (cg-list->stack argl)
@@ -261,7 +137,7 @@ These optimizations are currently unimplemented:
         (term        (make-label 'term))
         )
     (append
-     (cg-intros '(name env))
+     (cg-intros (list name env))
      ; Stack: [ var, env ]                          ; len = 2
      (label env-loop)
      (asm 'DUP2)    ; [ +env ]                      ; len = 3
@@ -300,7 +176,7 @@ These optimizations are currently unimplemented:
      (cg-cdr stack) ; [ -fvars; +(cdr fvars)  ]     ; len = 4
      (asm 'SWAP1)   ; [ (cdr fvals) <-> (cdr fvars) ] ; len = 4
      (cg-goto (const scan)) ; [ fvals, fvars, var, env ]
-     (label term)))))
+     (label term))))
   
 
 ; PSEUDOCODE:
@@ -317,9 +193,11 @@ These optimizations are currently unimplemented:
 (define (cg-op-define-variable! name value env)
   (let ((scan        (make-label 'scan))
         (scan-else-1 (make-label 'scan))
-        (scan-else-2 (make-label 'scan)))
+        (scan-else-2 (make-label 'scan))
+        (term        (make-label 'term))
+        )
     (append
-     (cg-intros '(name value env))
+     (cg-intros (list name value env))
      ; Stack:            [ name; value; env ]              ; len = 3
      (asm 'DUP3)       ; [ +env; ]                         ; len = 4
      (cg-car stack)    ; [ -env; +frame ]                  ; len = 4
@@ -358,9 +236,162 @@ These optimizations are currently unimplemented:
      (cg-reverse 2)    ; [ fvals <-> fvars ]               ; len = 5
      (cg-cdr stack)    ; [ -fvals; +(cdr fvals) ]          ; len = 5
      (cg-reverse 2)    ; [ fvals <-> fvars ]               ; len = 5
-     (cg-jump scan)
+     (cg-goto scan)
      (label term))))
-     
+
+(define (cg-op-false? exp)
+  (append (cg-mexpr exp)
+          (asm 'ISZERO)))
+
+(define (cg-op-list exp)
+  (append (cg-mexpr exp)
+          (cg-make-nil)
+          (cg-cons stack stack)))
+  
+
+(: cg-mexpr (Generator MExpr))
+(define (cg-mexpr exp)
+  (cond ((reg?   exp) (cg-mexpr-reg   exp))
+        ((const? exp) (cg-mexpr-const exp))
+        ((op?    exp) (cg-mexpr-op    exp))
+        (else
+         (error "Unknown mexpr - cg-mexpr" exp))))
+
+(: cg-mexpr-reg   (Generator reg))
+(define (cg-mexpr-reg dest)
+  (cond ((eq? (reg-name dest) 'env)      (cg-read-address (const #x0)))
+        ((eq? (reg-name dest) 'continue) (cg-read-address (const #x20)))
+        (else                            (cg-mexpr-stack))))
+
+(: cg-write-reg (Generator2 reg MExpr))
+(define (cg-write-reg dest exp)
+  (cond ((eq? (reg-name dest) 'env)      (cg-write-address (const #x0)  exp))
+        ((eq? (reg-name dest) 'continue) (cg-write-address (const #x20) exp))
+        (else                            (cg-write-stack))))
+
+; TODO: Dynamically adjust push size based on value
+(: cg-mexpr-const (Generator const))
+(define (cg-mexpr-const exp)
+  (let ((val (const-value exp)))
+    (if (symbol? val)
+        (eth-push 32 (symbol->integer val))
+        (eth-push 32 val))))
+
+(: cg-mexpr-op    (Generator op))
+(define (cg-mexpr-op exp)
+  (let ((name (op-name exp))
+        (args (op-args exp)))
+    (cond ((eq? name 'compiled-procedure-entry)  (cg-op-compiled-procedure-entry  (car args)))
+          ((eq? name 'compiled-procedure-env)    (cg-op-compiled-procedure-env    (car args)))
+          ((eq? name 'primitive-procedure?)      (cg-op-primitive-procedure?      (car args) (cadr args)))
+          ((eq? name 'apply-primitive-procedure) (cg-op-apply-primitive-procedure (car args) (cadr args)))
+          ((eq? name 'lookup-variable-value)     (cg-op-lookup-variable-value     (car args) (cadr args)))
+          ((eq? name 'define-variable!)          (cg-op-define-variable!          (car args) (cadr args) (caddr args)))
+          ((eq? name 'false?)                    (cg-op-false?                    (car args)))
+          ((eq? name 'list)                      (cg-op-list                      (car args)))
+          (else
+           (error "Unknown primitive op - cg-mexpr-op" exp)))))
+
+(: cg-mexpr-stack (Generator Nothing))
+(define cg-mexpr-stack (void))
+
+; Writes the top of the stack to the given destination
+(: cg-write (Generator MExpr))
+(define (cg-write dest)
+  (cond ((reg? exp) (cg-write-reg dest))
+        (else
+         (error "Can only write to registers - cg-write" dest))))
+
+(: cg-write-stack (Generator Nothing))
+(define cg-write-stack (void))
+
+(: cg-goto                 (Generator  MExpr))
+(: cg-branch               (Generator2 MExpr MExpr))
+(: cg-reverse              (Generator  Fixnum))
+(: cg-pop                  (Generator  Fixnum))
+(: cg-swap                 (Generator  FixNum))
+(: cg-read-address         (Generator  MExpr))
+(: cg-read-address-offset  (Generator2 MExpr MExpr))
+(: cg-write-address        (Generator2 MExpr MExpr))
+(: cg-write-address-offset (Generator3 MExpr MExpr MExpr))
+(: cg-intros               (Generator MExprs)) ; Use at start of a primitive op. Ensures all arguments are on the stack first-to-last.
+(: cg-insert               (Generator2 Fixnum MExpr)) ; 
+(: symbol->integer         (-> Symbol Integer)) ; TODO: I think the "official" ABI uses a Keccak hash for this.
+(: asm                     (-> Symbol EthInstructions))
+(: stack                   MExpr)
+(: stack-write?            (-> MExpr Boolean))
+
+(define (cg-goto dest)
+  (append (cg-mexpr dest)
+          (asm 'JUMP)))
+
+(define (cg-branch dest pred)
+  (append (cg-intros (list dest pred))
+          (asm 'JUMPI)))
+
+(define (cg-reverse size)
+  (if (eq? size 2)
+      (asm 'SWAP1)
+      (error "Unsupported size -- cg-reverse" size)))
+
+(define (cg-pop size)
+  (if (eq? size 0)
+      '()
+      (cons (eth-asm 'POP)
+            (cg-pop (- size 1)))))
+
+(define (cg-swap size)
+  (cond ((eq? size  1) (asm 'SWAP1))
+        ((eq? size  2) (asm 'SWAP2))
+        ((eq? size  3) (asm 'SWAP3))
+        ((eq? size  4) (asm 'SWAP4))
+        ((eq? size  5) (asm 'SWAP5))
+        ((eq? size  6) (asm 'SWAP6))
+        ((eq? size  7) (asm 'SWAP7))
+        ((eq? size  8) (asm 'SWAP8))
+        ((eq? size  9) (asm 'SWAP9))
+        ((eq? size 10) (asm 'SWAP10))
+        ((eq? size 11) (asm 'SWAP11))
+        ((eq? size 12) (asm 'SWAP12))
+        ((eq? size 13) (asm 'SWAP13))
+        ((eq? size 14) (asm 'SWAP14))
+        ((eq? size 15) (asm 'SWAP15))
+        (else (error "Unknown swap size -- cg-swap" size))))
+
+(define (cg-read-address addr)
+  (append (cg-mexpr addr)
+          (asm 'MLOAD)))
+
+(define (cg-read-address-offset addr os)
+  (append (cg-intros (list addr os))
+          (cg-add stack stack)
+          (cg-read-address stack)))
+
+(define (cg-write-address dest val)
+  (append (cg-intros (list dest val))
+          (asm 'MSTORE)))
+
+(define (cg-write-address-offset dest os val)
+  (append (cg-intros (list dest os val))
+          (cg-add stack stack)
+          (cg-write-address stack stack)))
+
+
+
+(define (symbol->integer sym)
+  (let ((lst (string->list (symbol->string sym))))
+    (define (loop lst i)
+      (if (null? lst)
+          i
+          (loop (cdr lst)
+                (+ (char->integer (car lst))
+                   (* 256 i)))))
+    (loop lst 0)))
+
+(define (asm sym) (list (eth-asm sym)))
+
+; TODO: (+ stack (const 5)) would leave a 5 on the top of the stack, which is incorrect.
+(define stack (reg 'val))
 
 ;;; Lists
 
@@ -380,6 +411,11 @@ These optimizations are currently unimplemented:
   (append (cg-mexpr exp)
           (cg-tag stack)
           (cg-eq? stack (const TAG-NIL))))
+
+(define (cg-pair? exp)
+  (append (cg-mexpr exp)
+          (cg-tag stack)
+          (cg-eq? stack (const TAG-PAIR))))
 
 (define (cg-car exp) 
   (cg-read-address-offset exp (const 1)))
@@ -437,9 +473,6 @@ These optimizations are currently unimplemented:
      ; STACK:                              [ list; vector; i ]
      (label term)
      (cg-pop 3))))                       ; [ ]
-     
-    
-(define cg-cons cg-make-pair)
 
 (define (cg-set-car! exp)
   (cg-write-address-offset exp (const 1)))
@@ -524,7 +557,7 @@ These optimizations are currently unimplemented:
 
 (define (cg-vector-write vec os val)
   (append
-   (cg-intros '(vec os val))
+   (cg-intros (list vec os val))
    (asm 'SWAP1)             ; [ os; vec; val ]
    (cg-add stack (const 3)) ; [ os'; vec; val ]
    (asm 'SWAP1)             ; [ vec; os'; val ]
@@ -532,71 +565,20 @@ These optimizations are currently unimplemented:
    
 (define (cg-vector-read vec os)
   (append
-   (cg-intros '(vec os))
+   (cg-intros (list vec os))
    (asm 'SWAP1)                  ; [ os; vec ]
    (cg-add stack (const 3))      ; [ os'; vec ]
    (asm 'SWAP1)                  ; [ vec; os' ]
    (cg-read-address stack stack))) ; [ x ]
 
-;;; Arithmetic
 
-; The arity of nullop, unop, binop refer to the number of values popped from the stack.
-; So, cg-eq has a net stack impact of 2 pops
-   
-(: cg-eq? (Generator2 MExpr MExpr))
-(define (cg-eq? a b)
-  (append (cg-mexpr b)
-          (cg-mexpr a)
-          (asm 'EQ)))
-(: cg-mul (Generator2 MExpr MExpr))
-(: cg-add (Generator2 MExpr MExpr))
-
-;;; Runtime support
- 
-(: cg-make-fixnum              (Generator  MExpr))
-(: cg-make-symbol              (Generator  MExpr))
-(: cg-make-compiled-procedure  (Generator2 MExpr MExpr))
-;(: cg-make-primitive-procedure (Generator2 MExpr))
-(: cg-make-pair                (Generator2 MExpr MExpr))
-(: cg-make-vector              (Generator2 MExpr MExprs))
-(: cg-make-nil                 (Generator  Nothing))
-(: cg-add-binding-to-frame     (Generator3 MExpr MExpr Mexpr))
-(: cg-allocate                 (Generator MExpr))              ; Returns a pointer to a newly-allocated block of 256-bit words.
-(: cg-allocate-initialize      (Generator2 MExpr MExprs))      ; Allocates memory and initializes each word from the argument list.
-
-(define (cg-make-fixnum val)
-  (cg-allocate-initialize (const 2) (list (const TAG-FIXNUM) val)))
-
-(define (cg-make-symbol sym)
-  (cg-allocate-initialize (const 2) (list (const TAG-SYMBOL) sym)))
-
-(define (cg-make-compiled-procedure code env)
-  (cg-allocate-initialize (const 2) (list (const TAG-COMPILED-PROCEDURE) code env)))
-
-;(define (cg-make-primitive-procedure code env)
-
-(define (cg-make-pair fst snd)
-  (cg-allocate-initialize (const 3) (list (const TAG-PAIR) fst snd)))
-
-(define (cg-make-vector capacity exps)
-  (append (cg-mexpr capacity)
-          (asm 'DUP1)
-          (cg-add stack (const 3))
-          (cg-allocate-initialize stack
-                                  (append (list TAG-VECTOR
-                                                stack
-                                                (const (length exps)))
-                                          exps))))
-
-(define (cg-make-nil)
-  (cg-allocate-initialize (const 1) (list TAG-NIL)))
 
 ; PSEUDOCODE
 ;; (define (add-binding-to-frame! var val frame)
 ;;  (set-car! frame (cons var (car frame)))
 ;;  (set-cdr! frame (cons val (cdr frame))))
 (define (cg-add-binding-to-frame name value frame)
-  (append (cg-mexpr env)            ; [ +env ]                ; len = 1
+  (append (cg-intros (list name value frame)) ; -+[ name; value ; frame ]
           (cg-mexpr value)          ; [ +value ]              ; len = 2
           (cg-mexpr name)           ; [ +name ]               ; len = 3
           ; STACK                     [ name; value; frame ]  ; len = 3
@@ -615,9 +597,55 @@ These optimizations are currently unimplemented:
           (cg-set-car! stack stack) ; [ -frame; -vals' ]      ; len = 0
           ))   
 
+;;; Runtime support
+
+(: cg-tag                      (Generator MExpr))
+(: cg-make-fixnum              (Generator  MExpr))
+(: cg-make-symbol              (Generator  MExpr))
+(: cg-make-compiled-procedure  (Generator2 MExpr MExpr))
+;(: cg-make-primitive-procedure (Generator2 MExpr))
+(: cg-make-pair                (Generator2 MExpr MExpr))
+(: cg-make-vector              (Generator2 MExpr MExprs))
+(: cg-make-nil                 (Generator  Nothing))
+(: cg-add-binding-to-frame     (Generator3 MExpr MExpr Mexpr))
+(: cg-allocate                 (Generator MExpr))              ; Returns a pointer to a newly-allocated block of 256-bit words.
+(: cg-allocate-initialize      (Generator2 MExpr MExprs))      ; Allocates memory and initializes each word from the argument list.
+
+(define (cg-tag exp) (append (cg-read-address exp)))
+
+
+(define (cg-make-fixnum val)
+  (cg-allocate-initialize (const 2) (list (const TAG-FIXNUM) val)))
+
+(define (cg-make-symbol sym)
+  (cg-allocate-initialize (const 2) (list (const TAG-SYMBOL) sym)))
+
+(define (cg-make-compiled-procedure code env)
+  (cg-allocate-initialize (const 2) (list (const TAG-COMPILED-PROCEDURE) code env)))
+
+;(define (cg-make-primitive-procedure code env)
+
+(define (cg-make-pair fst snd)
+  (cg-allocate-initialize (const 3) (list (const TAG-PAIR) fst snd)))
+
+(define cg-cons cg-make-pair)
+
+(define (cg-make-vector capacity exps)
+  (append (cg-mexpr capacity)
+          (asm 'DUP1)
+          (cg-add stack (const 3))
+          (cg-allocate-initialize stack
+                                  (append (list TAG-VECTOR
+                                                stack
+                                                (const (length exps)))
+                                          exps))))
+
+(define (cg-make-nil)
+  (cg-allocate-initialize (const 1) (list TAG-NIL)))
+
 (define (cg-allocate size)
   (append
-   (cg-mexpr exp)                                 ; [ size ]
+   (cg-mexpr size)                                ; [ size ]
    (cg-read-address (const MEM-ALLOCATOR))        ; [ ptr; size ]
    (asm 'DUP1)                                    ; [ ptr; ptr; size ]
    (asm 'SWAP2)                                   ; [ size; ptr; ptr ]
@@ -625,82 +653,52 @@ These optimizations are currently unimplemented:
    (cg-write-address (const MEM-ALLOCATOR) stack) ; [ ptr ]
    ))
 
+(define (cg-allocate-initialize size inits)
+  (define (loop exps)
+    (if (null? exps)
+        '()
+        (append
+         ; STACK                          [ ptr; exp* ]
+         (cg-intros (list stack (car exps)))
+         (asm 'SWAP1)                   ; [ exp; ptr; exp* ]
+         (asm 'DUP2)                    ; [ ptr; exp; ptr; exp* ]
+         (cg-write-address stack stack) ; [ ptr; exp* ]
+         (cg-add stack (const 1))       ; [ ptr'; exp* ]
+         (loop (cdr exps)))))
+  (append (cg-allocate size)
+          (loop inits)))
+            
+
+
+;;; Arithmetic
+
+; The arity of nullop, unop, binop refer to the number of values popped from the stack.
+; So, cg-eq has a net stack impact of 2 pops
+   
+(: cg-eq? (Generator2 MExpr MExpr))
+(: cg-mul (Generator2 MExpr MExpr))
+(: cg-add (Generator2 MExpr MExpr))
+(: cg-sub (Generator2 MExpr MExpr))
+(define (cg-eq? a b)
+  (append (cg-intros a b)
+          (asm 'EQ)))
+
+(define (cg-mul a b)
+  (append (cg-intros a b)
+          (asm 'MUL)))
+
+(define (cg-add a b)
+  (append (cg-intros a b)
+          (asm 'ADD)))
+
+(define (cg-sub a b)
+  (append (cg-intros a b)
+          (asm 'SUB)))
+
 ; Record that a label is located at a specific Ethereum bytecode offset.
-(: mark-label (-> LabelName Address Void))
-(define (mark-label name addr)
-  (push-mlist! label-map (cons name addr)))
-
-; Instructions
-
-(: cg-goto    (Generator   MExpr))
-(: cg-branch  (Generator2  MExpr MExpr))
-(: cg-reverse (Generator   Fixnum))
-(: cg-pop     (Generator   Fixnum))
-(: cg-read-address         (Generator MExpr))
-(: cg-read-address-offset  (Generator2 MExpr MExpr))
-(: cg-write-address        (Generator2 MExpr MExpr))
-(: cg-write-address-offset (Generator3 MExpr MExpr MExpr))
-(: cg-intros               (Generator MExprs)) ; Use at start of a primitive op. Ensures all arguments are on the stack first-to-last.
-(: cg-insert               (Generator2 Fixnum MExpr)) ; 
-(: symbol->integer        (-> Symbol Integer)) ; TODO: I think the "official" ABI uses a Keccak hash for this.
-(: asm                    (-> Symbol EthInstructions))
-(: stack                  MExpr)
-
-(define (cg-goto dest)
-  (append (cg-mexpr dest)
-          (asm 'JUMP)))
-
-(define (cg-branch dest pred)
-  (append (cg-intros '(dest pred))
-          (asm 'JUMPI)))
-
-(define (cg-reverse size)
-  (if (eq? size 2)
-      (asm 'SWAP1)
-      (error "Unsupported size -- cg-reverse" size)))
-
-(define (cg-pop size)
-  (if (eq? size 0)
-      '()
-      (cons (eth-asm 'POP)
-            (cg-pop (size-1)))))
-
-(define (cg-read-address addr)
-  (append (cg-mexpr addr)
-          (asm 'MLOAD)))
-
-(define (cg-read-address-offset addr os)
-  (append (cg-intros '(addr os))
-          (cg-add stack stack)
-          (cg-read-address stack)))
-
-(define (cg-write-address dest val)
-  (append
-   (cg-mexpr val)
-   (cg-mexpr dest)
-   (asm 'MSTORE)))
-
-(define (cg-write-address-offset dest os val)
-  (append (cg-intros '(dest os val))
-          (cg-add stack stack)
-          (cg-write-address stack stack)))
-
-
-
-(define (symbol->integer sym)
-  (let ((lst (string->list (symbol->string sym))))
-    (define (loop lst i)
-      (if (null? lst)
-          i
-          (loop (cdr lst)
-                (+ (char->integer (car lst))
-                   (* 256 i)))))
-    (loop lst 0)))
-
-(define (asm sym) (list (eth-asm sym)))
-
-; TODO: (+ stack (const 5)) would leave a 5 on the top of the stack, which is incorrect.
-(define stack (reg 'val))
+;; (: mark-label (-> LabelName Address Void))
+;; (define (mark-label name addr)
+;;   (push-mlist! label-map (cons name addr)))
 
 #| DOCUMENTED FUNCTIONS
 The functions below were non-obvious enough that I wrote documentation & examples. They are separated
@@ -756,9 +754,9 @@ Remaining 3 stk arguments ignored.
 #|
 1. Evaluate the expression so it's on the front: [ c; x1; x2; x3; ]
 2. Emit N swaps. For (cg-insert c 3):
-  SWAP3 -> [ x3; x1; x2; c ]
-  SWAP2 -> [ x2; x1; x3; c ]
-  SWAP1 -> [ x1; x2; x3; c ]
+SWAP3 -> [ x3; x1; x2; c ]
+SWAP2 -> [ x2; x1; x3; c ]
+SWAP1 -> [ x1; x2; x3; c ]
 |#
 (define (cg-insert expr pos)
   (define (loop n)
@@ -766,3 +764,8 @@ Remaining 3 stk arguments ignored.
             (loop (- n 1))))
   (append (cg-mexpr expr)
           (loop pos)))
+
+(define (stack-write? exp)
+  (cond ((reg? exp) (or (eq? (reg-name exp) 'env)
+                        (eq? (reg-name exp) 'continue)))
+        (else true)))
