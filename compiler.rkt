@@ -48,12 +48,12 @@
 (define (compile-linkage linkage)
   (cond ((eq? linkage 'return)
          (inst-seq '(continue) '()
-                   (literal-instructions '((goto (reg continue))))))
+                   (literal-instructions `((goto ,(reg 'continue))))))
         ((eq? linkage 'next)
          (empty-instruction-sequence))
         (else
          (inst-seq '() '()
-                   (literal-instructions `((goto (label ,linkage))))))))
+                   (literal-instructions `((goto ,(label linkage))))))))
 
 (: end-with-linkage (-> Linkage inst-seq inst-seq))
 (define (end-with-linkage linkage instruction-sequence)
@@ -65,13 +65,13 @@
 (define (compile-self-evaluating exp target linkage)
   (end-with-linkage linkage
                     (inst-seq '() (list target)
-                              `((assign ,target (const ,exp))))))
+                              `((assign ,target ,(const exp))))))
 
 (: compile-quoted (-> PyrQuote Target Linkage inst-seq))
 (define (compile-quoted exp target linkage)
   (end-with-linkage linkage
                     (inst-seq '() (list target)
-                              `((assign ,target (const ,(text-of-quotation exp)))))))
+                              `((assign ,target ,(const (text-of-quotation exp)))))))
 
 (: compile-variable (-> PyrVariable Target Linkage inst-seq))
 (define (compile-variable exp target linkage)
@@ -79,9 +79,9 @@
                     (inst-seq '(env) (list target)
                               (literal-instructions
                                `((assign ,target
-                                         (op lookup-variable-value)
-                                         (const ,exp)
-                                         (reg env)))))))
+                                         ,(op 'lookup-variable-value
+                                              `(,(const exp)
+                                                ,(reg 'env)))))))))
 
 (: compile-assignment (-> PyrAssign Target Linkage inst-seq))
 (define (compile-assignment exp target linkage)
@@ -93,11 +93,11 @@
                                   get-value-code
                                   (inst-seq '(env val) (list target)
                                             (literal-instructions
-                                             `((perform (op set-variable-value!)
-                                                        (const ,var)
-                                                        (reg val)
-                                                        (reg env))
-                                               (assign ,target (const ok)))))))))
+                                             `((perform ,(op 'set-variable-value!
+                                                             `(,(const var)
+                                                               (reg 'val)
+                                                               (reg 'env))))
+                                               (assign ,target ,(const 'ok)))))))))
 
 (: compile-definition (-> PyrDefinition Target Linkage inst-seq))
 (define (compile-definition exp target linkage)
@@ -109,11 +109,11 @@
                                   get-value-code
                                   (inst-seq '(env val) (list target)
                                             (literal-instructions
-                                             `((perform (op define-variable!)
-                                                        (const ,var)
-                                                        (reg val)
-                                                        (reg env))
-                                               (assign ,target (const ok)))))))))
+                                             `((perform ,(op 'define-variable!
+                                                             `(,(const var)
+                                                               ,(reg 'val)
+                                                               ,(reg 'env))))
+                                               (assign ,target ,(const 'ok)))))))))
 
 
 (define (new-label-number)
@@ -144,8 +144,8 @@
                     (append-instruction-sequences
                      (inst-seq '(val) '()
                                (literal-instructions
-                                `((test (op false?) (reg val))
-                                  (branch (label ,f-branch)))))
+                                `((test ,(op 'false? `(,(reg 'val))))
+                                  (branch ,(label 'f-branch)))))
                      (parallel-instruction-sequences
                       (append-instruction-sequences t-branch c-code)
                       (append-instruction-sequences f-branch a-code))
@@ -171,9 +171,9 @@
                           (inst-seq '(env) (list target)
                                     (literal-instructions
                                      `((assign ,target
-                                               (op make-compiled-procedure)
-                                               (label ,proc-entry)
-                                               (reg env))))))
+                                               ,(op 'make-compiled-procedure
+                                                    `(,(label proc-entry)
+                                                      ,(reg 'env))))))))
         (compile-lambda-body exp proc-entry))
        after-lambda))))
 
@@ -184,12 +184,12 @@
      (inst-seq '(env proc argl) '(env)
                (literal-instructions
                 `(,proc-entry
-                  (assign env (op compiled-procedure-env) (reg proc))
+                  (assign env ,(op 'compiled-procedure-env `(,(reg 'proc))))
                   (assign env
-                          (op extend-environment)
-                          (const ,formals)
-                          (reg argl)
-                          (reg env)))))
+                          ,(op 'extend-environment
+                               `(,(const formals)
+                                 ,(reg 'argl)
+                                 ,(reg 'env)))))))
      (compile-sequence (lambda-body exp) 'val 'return))))
 
 
@@ -215,7 +215,7 @@
                (append-instruction-sequences
                 (car operand-codes)
                 (inst-seq '(val) '(argl)
-                          '((assign argl (op list) (reg val)))))))
+                          `((assign argl ,(op 'list `(,(reg 'val)))))))))
           (if (null? (cdr operand-codes))
               code-to-get-last-arg
               (preserving '(env)
@@ -229,8 +229,10 @@
          (preserving '(argl)
                      (car operand-codes)
                      (inst-seq '(val argl) '(argl)
-                                                '((assign argl
-                                                          (op cons) (reg val) (reg argl)))))))
+                               `((assign argl
+                                         ,(op 'cons
+                                              `(,(reg 'val)
+                                                ,(reg 'argl)))))))))
     (if (null? (cdr operand-codes))
         code-for-next-arg
         (preserving '(env)
@@ -249,7 +251,7 @@
       (append-instruction-sequences
        (inst-seq '(proc) '()
                  (literal-instructions
-                  `((test (op primitive-procedure?) (reg proc))
+                  `((test ,(op 'primitive-procedure? `(,(reg 'proc))))
                     (branch (label ,primitive-branch)))))
        (parallel-instruction-sequences
         (append-instruction-sequences
@@ -262,9 +264,9 @@
                                      (list target)
                                      `((assign continue ,after-call)
                                        (assign ,target
-                                               (op apply-primitive-procedure)
-                                               (reg proc)
-                                               (reg argl)))))))
+                                               ,(op 'apply-primitive-procedure
+                                                    `(,(reg 'proc)
+                                                      ,(reg 'argl)))))))))
        after-call))))
 
 (: compile-proc-appl (-> Target Linkage inst-seq))
@@ -272,27 +274,27 @@
   (cond ((and (eq? target 'val) (not (eq? linkage 'return)))
          (inst-seq '(proc) all-regs
                    (literal-instructions
-                    `((assign continue (label ,linkage))
-                      (assign val (op compiled-procedure-entry)
-                              (reg proc))
-                      (goto (reg val))))))
+                    `((assign continue ,(label 'linkage))
+                      (assign val ,(op 'compiled-procedure-entry
+                                       `(,(reg 'proc))))
+                      (goto ,(reg 'val))))))
         ((and (not (eq? target 'val))
               (not (eq? linkage 'return)))
          (let ((proc-return (make-label 'proc-return)))
            (inst-seq '(proc) all-regs
                      (literal-instructions
-                      `((assign continue (label ,proc-return))
-                        (assign val (op compiled-procedure-entry)
-                                (reg proc))
+                      `((assign continue ,(label 'proc-return))
+                        (assign val ,(op 'compiled-procedure-entry
+                                         `(,(reg 'proc))))
                         (goto (reg val))
                         ,proc-return
-                       (assign ,target (reg val))
-                       (goto (label ,linkage)))))))
+                       (assign ,target ,(reg 'val))
+                       (goto ,(label 'linkage)))))))
         ((and (eq? target 'val) (eq? linkage 'return))
          (inst-seq '(proc continue) all-regs
                    (literal-instructions
-                    '((assign val (op compiled-procedure-entry)
-                              (reg proc))
+                    `((assign val ,(op 'compiled-procedure-entry
+                                       `(,(reg 'proc))))
                       (goto (reg val))))))
         ((and (not (eq? target 'val)) (eq? linkage 'return))
          (error "return linkage, target not val -- COMPILE"

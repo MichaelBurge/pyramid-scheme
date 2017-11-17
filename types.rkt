@@ -72,20 +72,21 @@
 (struct reg ([name : RegisterName]))
 (struct const ([ value : RegisterValue ]))
 (struct label ([ name : LabelName ]))
-(struct op ([ name : Symbol] [ args : (Listof MExpr) ]))
+(struct op ([ name : Symbol] [ args : MExprs ]))
 (define-type MExpr (U reg
                       const
                       label
                       op))
+(define-type MExprs (Listof MExpr))
 
 (define-type InstLabel         Symbol)
-(define-type InstAssign  (List 'assign  (Pairof RegisterName (Listof MExpr))))
-(define-type InstTest    (List 'test    MExpr))
-(define-type InstBranch  (List 'branch  label))
-(define-type InstGoto    (List 'goto    MExpr))
-(define-type InstSave    (List 'save    RegisterName))
-(define-type InstRestore (List 'restore RegisterName))
-(define-type InstPerform (List 'perform op))
+(define-type InstAssign  (Pairof 'assign  (Pairof RegisterName MExpr)))
+(define-type InstTest    (Pairof 'test    MExpr))
+(define-type InstBranch  (Pairof 'branch  label))
+(define-type InstGoto    (Pairof 'goto    MExpr))
+(define-type InstSave    (Pairof 'save    RegisterName))
+(define-type InstRestore (Pairof 'restore RegisterName))
+(define-type InstPerform (Pairof 'perform op))
 (define-type Instruction (U InstLabel
                             InstAssign
                             InstTest

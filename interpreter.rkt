@@ -284,9 +284,9 @@
 (define (assign-reg-name assign-instruction)
   (cadr assign-instruction))
 
-(: assign-value-exp (-> InstAssign MExprs))
+(: assign-value-exp (-> InstAssign MExpr))
 (define (assign-value-exp assign-instruction)
-  (cddr assign-instruction))
+  (caddr assign-instruction))
 
 (: advance-pc (-> Register Void))
 (define (advance-pc pc)

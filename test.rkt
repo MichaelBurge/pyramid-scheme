@@ -9,6 +9,7 @@
 (require "compiler.rkt")
 (require "evaluator.rkt")
 (require "io.rkt")
+(require "codegen.rkt")
 
 (: eval-semicompiled-pyramid (-> Pyramid Value))
 (define (eval-semicompiled-pyramid prog)
@@ -27,7 +28,22 @@
          (* (factorial (- n 1)) n))))
 
 (define the-global-environment (setup-environment))
-(display-all (inst-seq-statements (compile-pyramid prog-factorial 'val 'next)))
+
+(define instructions (compile-pyramid prog-factorial 'val 'next))
+
+(display-all (inst-seq-statements instructions))
+
+(display (op? (assign-value-exp `(assign val ,(op 'make-compiled-procedure '((label entry1) (reg env)))))))
+(display (op? `(,(op 'make-compiled-procedure '((label entry1) (reg env))))))
+(display (op? (op 'make-compiled-procedure '((label entry1) (reg env)))))
+(display (op? '(op make-compiled-procedure ((label entry1) (reg env)))))
+(define eth-instructions (codegen (inst-seq-statements instructions)))
+
+
+
+;; (display-all eth-instructions)
+
+
 ; (eval-semicompiled-pyramid prog-factorial)
 ;; (eval-pyramid prog-factorial the-global-environment)
 ;; (eval-pyramid '(factorial 5) the-global-environment)

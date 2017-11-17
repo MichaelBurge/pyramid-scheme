@@ -1,4 +1,4 @@
-#lang typed/racket/no-check
+#lang errortrace typed/racket/no-check
 
 (require "compiler.rkt")
 (require "evaluator.rkt")
@@ -6,7 +6,6 @@
 (require "interpreter.rkt")
 (require racket/list)
 
-(provide (all-defined-out))
 (provide (all-defined-out))
 
 #|
@@ -79,6 +78,52 @@ These optimizations are currently unimplemented:
 ; Global variables
 (define WORD       #x20) ; 256-bit words / 8 bit granularity addresses = 32 8-bit words, or 0x20.
 
+; Top-level code generator
+(: codegen (Generator Instructions))
+(define (codegen is)
+  (if (null? is)
+      '()
+      (append (codegen-one (car is))
+              (codegen     (cdr is)))))
+
+(: codegen-one (Generator Instruction))
+(define (codegen-one i)
+  (cond ((label?   i) (cg-label   i))
+        ((assign?  i) (cg-assign  i))
+        ((test?    i) (cg-test    i))
+        ((branch?  i) (cg-branch  (branch-dest i)))
+        ((goto?    i) (cg-goto    (goto-dest i)))
+        ((save?    i) (cg-save    i))
+        ((restore? i) (cg-restore i))
+        ((perform? i) (cg-perform i))
+        (else
+         (error "Unknown instruction type -- CODEGEN" i))))
+(: cg-label   (Generator InstLabel))
+(define (cg-label i) i)
+
+(: cg-assign  (Generator InstAssign))
+(define (cg-assign i)
+  (let ((value   (assign-value-exp i))
+        (target (assign-reg-name i)))
+    (append (cg-mexpr value)
+            (cg-write (reg target)))))
+
+(: cg-test    (Generator InstTest))
+(define (cg-test i)
+  (cg-mexpr (test-condition i)))
+
+(: cg-save    (Generator InstSave))
+(define (cg-save i)
+  (append (cg-mexpr (reg (stack-inst-reg-name i)))
+          (cg-write (reg 'val))))
+
+(: cg-restore (Generator InstRestore))
+(define (cg-restore i)
+  (cg-write (reg (stack-inst-reg-name i)) (reg 'val)))
+
+(: cg-perform (Generator InstPerform))
+(define (cg-perform i)
+  (cg-mexpr-op (perform-action i)))
 
 ;;; Primitive operations emitted by the abstract compiler
 
@@ -274,26 +319,28 @@ These optimizations are currently unimplemented:
 (define (cg-mexpr-const exp)
   (let ((val (const-value exp)))
     (if (symbol? val)
-        (eth-push 32 (symbol->integer val))
-        (eth-push 32 val))))
+        (list (eth-push 32 (symbol->integer val)))
+        (list (eth-push 32 val)))))
 
 (: cg-mexpr-op    (Generator op))
 (define (cg-mexpr-op exp)
   (let ((name (op-name exp))
         (args (op-args exp)))
-    (cond ((eq? name 'compiled-procedure-entry)  (cg-op-compiled-procedure-entry  (car args)))
-          ((eq? name 'compiled-procedure-env)    (cg-op-compiled-procedure-env    (car args)))
-          ((eq? name 'primitive-procedure?)      (cg-op-primitive-procedure?      (car args) (cadr args)))
-          ((eq? name 'apply-primitive-procedure) (cg-op-apply-primitive-procedure (car args) (cadr args)))
-          ((eq? name 'lookup-variable-value)     (cg-op-lookup-variable-value     (car args) (cadr args)))
-          ((eq? name 'define-variable!)          (cg-op-define-variable!          (car args) (cadr args) (caddr args)))
-          ((eq? name 'false?)                    (cg-op-false?                    (car args)))
-          ((eq? name 'list)                      (cg-op-list                      (car args)))
-          (else
-           (error "Unknown primitive op - cg-mexpr-op" exp)))))
+    (cond
+      ((eq? name 'make-compiled-procedure)   (cg-op-make-compiled-procedure   (car args) (cadr args)))
+      ((eq? name 'compiled-procedure-entry)  (cg-op-compiled-procedure-entry  (car args)))
+      ((eq? name 'compiled-procedure-env)    (cg-op-compiled-procedure-env    (car args)))
+      ((eq? name 'primitive-procedure?)      (cg-op-primitive-procedure?      (car args) (cadr args)))
+      ((eq? name 'apply-primitive-procedure) (cg-op-apply-primitive-procedure (car args) (cadr args)))
+      ((eq? name 'lookup-variable-value)     (cg-op-lookup-variable-value     (car args) (cadr args)))
+      ((eq? name 'define-variable!)          (cg-op-define-variable!          (car args) (cadr args) (caddr args)))
+      ((eq? name 'false?)                    (cg-op-false?                    (car args)))
+      ((eq? name 'list)                      (cg-op-list                      (car args)))
+      (else
+       (error "Unknown primitive op - cg-mexpr-op" name args)))))
 
 (: cg-mexpr-stack (Generator Nothing))
-(define cg-mexpr-stack (void))
+(define cg-mexpr-stack '())
 
 ; Writes the top of the stack to the given destination
 (: cg-write (Generator MExpr))
@@ -680,19 +727,19 @@ These optimizations are currently unimplemented:
 (: cg-add (Generator2 MExpr MExpr))
 (: cg-sub (Generator2 MExpr MExpr))
 (define (cg-eq? a b)
-  (append (cg-intros a b)
+  (append (cg-intros (list a b))
           (asm 'EQ)))
 
 (define (cg-mul a b)
-  (append (cg-intros a b)
+  (append (cg-intros (list a b))
           (asm 'MUL)))
 
 (define (cg-add a b)
-  (append (cg-intros a b)
+  (append (cg-intros (list a b))
           (asm 'ADD)))
 
 (define (cg-sub a b)
-  (append (cg-intros a b)
+  (append (cg-intros (list a b))
           (asm 'SUB)))
 
 ; Record that a label is located at a specific Ethereum bytecode offset.
@@ -743,12 +790,14 @@ Remaining 3 stk arguments ignored.
 |#
 (define (cg-intros exprs)
   (define (loop exprs)
-    (let ((x (car exprs))
-          (xs (cdr exprs)))
-      (append (if (stack-write? x)
-                  (cg-insert x (length xs))
-                  '())
-              (loop xs))))
+    (if (null? exprs)
+        '()
+        (let ((x (car exprs))
+              (xs (cdr exprs)))
+          (append (if (stack-write? x)
+                      (cg-insert x (length xs))
+                      '())
+                  (loop xs)))))
   (loop (reverse exprs)))
 
 #|
@@ -760,8 +809,10 @@ SWAP1 -> [ x1; x2; x3; c ]
 |#
 (define (cg-insert expr pos)
   (define (loop n)
-    (append (cg-swap n)
-            (loop (- n 1))))
+    (if (eq? n 0)
+        '()
+        (append (cg-swap n)
+                (loop (- n 1)))))
   (append (cg-mexpr expr)
           (loop pos)))
 
