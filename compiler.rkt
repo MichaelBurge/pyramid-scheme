@@ -1,4 +1,4 @@
-#lang typed/racket/no-check
+#lang errortrace typed/racket/no-check
 
 (require "types.rkt")
 (require "ast.rkt")
@@ -203,7 +203,7 @@
   (let ((operand-codes (reverse operand-codes)))
     (if (null? operand-codes)
         (inst-seq '() '(argl)
-                  '((assign argl (const ()))))
+                  (list (assign 'argl (const '()))))
         (let ((code-to-get-last-arg
                (append-instruction-sequences
                 (car operand-codes)
@@ -278,7 +278,7 @@
                            (assign 'val (op 'compiled-procedure-entry
                                             `(,(reg 'proc))))
                            (goto (reg 'val))
-                           (proc-return)
+                           proc-return
                            (assign target (reg 'val))
                            (goto (label 'linkage))))))
         ((and (eq? target 'val) (eq? linkage 'return))

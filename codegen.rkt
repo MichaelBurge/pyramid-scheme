@@ -59,6 +59,14 @@ These optimizations are currently unimplemented:
 * Nil values are currently allocated. These can instead refer to a single shared instance.
 * Values that are allocated and used within a lexical scope should not have infinite extent. Roll back the allocator pointer.
 * Refer to a single copy of primitive operations, rather than always inlining them.
+* Constants always emit PUSH32 instructions. These could be shrunk.
+
+-- Constants --
+* Integers are converted into simple push instructions.
+* Quotes are always variable names. Labels have their own classification in MExpr.
+* Quotes are converted into 256-bit integers by treating up to 32 characters as 8-bit ASCII.
+* Lists emits a series of (cons) calls corresponding to the elements.
+
 |#
     
 ; Constants
@@ -88,6 +96,7 @@ These optimizations are currently unimplemented:
 
 (: codegen-one (Generator Instruction))
 (define (codegen-one i)
+  (begin
   (cond ((label?   i) (cg-label   i))
         ((symbol?  i) (cg-label `(,(label i))))
         ((assign?  i) (cg-assign  i))
@@ -98,7 +107,7 @@ These optimizations are currently unimplemented:
         ((restore? i) (cg-restore i))
         ((perform? i) (cg-perform i))
         (else
-         (error "Unknown instruction type -- codegen-one:" i))))
+         (error "Unknown instruction type -- codegen-one:" i)))))
 (: cg-label   (Generator InstLabel))
 (define (cg-label i) i)
 
@@ -322,9 +331,13 @@ These optimizations are currently unimplemented:
 (: cg-mexpr-const (Generator const))
 (define (cg-mexpr-const exp)
   (let ((val (const-value exp)))
-    (if (symbol? val)
-        (list (eth-push 32 (symbol->integer val)))
-        (list (eth-push 32 val)))))
+    (begin
+    (cond ((symbol? val)  (list (eth-push 32 (symbol->integer val))))
+          ((integer? val) (list (eth-push 32 val)))
+          ((list? val)    (cg-make-list (map const val)))
+          (else
+           (error "Unsupported constant - cg-mexpr-const" exp))))))
+          
 
 (: cg-mexpr-op    (Generator op))
 (define (cg-mexpr-op exp)
@@ -657,6 +670,7 @@ These optimizations are currently unimplemented:
 (: cg-make-pair                (Generator2 MExpr MExpr))
 (: cg-make-vector              (Generator2 MExpr MExprs))
 (: cg-make-nil                 (Generator  Nothing))
+(: cg-make-list                (Generator MExprs))
 (: cg-add-binding-to-frame     (Generator3 MExpr MExpr Mexpr))
 (: cg-allocate                 (Generator MExpr))              ; Returns a pointer to a newly-allocated block of 256-bit words.
 (: cg-allocate-initialize      (Generator2 MExpr MExprs))      ; Allocates memory and initializes each word from the argument list.
@@ -691,7 +705,16 @@ These optimizations are currently unimplemented:
                                           exps))))
 
 (define (cg-make-nil)
-  (cg-allocate-initialize (const 1) (list TAG-NIL)))
+  (cg-allocate-initialize (const 1) (list (const TAG-NIL))))
+
+(define (cg-make-list lst)
+  (if (null? lst)
+      (cg-make-nil)
+      (append
+       (cg-mexpr (car lst))
+       (cg-make-list (cdr lst))
+       (cg-swap 2)
+       (cg-cons stack stack))))
 
 (define (cg-allocate size)
   (append

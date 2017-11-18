@@ -14,7 +14,7 @@
 (define-type PyrVariable          Symbol)
 (define-type PyrQuote      (List 'quote  Pyramid))
 (define-type PyrAssign     (List 'set!   Target Pyramid))
-(define-type PyrDefinition (List 'define (Pairof VariableName VariableNames) Pyramid))
+(define-type PyrDefinition (List 'define (U VariableName VariableNames) Pyramid))
 (define-type PyrIf         (List 'if     Pyramid Pyramid (U Nothing Pyramid)))
 (define-type PyrLambda     (List 'lambda VariableNames Sequence))
 (define-type PyrBegin      (List 'begin  (Listof Pyramid)))
@@ -110,10 +110,12 @@
 ; Code generator
 (define-type Address Fixnum)
 (struct eth-asm     ([ name : Symbol ]) #:transparent)
-(struct eth-push    ([ size : Fixnum ] [ value : Integer ]) #:transparent)
+(struct eth-push    ([ size : Fixnum ] [ value : (U Integer Symbol) ]) #:transparent)
 (struct eth-unknown ([ opcode : Fixnum ]) #:transparent)
 (define-type EthInstruction     (U eth-asm eth-push eth-unknown label))
 (define-type EthInstructions    (Listof   EthInstruction))
 (define-type (Generator  A)     (-> A     EthInstructions))
 (define-type (Generator2 A B)   (-> A B   EthInstructions))
 (define-type (Generator3 A B C) (-> A B C EthInstructions))
+
+(struct opcode ([ byte : Fixnum ] [ name : Symbol ]) #:transparent)

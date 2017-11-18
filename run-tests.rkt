@@ -10,6 +10,7 @@
 (require "evaluator.rkt")
 (require "io.rkt")
 (require "codegen.rkt")
+(require "serializer.rkt")
 
 (: eval-semicompiled-pyramid (-> Pyramid Value))
 (define (eval-semicompiled-pyramid prog)
@@ -37,7 +38,9 @@
 
 ; (struct->vector (op 'derp (const 5)))
 
-(display-all eth-instructions)
+(serialize-print eth-instructions)
+
+;(display-all eth-instructions)
 
 
 ; (eval-semicompiled-pyramid prog-factorial)
