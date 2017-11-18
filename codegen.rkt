@@ -186,16 +186,16 @@ These optimizations are currently unimplemented:
 ;;             (cdr frame))))
 ;;   (env-loop env))
 (define (cg-op-lookup-variable-value name env)
-  (let ((env-loop    (make-label 'env-loop))
-        (scan        (make-label 'scan))
-        (scan-else-1 (make-label 'scan))
-        (scan-else-2 (make-label 'scan))
-        (term        (make-label 'term))
+  (let ((env-loop    (label (make-label 'env-loop)))
+        (scan        (label (make-label 'scan)))
+        (scan-else-1 (label (make-label 'scan)))
+        (scan-else-2 (label (make-label 'scan)))
+        (term        (label (make-label 'term)))
         )
     (append
      (cg-intros (list name env))
      ; Stack: [ var, env ]                          ; len = 2
-     `(,(label env-loop))
+     `(,env-loop)
      (asm 'DUP2)    ; [ +env ]                      ; len = 3
      (cg-car stack) ; [ -env, +frame ]              ; len = 3
      (asm 'DUP1)    ; [ +frame ]                    ; len = 4
@@ -212,9 +212,9 @@ These optimizations are currently unimplemented:
      (asm 'SWAP1)     ; [ env <-> var ]             ; len = 2
      (cg-cdr stack)   ; [ -env; +(cdr env) ]        ; len = 2
      (asm 'SWAP1)     ; [ var <-> env ]             ; len = 2
-     (cg-goto (const env-loop)) ;[ var, (cdr env) ] ; len = 2
+     (cg-goto env-loop) ;[ var, (cdr env) ] ; len = 2
      ; Stack: [ fvals, fvars, var, env ]            ; len = 4
-     `(,(label scan-else-1))
+     `(,scan-else-1)
      (asm 'DUP2)       ; [ +fvars ]                 ; len = 5
      (cg-car stack)    ; [ -fvars; +var' ]          ; len = 5
      (asm 'DUP4)       ; [ +var ]                   ; len = 5
@@ -224,15 +224,15 @@ These optimizations are currently unimplemented:
      (cg-car stack)    ; [ -fvals; +val ]           ; len = 4
      (asm 'SWAP4)      ; [ fvars, var, env, val ]   ; len = 4
      (cg-pop 3)        ; [ -fvars; -var; -env ]     ; len = 1
-     (cg-goto (const term)) ; [ val ]               ; len = 1
+     (cg-goto term)    ; [ val ]               ; len = 1
      ; Stack: [ fvals, fvars, var, env ]            ; len = 4
-     `(,(label scan-else-2))
-     (cg-cdr stack) ; [ -fvals; +(cdr fvals)  ]     ; len = 4
-     (asm 'SWAP1)   ; [ (cdr fvals) <-> fvars ]     ; len = 4
-     (cg-cdr stack) ; [ -fvars; +(cdr fvars)  ]     ; len = 4
-     (asm 'SWAP1)   ; [ (cdr fvals) <-> (cdr fvars) ] ; len = 4
-     (cg-goto (const scan)) ; [ fvals, fvars, var, env ]
-     `(,(label term)))))
+     `(,scan-else-2)
+     (cg-cdr stack)    ; [ -fvals; +(cdr fvals)  ]     ; len = 4
+     (asm 'SWAP1)      ; [ (cdr fvals) <-> fvars ]     ; len = 4
+     (cg-cdr stack)    ; [ -fvars; +(cdr fvars)  ]     ; len = 4
+     (asm 'SWAP1)      ; [ (cdr fvals) <-> (cdr fvars) ] ; len = 4
+     (cg-goto scan) ; [ fvals, fvars, var, env ]
+     `(,term))))
   
 
 ; PSEUDOCODE:
@@ -247,10 +247,10 @@ These optimizations are currently unimplemented:
 ;;     (scan (car frame)
 ;;           (cdr frame))))
 (define (cg-op-define-variable! name value env)
-  (let ((scan        (make-label 'scan))
-        (scan-else-1 (make-label 'scan))
-        (scan-else-2 (make-label 'scan))
-        (term        (make-label 'term))
+  (let ((scan        (label (make-label 'scan)))
+        (scan-else-1 (label (make-label 'scan)))
+        (scan-else-2 (label (make-label 'scan)))
+        (term        (label (make-label 'term)))
         )
     (append
      (cg-intros (list name value env))
@@ -263,16 +263,16 @@ These optimizations are currently unimplemented:
      (asm 'SWAP1)      ; [ frame <=> fvals ]               ; len = 5
      (cg-car stack)    ; [ -frame; +fvars ]                ; len = 5
      ; Stack:            [ fvars; fvals; name; value; env ]; len = 5
-     `(,(label scan))
+     `(,scan)
      (asm 'DUP1)       ; [ +fvars ]                        ; len = 6
      (cg-null? stack)  ; [ -fvars; +null? ]                ; len = 6
      (asm 'ISZERO)     ; [ -null? ; + !null? ]             ; len = 6
      (cg-branch scan-else-1 stack) ; [ - ! null? ]         ; len = 5
      (cg-pop 2)        ; [ -fvars; -fvals ]                ; len = 3
      (cg-add-binding-to-frame stack stack stack) ; [ -name; -value; -env ] ; len = 0
-     (cg-goto (const term)) ; []                           ; len = 0
+     (cg-goto term) ; []                           ; len = 0
      ; Stack:            [ fvars; fvals; name; value; env ]; len = 5
-     `(,(label scan-else-1))
+     `(,scan-else-1)
      (asm 'DUP3)       ; [ +name ]                         ; len = 6
      (asm 'DUP1)       ; [ +fvars ]                        ; len = 7
      (cg-car stack)    ; [ -fvars; name' ]                 ; len = 7
@@ -285,15 +285,15 @@ These optimizations are currently unimplemented:
      (cg-reverse 2)    ; [ fvals <-> value ]               ; len = 5
      (cg-set-car! stack stack) ; [ -value; -fvals ]        ; len = 3
      (cg-pop 3)        ; [ -name; -value; -env ]           ; len = 0
-     (cg-goto (const term))                                ; len = 0
+     (cg-goto term)                                ; len = 0
      ; Stack             [ fvars; fvals; name; value; env ]; len = 5
-     `(,(label scan-else-2))
+     `(,scan-else-2)
      (cg-cdr stack)    ; [ -fvars; +(cdr fvars) ]          ; len = 5
      (cg-reverse 2)    ; [ fvals <-> fvars ]               ; len = 5
      (cg-cdr stack)    ; [ -fvals; +(cdr fvals) ]          ; len = 5
      (cg-reverse 2)    ; [ fvals <-> fvars ]               ; len = 5
      (cg-goto scan)
-     `(,(label term)))))
+     `(,term))))
 
 (define (cg-op-false? exp)
   (append (cg-mexpr exp)
@@ -332,11 +332,13 @@ These optimizations are currently unimplemented:
 (define (cg-mexpr-const exp)
   (let ((val (const-value exp)))
     (begin
-    (cond ((symbol? val)  (list (eth-push 32 (symbol->integer val))))
-          ((integer? val) (list (eth-push 32 val)))
-          ((list? val)    (cg-make-list (map const val)))
-          (else
-           (error "Unsupported constant - cg-mexpr-const" exp))))))
+      (cond ((symbol? val)
+             (let ((int (symbol->integer val)))
+               (list (eth-push (integer-bytes int) int))))
+            ((integer? val) (list (eth-push (integer-bytes val) val)))
+            ((list? val)    (cg-make-list (map const val)))
+            (else
+             (error "Unsupported constant - cg-mexpr-const" exp))))))
           
 
 (: cg-mexpr-op    (Generator op))
@@ -502,8 +504,8 @@ These optimizations are currently unimplemented:
 ;            (loop (+ i 1) (cdr list)))))
 ;      (loop 0 list)))
 (define (cg-list->vector exp)
-  (let ((loop (make-label 'loop))
-        (term (make-label 'term)))
+  (let ((loop (label (make-label 'loop)))
+        (term (label (make-label 'term))))
     (append
      (cg-mexpr exp)                      ; [ +list ]
      ; 1. Calculate the length of the list
@@ -534,7 +536,7 @@ These optimizations are currently unimplemented:
      (asm 'SWAP2)                        ; [ i'; vector; list' ]
      (cg-goto loop)
      ; STACK:                              [ list; vector; i ]
-     `(,(label term))
+     `(,term)
      (cg-pop 3))))                       ; [ ]
 
 (define (cg-set-car! addr val)
@@ -553,13 +555,13 @@ These optimizations are currently unimplemented:
   (loop 0))
 |#
 (define (cg-list-length exp)
-  (let ((loop      (make-label 'loop))
-        (terminate (make-label 'terminate)))
+  (let ((loop      (label (make-label 'loop)))
+        (terminate (label (make-label 'terminate))))
     (append
      (eth-push 1 0)           ; [ +len ]
      (cg-mexpr exp)           ; [ +list ]
      ; STACK                    [ list ; len ]
-     `(,(label loop))
+     `(,loop)
      (asm 'DUP1)              ; [ +list ]
      (cg-pair? exp)           ; [ -list; + pair? ]
      (cg-op-false? stack)     ; [ -pair?; + ! pair? ]
@@ -568,9 +570,9 @@ These optimizations are currently unimplemented:
      (cg-add stack (const 1)) ; [ -len; +len' ]
      (asm 'SWAP1)             ; [ list <-> len' ]
      (cg-cdr stack)           ; [ -list; +list' ]
-     (cg-goto (const 'loop))  ; [ list'; len' ]
+     (cg-goto loop)  ; [ list'; len' ]
      ; STACK                    [ list; len ]
-     `(,(label terminate))
+     `(,terminate)
      (cg-pop 1))))            ; [ len ]
 
 ;;; Vectors
@@ -595,13 +597,13 @@ These optimizations are currently unimplemented:
 |#
 
 (define (cg-vector->stack vec)
-  (let ((loop (make-label 'loop))
-        (term (make-label 'term)))
+  (let ((loop (label (make-label 'loop)))
+        (term (label (make-label 'term))))
     (append
      (cg-mexpr vec)               ; [ vec ]
      (asm 'DUP1)                  ; [ vec; vec ]
      (cg-vector-len stack)        ; [ i; vec ]
-     `(,(label loop))
+     `(,loop)
      (asm 'DUP1)                  ; [ i; i; vec ]
      (cg-eq? stack (const 0))     ; [ eq?; i; vec ]
      (cg-branch term stack)       ; [ i; vec ]
@@ -612,7 +614,7 @@ These optimizations are currently unimplemented:
      (asm 'SWAP2)                 ; [ vec; i; x ]
      (asm 'SWAP1)                 ; [ i; vec; x ]
      (cg-goto loop)               ; [ i; vec; x ]
-     `(,(label term))
+     `(,term)
      (cg-pop 2))))                ; [ xs ]
 
 (define (cg-vector-len vec)
@@ -846,3 +848,11 @@ SWAP1 -> [ x1; x2; x3; c ]
   (cond ((reg? exp) (or (eq? (reg-name exp) 'env)
                         (eq? (reg-name exp) 'continue)))
         (else true)))
+
+(: integer-bytes (-> Integer Fixnum))
+(define (integer-bytes n)
+  (cond ((< n 256)        1)
+        ((< n 65536)      2)
+        ((< n 16777216)   3)
+        ((< n 4294967296) 4)
+        (else            32)))

@@ -266,7 +266,7 @@
 (define (compile-proc-appl target linkage)
   (cond ((and (eq? target 'val) (not (eq? linkage 'return)))
          (inst-seq '(proc) all-regs
-                   (list (assign 'continue (label 'linkage))
+                   (list (assign 'continue (label linkage))
                          (assign 'val (op 'compiled-procedure-entry
                                           `(,(reg 'proc))))
                          (goto (reg 'val)))))
@@ -280,7 +280,7 @@
                            (goto (reg 'val))
                            proc-return
                            (assign target (reg 'val))
-                           (goto (label 'linkage))))))
+                           (goto (label linkage))))))
         ((and (eq? target 'val) (eq? linkage 'return))
          (inst-seq '(proc continue) all-regs
                    (list (assign 'val (op 'compiled-procedure-entry
