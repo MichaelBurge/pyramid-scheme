@@ -3,6 +3,7 @@
 (require "types.rkt")
 (require "ast.rkt")
 (require "interpreter.rkt")
+(require racket/set)
 (provide (all-defined-out))
 
 ; Global constants
@@ -53,7 +54,7 @@
          (empty-instruction-sequence))
         (else
          (inst-seq '() '()
-                   (list (goto (label linkage)))))))
+                   (list (goto linkage))))))
 
 (: end-with-linkage (-> Linkage inst-seq inst-seq))
 (define (end-with-linkage linkage instruction-sequence)
@@ -119,9 +120,9 @@
 
 (: make-label (-> Symbol LabelName))
 (define (make-label name)
-  (string->symbol
-   (string-append (symbol->string name)
-                  (number->string (new-label-number)))))
+  (label (string->symbol
+          (string-append (symbol->string name)
+                         (number->string (new-label-number))))))
 
 (: compile-if (-> PyrIf Target Linkage inst-seq))
 (define (compile-if exp target linkage)
@@ -141,7 +142,7 @@
                     (append-instruction-sequences
                      (inst-seq '(val) '()
                                (list (test (op 'false? `(,(reg 'val))))
-                                     (branch (label 'f-branch))))
+                                     (branch f-branch)))
                      (parallel-instruction-sequences
                       (append-instruction-sequences t-branch c-code)
                       (append-instruction-sequences f-branch a-code))
@@ -167,7 +168,7 @@
                           (inst-seq '(env) (list target)
                                     (list (assign target
                                                   (op 'make-compiled-procedure
-                                                      `(,(label proc-entry)
+                                                      `(,proc-entry
                                                         ,(reg 'env)))))))
         (compile-lambda-body exp proc-entry))
        after-lambda))))
@@ -245,7 +246,7 @@
       (append-instruction-sequences
        (inst-seq '(proc) '()
                  (list (test (op 'primitive-procedure? `(,(reg 'proc))))
-                       (branch (label primitive-branch))))
+                       (branch primitive-branch)))
        (parallel-instruction-sequences
         (append-instruction-sequences
          compiled-branch
@@ -266,7 +267,7 @@
 (define (compile-proc-appl target linkage)
   (cond ((and (eq? target 'val) (not (eq? linkage 'return)))
          (inst-seq '(proc) all-regs
-                   (list (assign 'continue (label linkage))
+                   (list (assign 'continue linkage)
                          (assign 'val (op 'compiled-procedure-entry
                                           `(,(reg 'proc))))
                          (goto (reg 'val)))))
@@ -274,13 +275,13 @@
               (not (eq? linkage 'return)))
          (let ((proc-return (make-label 'proc-return)))
            (inst-seq '(proc) all-regs
-                     (list (assign 'continue (label 'proc-return))
+                     (list (assign 'continue proc-return)
                            (assign 'val (op 'compiled-procedure-entry
                                             `(,(reg 'proc))))
                            (goto (reg 'val))
                            proc-return
                            (assign target (reg 'val))
-                           (goto (label linkage))))))
+                           (goto linkage)))))
         ((and (eq? target 'val) (eq? linkage 'return))
          (inst-seq '(proc continue) all-regs
                    (list (assign 'val (op 'compiled-procedure-entry
@@ -299,15 +300,15 @@
 
 (: registers-needed (-> iseq-or-label RegisterNames))
 (define (registers-needed s)
-  (if (symbol? s) '() (inst-seq-needs s)))
+  (if (label? s) '() (inst-seq-needs s)))
 
 (: registers-modified (-> iseq-or-label RegisterNames))
 (define (registers-modified s)
-  (if (symbol? s) '() (inst-seq-modifies s)))
+  (if (label? s) '() (inst-seq-modifies s)))
 
 (: statements (-> iseq-or-label Instructions))
 (define (statements s)
-  (if (symbol? s) (list s) (inst-seq-statements s)))
+  (if (label? s) (list s) (inst-seq-statements s)))
 
 (: needs-register? (-> iseq-or-label RegisterName Boolean))
 (define (needs-register? seq reg)

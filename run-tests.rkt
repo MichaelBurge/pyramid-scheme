@@ -35,13 +35,13 @@
 ; (display-all (inst-seq-statements instructions))
 
 (define eth-instructions (codegen (inst-seq-statements instructions)))
+(set! eth-instructions (codegen (inst-seq-statements instructions)))
 
 ; (struct->vector (op 'derp (const 5)))
 
+; (display-all eth-instructions)
+
 (serialize-print eth-instructions)
-
-;(display-all eth-instructions)
-
 
 ; (eval-semicompiled-pyramid prog-factorial)
 ;; (eval-pyramid prog-factorial the-global-environment)

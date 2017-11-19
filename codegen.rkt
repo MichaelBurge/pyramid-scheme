@@ -4,6 +4,7 @@
 (require "evaluator.rkt")
 (require "types.rkt")
 (require "interpreter.rkt")
+(require "utils.rkt")
 (require racket/list)
 
 (provide (all-defined-out))
@@ -98,7 +99,7 @@ These optimizations are currently unimplemented:
 (define (codegen-one i)
   (begin
   (cond ((label?   i) (cg-label   i))
-        ((symbol?  i) (cg-label `(,(label i))))
+        ((symbol?  i) (error "Unexpected symbol - codegen-one"))
         ((assign?  i) (cg-assign  i))
         ((test?    i) (cg-test    i))
         ((branch?  i) (cg-branch  (branch-dest i) stack))
@@ -109,7 +110,7 @@ These optimizations are currently unimplemented:
         (else
          (error "Unknown instruction type -- codegen-one:" i)))))
 (: cg-label   (Generator InstLabel))
-(define (cg-label i) i)
+(define (cg-label i) (list i))
 
 (: cg-assign  (Generator InstAssign))
 (define (cg-assign i)
@@ -186,11 +187,11 @@ These optimizations are currently unimplemented:
 ;;             (cdr frame))))
 ;;   (env-loop env))
 (define (cg-op-lookup-variable-value name env)
-  (let ((env-loop    (label (make-label 'env-loop)))
-        (scan        (label (make-label 'scan)))
-        (scan-else-1 (label (make-label 'scan)))
-        (scan-else-2 (label (make-label 'scan)))
-        (term        (label (make-label 'term)))
+  (let ((env-loop    (make-label 'env-loop))
+        (scan        (make-label 'scan))
+        (scan-else-1 (make-label 'scan))
+        (scan-else-2 (make-label 'scan))
+        (term        (make-label 'term))
         )
     (append
      (cg-intros (list name env))
@@ -247,10 +248,10 @@ These optimizations are currently unimplemented:
 ;;     (scan (car frame)
 ;;           (cdr frame))))
 (define (cg-op-define-variable! name value env)
-  (let ((scan        (label (make-label 'scan)))
-        (scan-else-1 (label (make-label 'scan)))
-        (scan-else-2 (label (make-label 'scan)))
-        (term        (label (make-label 'term)))
+  (let ((scan        (make-label 'scan))
+        (scan-else-1 (make-label 'scan))
+        (scan-else-2 (make-label 'scan))
+        (term        (make-label 'term))
         )
     (append
      (cg-intros (list name value env))
@@ -362,7 +363,7 @@ These optimizations are currently unimplemented:
        (error "Unknown primitive op - cg-mexpr-op" name args)))))
 
 (: cg-mexpr-label (Generator label))
-(define (cg-mexpr-label exp) (list exp))
+(define (cg-mexpr-label exp) (list (eth-push 'shrink exp)))
 
 (: cg-mexpr-stack (Generator Nothing))
 (define (cg-mexpr-stack) '())
@@ -504,8 +505,8 @@ These optimizations are currently unimplemented:
 ;            (loop (+ i 1) (cdr list)))))
 ;      (loop 0 list)))
 (define (cg-list->vector exp)
-  (let ((loop (label (make-label 'loop)))
-        (term (label (make-label 'term))))
+  (let ((loop (make-label 'loop))
+        (term (make-label 'term)))
     (append
      (cg-mexpr exp)                      ; [ +list ]
      ; 1. Calculate the length of the list
@@ -555,8 +556,8 @@ These optimizations are currently unimplemented:
   (loop 0))
 |#
 (define (cg-list-length exp)
-  (let ((loop      (label (make-label 'loop)))
-        (terminate (label (make-label 'terminate))))
+  (let ((loop      (make-label 'loop))
+        (terminate (make-label 'terminate)))
     (append
      (eth-push 1 0)           ; [ +len ]
      (cg-mexpr exp)           ; [ +list ]
@@ -597,8 +598,8 @@ These optimizations are currently unimplemented:
 |#
 
 (define (cg-vector->stack vec)
-  (let ((loop (label (make-label 'loop)))
-        (term (label (make-label 'term))))
+  (let ((loop (make-label 'loop))
+        (term (make-label 'term)))
     (append
      (cg-mexpr vec)               ; [ vec ]
      (asm 'DUP1)                  ; [ vec; vec ]
@@ -848,11 +849,3 @@ SWAP1 -> [ x1; x2; x3; c ]
   (cond ((reg? exp) (or (eq? (reg-name exp) 'env)
                         (eq? (reg-name exp) 'continue)))
         (else true)))
-
-(: integer-bytes (-> Integer Fixnum))
-(define (integer-bytes n)
-  (cond ((< n 256)        1)
-        ((< n 65536)      2)
-        ((< n 16777216)   3)
-        ((< n 4294967296) 4)
-        (else            32)))

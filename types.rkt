@@ -40,7 +40,7 @@
 
 (define-type Linkage (U 'next 'return LabelName))
 (define-type Target RegisterName)
-(define-type iseq-or-label (U LabelName inst-seq))
+(define-type iseq-or-label (U label inst-seq))
 (struct inst-seq ([ needs : RegisterNames ] [ modifies : RegisterNames ] [ statements : Instructions ]))
 
 (define-type RegisterNames (Listof RegisterName))
@@ -110,7 +110,7 @@
 ; Code generator
 (define-type Address Fixnum)
 (struct eth-asm     ([ name : Symbol ]) #:transparent)
-(struct eth-push    ([ size : Fixnum ] [ value : (U Integer Symbol) ]) #:transparent)
+(struct eth-push    ([ size : (U 'shrink Fixnum) ] [ value : (U Integer Symbol) ]) #:transparent)
 (struct eth-unknown ([ opcode : Fixnum ]) #:transparent)
 (define-type EthInstruction     (U eth-asm eth-push eth-unknown label))
 (define-type EthInstructions    (Listof   EthInstruction))

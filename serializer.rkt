@@ -1,15 +1,33 @@
 #lang errortrace typed/racket/no-check
 
 (require "types.rkt")
+(require "utils.rkt")
 (require file/sha1)
 (require binaryio/integer)
 (require errortrace)
 
 (provide (all-defined-out))
 
+(struct relocation ([ pos : Fixnum ] [ symbol : Symbol ]) #:transparent)
+
+(define-type SymbolTable (Dict Fixnum))
+(define-type RelocationTable (Set relocation))
+
+#| Concepts
+
+-- Relocations --
+The single pass of the serializer may not have read all labels when it encounters one, so it doesn't know the
+numerical value to insert. It generates a relocation, but needs to leave a specific number of bytes.
+|#
+
+; Constants
+
+(define assumed-label-size 2) ; TODO: Number of bytes to leave behind for label relocations. This makes it difficult to write programs larger than 65536 bytes.
+
 ; Global variables
-(define byte-offset 0)
-(define label-map (make-hash '()))
+(define *byte-offset* 0)
+(define *label-map* (make-hash '()))
+(define *relocation-table* (set))
 
 (: opcode-table (Listof opcode))
 (define opcode-table
@@ -170,7 +188,13 @@
 
 (: serialize-print (-> EthInstructions Void))
 (define (serialize-print is)
-  (write (bytes->hex-string (serialize is))))
+  (let ((bs (serialize is)))
+    (write (bytes->hex-string bs))
+    (newline)
+    (print-relocations *label-map* *relocation-table*)
+    (apply-relocations! bs *relocation-table* *label-map*)
+    (write (bytes->hex-string bs))
+    (newline)))
 
 (: serialize (-> EthInstructions bytes))
 (define (serialize is)
@@ -181,13 +205,17 @@
 
 (: serialize-one (-> EthInstruction bytes))
 (define (serialize-one i)
-  (set! byte-offset (+ 1 byte-offset))
-  (cond ((eth-asm?     i) (serialize-opcode (lookup-opcode (eth-asm-name i))))
+  (set! *byte-offset* (+ 1 *byte-offset*))
+  (cond ((eth-asm?     i) (serialize-asm i))
         ((eth-push?    i) (serialize-push i))
         ((eth-unknown? i) (bytes i))
         ((label?       i) (serialize-label i))
         (else
          (error "Unknown EthInstruction - serialize-one:" i))))
+
+(: serialize-asm (-> eth-asm bytes))
+(define (serialize-asm i)
+  (serialize-opcode (lookup-opcode (eth-asm-name i))))
 
 (: serialize-opcode (-> opcode bytes))
 (define (serialize-opcode op)
@@ -195,18 +223,17 @@
 
 (: serialize-push (-> eth-push bytes))
 (define (serialize-push push)
-  (let ((op (lookup-push-opcode push)))
+  (let ((op (lookup-push-opcode push))
+        (val (push-true-value push))
+        (size (push-true-size push)))
+    (set! *byte-offset* (+ size *byte-offset*))
     (bytes-append (bytes (opcode-byte op))
-                  (integer->bytes (push-true-value push)
-                                  (eth-push-size push)
-                                  #f)))) ; signed?
+                  (integer->bytes val size #f))))
 
 (: serialize-label (-> label bytes))
 (define (serialize-label lbl)
   (remember-label lbl)
-  (bytes))
-
-(define newline (bytes 10))
+  (serialize-asm (eth-asm 'JUMPDEST)))
 
 (: lookup-opcode (-> Symbol opcode))
 (define (lookup-opcode sym)
@@ -214,11 +241,11 @@
 
 (: lookup-push-opcode (-> eth-push opcode))
 (define (lookup-push-opcode push)
-  (dict-ref opcodes-by-byte (+ #x5f (eth-push-size push))))
+  (dict-ref opcodes-by-byte (+ #x5f (push-true-size push))))
 
 (: remember-label (-> label Void))
 (define (remember-label lbl)
-  (dict-set! label-map (label-name lbl) byte-offset))
+  (dict-set! *label-map* lbl *byte-offset*))
 
 (: push-true-value (-> eth-push integer))
 #| push-true-value:
@@ -229,8 +256,47 @@ Either a label or integer can be pushed onto the stack.
 |#
 (define (push-true-value push)
   (let ((val (eth-push-value push)))
-    (if (symbol? val)
-        (dict-ref label-map val 0)
-        val)))
+    (cond ((label? val) (begin
+                          (generate-relocation (relocation *byte-offset* val))
+                          (dict-ref *label-map* (label-name val) 0)))
+          ; Symbols are unexpected: Labels are wrapped in a struct; quotes are expanded to integers in the code generator.
+          ((symbol? val) (error "Unexpected symbol - push-true-val" val))
+          ((integer? val) val)
+          (else
+           (error "Unknown value" val)))))
+
+(: push-true-size (-> eth-push Fixnum))
+(define (push-true-size push)
+  (if (eq? (eth-push-size push) 'shrink)
+      (if (eq? (push-true-value push) 0)
+          2
+          (integer-bytes (push-true-value push)))
+      (eth-push-size push)))
+
+(define (print-relocations symbols relocs)
+  (let ((show (lambda (k v) (display `(,k ,v)) (newline))))
+    (display "Symbol Table:") (newline)
+    (dict-for-each symbols show)
+    (newline) (display "Relocations:") (newline)
+    (for/set ([ reloc relocs ])
+      (display reloc)
+      (newline)
+      )))
+    
+
+(: apply-relocations! (-> bytes RelocationTable LabelMap bytes))
+(define (apply-relocations! bs relocs symbols)
+  (define (apply-relocation! reloc)
+    (let* ((val (dict-ref symbols (relocation-symbol reloc)))
+           (src (integer->bytes val assumed-label-size #f)))
+      (assert (<= (bytes-length src) assumed-label-size))
+      (bytes-copy! bs (relocation-pos reloc) src)))
+  (for/set ([ reloc relocs ])
+    (apply-relocation! reloc)))
+
+(: generate-relocation (-> relocation Void))
+(define (generate-relocation reloc)
+  (set! *relocation-table* (set-add *relocation-table* reloc)))
+
 ;; (remember-label (label 'derp))
 ;; (push-true-value (eth-push 5 'derp))
