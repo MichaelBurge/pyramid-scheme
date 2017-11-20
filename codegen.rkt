@@ -21,9 +21,11 @@ Addresses have 8-bit granularity, so we multiply by WORD so they don't overlap.
 Arguments to procedures are passed on the stack. The first argument is the first stack entry.
 
 -- Runtime Representation --
-An object is represented by its memory address pointer.
-Objects can be queried for types at runtime, so they must be tagged with a type.
-An object's pointer points to a tag. Depending on the tag, additional data follows:
+General Scheme objects must be "boxed" into a pointer.
+Unboxed numbers could also be manipulated, but cannot be queried for their type and have no memory address.
+In particular, unboxed numbers cannot be returned as the final program result, because RETURN acts on memory.
+
+Boxed values are pointers to a tag. Depending on the tag, additional data follows:
  * 0: Fixnum:              1 word      - The number's value
  * 1: Symbol:              1 word      - 32 8-bit ASCII characters
  * 2: Compiled Procedure:  2 words     - A code pointer, and closure environment pointer
@@ -79,10 +81,10 @@ These optimizations are currently unimplemented:
 (define TAG-VECTOR              5)
 (define TAG-NIL                 6)
 
-(define MEM-ENV           #x0)
-(define MEM-CONTINUE      #x20)
-(define MEM-ALLOCATOR     #x40)
-(define MEM-DYNAMIC-START #x60) ; This should be the highest hardcoded memory address.
+(define MEM-ENV           #x20)
+(define MEM-CONTINUE      #x40)
+(define MEM-ALLOCATOR     #x60)
+(define MEM-DYNAMIC-START #x80) ; This should be the highest hardcoded memory address.
 
 ; Global variables
 (define WORD       #x20) ; 256-bit words / 8 bit granularity addresses = 32 8-bit words, or 0x20.
@@ -90,10 +92,15 @@ These optimizations are currently unimplemented:
 ; Top-level code generator
 (: codegen (Generator Instructions))
 (define (codegen is)
-  (if (null? is)
-      '()
-      (append (codegen-one (car is))
-              (codegen     (cdr is)))))
+  (define (loop is)
+    (if (null? is)
+        '()
+        (append (codegen-one (car is))
+                (loop        (cdr is)))))
+  (append
+   (cg-initialize-program)
+   (loop is)
+   (cg-return stack)))
 
 (: codegen-one (Generator Instruction))
 (define (codegen-one i)
@@ -136,6 +143,7 @@ These optimizations are currently unimplemented:
 
 ;;; Primitive operations emitted by the abstract compiler
 
+(: cg-op-box                       (Generator  MExpr))       ; Creates a boxed integer or symbol.
 (: cg-op-extend-environment        (Generator3 MExpr MExpr MExpr)) ; Adds a frame to the environment.
 (: cg-op-make-compiled-procedure   (Generator2 MExpr MExpr)) ; A lambda creates a runtime value from a code pointer & closure.
 (: cg-op-compiled-procedure-entry  (Generator  MExpr))       ; The code pointer from a make-compiled-procedure object.
@@ -146,6 +154,14 @@ These optimizations are currently unimplemented:
 (: cg-op-define-variable!          (Generator3 MExpr MExpr MExpr)) ; Creates an object with a given name and value in the given environment
 (: cg-op-false?                    (Generator  MExpr))       ; Evaluates to 1 if the expression is 0
 (: cg-op-list                      (Generator  MExpr))       ; Creates a 1-element vector with the given object.
+
+(define (cg-op-box exp)
+  (if (const? exp)
+      (cond ((integer? (const-value exp)) (cg-make-fixnum exp))
+            ((symbol?  (const-value exp)) (cg-make-symbol exp))
+            (else
+             (error "Unsupported boxed constant -- cg-op-box:" exp)))
+      (error "Can only box constants -- cg-op-box: " exp)))
 
 (define (cg-op-extend-environment vars vals env)
   (append (cg-intros (list vars vals env))
@@ -318,17 +334,16 @@ These optimizations are currently unimplemented:
 
 (: cg-mexpr-reg   (Generator reg))
 (define (cg-mexpr-reg dest)
-  (cond ((eq? (reg-name dest) 'env)      (cg-read-address (const #x0)))
-        ((eq? (reg-name dest) 'continue) (cg-read-address (const #x20)))
+  (cond ((eq? (reg-name dest) 'env)      (cg-read-address (const MEM-ENV)))
+        ((eq? (reg-name dest) 'continue) (cg-read-address (const MEM-CONTINUE)))
         (else                            (cg-mexpr-stack))))
 
 (: cg-write-reg (Generator2 reg MExpr))
 (define (cg-write-reg dest exp)
-  (cond ((eq? (reg-name dest) 'env)      (cg-write-address (const #x0)  exp))
-        ((eq? (reg-name dest) 'continue) (cg-write-address (const #x20) exp))
-        (else                            (cg-write-stack))))
+  (cond ((eq? (reg-name dest) 'env)      (cg-write-address (const MEM-ENV)  exp))
+        ((eq? (reg-name dest) 'continue) (cg-write-address (const MEM-CONTINUE) exp))
+        (else                            (cg-write-stack exp))))
 
-; TODO: Dynamically adjust push size based on value
 (: cg-mexpr-const (Generator const))
 (define (cg-mexpr-const exp)
   (let ((val (const-value exp)))
@@ -351,6 +366,7 @@ These optimizations are currently unimplemented:
       ((eq? name 'make-compiled-procedure)   (cg-op-make-compiled-procedure   (car args) (cadr args)))
       ((eq? name 'define-variable!)          (cg-op-define-variable!          (car args) (cadr args) (caddr args)))
       ; Expressions
+      ((eq? name 'box)                       (cg-op-box                       (car args)))
       ((eq? name 'extend-environment)        (cg-op-extend-environment        (car args) (cadr args) (caddr args)))
       ((eq? name 'compiled-procedure-entry)  (cg-op-compiled-procedure-entry  (car args)))
       ((eq? name 'compiled-procedure-env)    (cg-op-compiled-procedure-env    (car args)))
@@ -368,8 +384,8 @@ These optimizations are currently unimplemented:
 (: cg-mexpr-stack (Generator Nothing))
 (define (cg-mexpr-stack) '())
 
-(: cg-write-stack (Generator Nothing))
-(define (cg-write-stack) '())
+(: cg-write-stack (Generator MExpr))
+(define (cg-write-stack exp) (cg-mexpr exp))
 
 (: cg-goto                 (Generator  MExpr))
 (: cg-branch               (Generator2 MExpr MExpr))
@@ -431,6 +447,8 @@ These optimizations are currently unimplemented:
 (define (cg-read-address-offset addr os)
   (append (cg-intros (list addr os))
           (cg-add stack stack)
+          (cg-swap 2)
+          (cg-mul (const WORD) stack)
           (cg-read-address stack)))
 
 (define (cg-write-address dest val)
@@ -439,6 +457,8 @@ These optimizations are currently unimplemented:
 
 (define (cg-write-address-offset dest os val)
   (append (cg-intros (list dest os val))
+          (cg-swap 2)
+          (cg-mul (const WORD) stack)
           (cg-add stack stack)
           (cg-write-address stack stack)))
 
@@ -559,7 +579,7 @@ These optimizations are currently unimplemented:
   (let ((loop      (make-label 'loop))
         (terminate (make-label 'terminate)))
     (append
-     (eth-push 1 0)           ; [ +len ]
+     (list (eth-push 1 0))    ; [ +len ]
      (cg-mexpr exp)           ; [ +list ]
      ; STACK                    [ list ; len ]
      `(,loop)
@@ -625,7 +645,7 @@ These optimizations are currently unimplemented:
   (append
    (cg-intros (list vec os val))
    (asm 'SWAP1)             ; [ os; vec; val ]
-   (cg-add stack (const 3)) ; [ os'; vec; val ]
+   (cg-add (const (* 3 WORD)) stack) ; [ os'; vec; val ]
    (asm 'SWAP1)             ; [ vec; os'; val ]
    (cg-write-address stack stack stack))) ; [ ]
    
@@ -633,7 +653,7 @@ These optimizations are currently unimplemented:
   (append
    (cg-intros (list vec os))
    (asm 'SWAP1)                  ; [ os; vec ]
-   (cg-add stack (const 3))      ; [ os'; vec ]
+   (cg-add (const (* 3 WORD)) stack)      ; [ os'; vec ]
    (asm 'SWAP1)                  ; [ vec; os' ]
    (cg-read-address stack stack))) ; [ x ]
 
@@ -677,7 +697,8 @@ These optimizations are currently unimplemented:
 (: cg-add-binding-to-frame     (Generator3 MExpr MExpr Mexpr))
 (: cg-allocate                 (Generator MExpr))              ; Returns a pointer to a newly-allocated block of 256-bit words.
 (: cg-allocate-initialize      (Generator2 MExpr MExprs))      ; Allocates memory and initializes each word from the argument list.
-
+(: cg-initialize-program       (Generator Nothing))
+(: cg-return                   (Generator MExpr))              ; Ends the program with a boxed value as the output.
 (define (cg-tag exp) (append (cg-read-address exp)))
 
 
@@ -722,9 +743,10 @@ These optimizations are currently unimplemented:
 (define (cg-allocate size)
   (append
    (cg-mexpr size)                                ; [ size ]
-   (cg-read-address (const MEM-ALLOCATOR))        ; [ ptr; size ]
-   (asm 'DUP1)                                    ; [ ptr; ptr; size ]
-   (asm 'SWAP2)                                   ; [ size; ptr; ptr ]
+   (cg-mul (const WORD) stack)                    ; [ size']
+   (cg-read-address (const MEM-ALLOCATOR))        ; [ ptr; size' ]
+   (asm 'DUP1)                                    ; [ ptr; ptr; size' ]
+   (asm 'SWAP2)                                   ; [ size'; ptr; ptr ]
    (cg-add stack stack)                           ; [ ptr'; ptr ]
    (cg-write-address (const MEM-ALLOCATOR) stack) ; [ ptr ]
    ))
@@ -734,27 +756,56 @@ These optimizations are currently unimplemented:
     (if (null? exps)
         '()
         (append
-         ; STACK                          [ ptr; exp* ]
-         (cg-intros (list stack (car exps)))
-         (asm 'SWAP1)                   ; [ exp; ptr; exp* ]
-         (asm 'DUP2)                    ; [ ptr; exp; ptr; exp* ]
-         (cg-write-address stack stack) ; [ ptr; exp* ]
-         (cg-add stack (const 1))       ; [ ptr'; exp* ]
+         ; STACK                          [ ptr; optr; exp* ]
+         (asm 'SWAP2)                   ; [ exp; optr; ptr; exp* ]
+         (asm 'DUP3)                    ; [ ptr; exp; optr; ptr; exp* ]
+         (cg-write-address stack stack) ; [ optr; ptr; exp* ]
+         (cg-reverse 2)                 ; [ ptr; optr; exp* ]
+         (cg-add (const WORD) stack)    ; [ ptr'; optr; exp* ]
          (loop (cdr exps)))))
-  (append (cg-allocate size)
-          (loop inits)))
+  (append
+   (cg-intros (cons size inits))        ; [ size; exp* ]
+   (cg-allocate stack)                  ; [ optr; exp* ]
+   (asm 'DUP1)                          ; [ optr; optr; exp* ]
+   (loop inits)                         ; [ ptr; optr ]
+   (cg-pop 1)                           ; [ optr ]
+   ))
+
             
+(define (cg-initialize-program)
+  (append
+   ; Set the dynamic memory allocator pointer
+   (list (eth-push 1 MEM-DYNAMIC-START))
+   (list (eth-push 1 MEM-ALLOCATOR))
+   (cg-write-address stack stack)
+   ; Initialize an empty environment
+   (cg-make-nil)
+   (list (eth-push 1 MEM-ENV))
+   (cg-write-address stack stack)))
+
+; TODO: Make this work for more than just integers.
+(define (cg-return exp)
+  (append
+   (cg-add (const WORD) exp)
+   `(,(eth-push 1 WORD))
+   (cg-reverse 2)   
+   (asm 'RETURN)))
 
 
 ;;; Arithmetic
 
 ; The arity of nullop, unop, binop refer to the number of values popped from the stack.
 ; So, cg-eq has a net stack impact of 2 pops
-   
+
+(: cg-unbox-integer (Generator MExpr))
 (: cg-eq? (Generator2 MExpr MExpr))
 (: cg-mul (Generator2 MExpr MExpr))
 (: cg-add (Generator2 MExpr MExpr))
 (: cg-sub (Generator2 MExpr MExpr))
+
+(define (cg-unbox-integer exp)
+  (cg-read-address-offset exp (const 1)))
+
 (define (cg-eq? a b)
   (append (cg-intros (list a b))
           (asm 'EQ)))
@@ -799,12 +850,16 @@ Rename [4,1,3] to [1,2,3] in the desired solution, and iterate:
 |#
 
 #|
+
 There are two calling conventions: "Normal" Scheme dynamic memory, and the stack-based primitive operations.
 The stack-based ones allow constants and other primitive operations to be passed as arguments.
 Arguments passed on the stack are no-ops, while constants and primitives need to have code emitted.
 This function emits the code to get all arguments onto the stack first-to-last.
 
 PSEUDOCODE:
+* Traverse the arguments first-to-last, with i = 0 .. n
+* If an element writes to the stack, insert it into position i.
+* If it was already on the stack, do nothing.
 (intros '()) = '()
 (intros (snoc xs x)) = [ if (stack-write? x) (cg-insert x (length xs)) '(), intros xs ]
 
@@ -818,16 +873,16 @@ stk is a no-op, so immediately recurse: [ stk, stk, stk, 5 ]
 Remaining 3 stk arguments ignored. 
 |#
 (define (cg-intros exprs)
-  (define (loop exprs)
+  (define (loop exprs n)
     (if (null? exprs)
         '()
         (let ((x (car exprs))
               (xs (cdr exprs)))
           (append (if (stack-write? x)
-                      (cg-insert x (length xs))
+                      (cg-insert x n)
                       '())
-                  (loop xs)))))
-  (loop (reverse exprs)))
+                  (loop xs (+ n 1))))))
+  (loop exprs 0))
 
 #|
 1. Evaluate the expression so it's on the front: [ c; x1; x2; x3; ]
@@ -838,12 +893,14 @@ SWAP1 -> [ x1; x2; x3; c ]
 |#
 (define (cg-insert expr pos)
   (define (loop n)
-    (if (eq? n 0)
-        '()
-        (append (cg-swap n)
-                (loop (- n 1)))))
+    (cond ((eq? n 0) '())
+          ;((eq? n 1) '())
+          (else (append (cg-swap n)
+                        (loop (- n 1))))))
   (append (cg-mexpr expr)
           (loop pos)))
+
+; (: cg-move-front (Generator Fixnum))
 
 (define (stack-write? exp)
   (cond ((reg? exp) (or (eq? (reg-name exp) 'env)

@@ -66,7 +66,7 @@
 (define (compile-self-evaluating exp target linkage)
   (end-with-linkage linkage
                     (inst-seq '() (list target)
-                              (list (assign target (const exp))))))
+                              (list (assign target (op 'box `(,(const exp))))))))
 
 (: compile-quoted (-> PyrQuote Target Linkage inst-seq))
 (define (compile-quoted exp target linkage)

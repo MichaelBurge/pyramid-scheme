@@ -193,9 +193,10 @@ numerical value to insert. It generates a relocation, but needs to leave a speci
     (newline)
     (print-relocations *label-map* *relocation-table*)
     (apply-relocations! bs *relocation-table* *label-map*)
-    (write (bytes->hex-string bs))
+    (write (bytes->hex-string (wrap-loader bs)))
     (newline)))
 
+; Consider using wrap-loader to prepend an initializer program.
 (: serialize (-> EthInstructions bytes))
 (define (serialize is)
   (if (null? is)
@@ -245,7 +246,7 @@ numerical value to insert. It generates a relocation, but needs to leave a speci
 
 (: remember-label (-> label Void))
 (define (remember-label lbl)
-  (dict-set! *label-map* lbl *byte-offset*))
+  (dict-set! *label-map* lbl (- *byte-offset* 1)))
 
 (: push-true-value (-> eth-push integer))
 #| push-true-value:
@@ -298,5 +299,22 @@ Either a label or integer can be pushed onto the stack.
 (define (generate-relocation reloc)
   (set! *relocation-table* (set-add *relocation-table* reloc)))
 
+; Ethereum programs must have two "modules": A program to run, and an initializer that returns it.
+; This prepends a minimal initializer that returns a given program.
+(: wrap-loader (-> bytes bytes))
+(define (wrap-loader bs)
+  (let* ((len (bytes-length bs))
+         (afterLoader (+ 1 (integer-bytes len) 2 2 1 1 (integer-bytes len) 2 1))
+         (loader (list (eth-push 'shrink len)         ; 1 + (integer-bytes len)
+                       (eth-push 1       afterLoader) ; 2 bytes
+                       (eth-push 1       0)           ; 2 bytes
+                       (eth-asm 'CODECOPY)            ; 1
+                       (eth-push 'shrink len)         ; 1 + (integer-bytes len)
+                       (eth-push 1       0)           ; 2
+                       (eth-asm 'RETURN))))           ; 1
+    (bytes-append (serialize loader)
+                  bs)))
+    
+    
 ;; (remember-label (label 'derp))
 ;; (push-true-value (eth-push 5 'derp))

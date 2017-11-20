@@ -12,38 +12,52 @@
 (require "codegen.rkt")
 (require "serializer.rkt")
 
-(: eval-semicompiled-pyramid (-> Pyramid Value))
-(define (eval-semicompiled-pyramid prog)
-  (let* ((text (inst-seq-statements (compile-pyramid prog 'val 'next)))
-         )
-         ;; (machine (make-pyramid-machine text)))
-    text))
-    ;; (machine 'start)
-    ;; (machine 'get-register 'val)))
+; TODO: Turn these into unit tests.
+; TEST 1: (cg-intros (list (const 1234) (const 4321)))
+; TEST 2:
+(cg-allocate-initialize (const 3) (list (const 10) (const 20) (const 30)))
 
-(: prog-factorial Pyramid)
-(define prog-factorial 
-  '(define (factorial n)
-     (if (= n 1)
-         1
-         (* (factorial (- n 1)) n))))
+(: full-debug-output (-> Pyramid Void))
+(define (full-debug-output prog)
+  (let* ((the-global-environment (setup-environment))
+         (instructions           (compile-pyramid prog 'val 'next))
+         (eth-instructions       (codegen (inst-seq-statements instructions))))
+    (begin
+      (newline) (display "Abstract Instructions:") (newline)
+      (display-all (inst-seq-statements instructions))
+  
+      (newline) (display "EVM Instructions:") (newline)
 
-(define the-global-environment (setup-environment))
+      (display-all eth-instructions)
+      (serialize-print eth-instructions))))
 
-(define instructions (compile-pyramid prog-factorial 'val 'next))
+(: prog-const Pyramid)
+(define prog-const 1234)
 
-; (display-all (inst-seq-statements instructions))
+(full-debug-output prog-const)
 
-(define eth-instructions (codegen (inst-seq-statements instructions)))
-(set! eth-instructions (codegen (inst-seq-statements instructions)))
+; (serialize-print (codegen-one (assign 'val (const 9999))))
 
-; (struct->vector (op 'derp (const 5)))
+;; (: prog-assign Pyramid)
+;; (define prog-assign
+;;   '(define x 1234))
 
-; (display-all eth-instructions)
+;; (: prog-factorial Pyramid)
+;; (define prog-factorial 
+;;   '(define (factorial n)
+;;      (if (= n 1)
+;;          1
+;;          (* (factorial (- n 1)) n))))
 
-(serialize-print eth-instructions)
+;; (define prog prog-const)
 
-; (eval-semicompiled-pyramid prog-factorial)
-;; (eval-pyramid prog-factorial the-global-environment)
-;; (eval-pyramid '(factorial 5) the-global-environment)
-; (check-expect 
+
+
+
+
+
+;; ; (struct->vector (op 'derp (const 5)))
+
+;; (display-all eth-instructions)
+
+;; (serialize-print eth-instructions)
