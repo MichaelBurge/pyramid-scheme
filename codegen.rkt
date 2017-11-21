@@ -229,42 +229,42 @@ These optimizations are currently unimplemented:
      (cg-intros (list name env))
      ; Stack: [ var, env ]                          ; len = 2
      `(,env-loop)
-     (asm 'DUP2)    ; [ +env ]                      ; len = 3
-     (cg-car stack) ; [ -env, +frame ]              ; len = 3
-     (asm 'DUP1)    ; [ +frame ]                    ; len = 4
-     (cg-car stack) ; [ -frame ; +fvars ]           ; len = 4
-     (asm 'SWAP1)   ; [ fvars <-> frame ]           ; len = 4
-     (cg-cdr stack) ; [ -frame ; +fvals ]           ; len = 4
-     ; Stack: [ fvals, fvars, var, env ]            ; len = 4
+     (asm 'DUP2)    ; [ env; name; env ]
+     (cg-car stack) ; [ frame; name; env ]
+     (asm 'DUP1)    ; [ frame; frame; name; env ]
+     (cg-car stack) ; [ fvars; frame; name; env ]
+     (asm 'SWAP1)   ; [ frame; fvars; name; env ]
+     (cg-cdr stack) ; [ fvals; fvars; name; env ]
+     ; Stack: [ fvals, fvars, var, env ]
      `(,scan)
-     (asm 'DUP1)      ; [ +fvals ]                  ; len = 5
-     (cg-null? stack) ; [ -fvals; +null? ]          ; len = 5
-     (asm 'ISZERO)    ; [ -null?; +non-null? ]      ; len = 5
-     (cg-branch scan-else-1 stack) ; [ -non-null? ] ; len = 4
-     (cg-pop 2)       ; [ -fvals; fvars ]           ; len = 2
-     (asm 'SWAP1)     ; [ env <-> var ]             ; len = 2
-     (cg-cdr stack)   ; [ -env; +(cdr env) ]        ; len = 2
-     (asm 'SWAP1)     ; [ var <-> env ]             ; len = 2
-     (cg-goto env-loop) ;[ var, (cdr env) ] ; len = 2
-     ; Stack: [ fvals, fvars, var, env ]            ; len = 4
+     (asm 'DUP1)      ; [ fvals; fvals; fvars; name; env ]
+     (cg-null? stack) ; [ null?; fvals; fvars; name; env ]
+     (asm 'ISZERO)    ; [ !null?; fvals; fvars; name; env ]
+     (cg-branch scan-else-1 stack) ; [ fvals; fvars; name; env ]
+     (cg-pop 2)       ; [ name; env ]
+     (asm 'SWAP1)     ; [ env; name ]
+     (cg-cdr stack)   ; [ env'; name ]
+     (asm 'SWAP1)     ; [ name; env' ]
+     (cg-goto env-loop) ; [ name; env' ]
+     ; Stack: [ fvals, fvars, var, env ]
      `(,scan-else-1)
-     (asm 'DUP2)       ; [ +fvars ]                 ; len = 5
-     (cg-car stack)    ; [ -fvars; +var' ]          ; len = 5
-     (asm 'DUP4)       ; [ +var ]                   ; len = 5
-     (cg-eq? stack stack) ; [ -var; -var'; +(eq? var var') ] ; len = 4
-     (asm 'ISZERO)     ; [ ! (eq? var var'), fvals, fvars, var, env ] ; len = 5
-     (cg-branch scan-else-2 stack) ; [ -! (eq? var var') ] ; len = 4
-     (cg-car stack)    ; [ -fvals; +val ]           ; len = 4
-     (asm 'SWAP4)      ; [ fvars, var, env, val ]   ; len = 4
-     (cg-pop 3)        ; [ -fvars; -var; -env ]     ; len = 1
-     (cg-goto term)    ; [ val ]               ; len = 1
+     (asm 'DUP2)       ; [ fvars; fvals; fvars; var; env ]
+     (cg-car stack)    ; [ var'; fvals; fvars; var; env ]
+     (asm 'DUP4)       ; [ var; var'; fvals; fvars; var; env ]
+     (cg-eq? stack stack) ; [ eq? ; fvals; fvars; var; env ]
+     (asm 'ISZERO)     ; [ !eq?; fvals; fvars; var; env ]
+     (cg-branch scan-else-2 stack) ; [fvals; fvars; var; env ]
+     (cg-car stack)    ; [ val; fvars; var; env ]
+     (asm 'SWAP3)      ; [ fvars; var; env; val ]
+     (cg-pop 3)        ; [ val ]
+     (cg-goto term)    ; [ val ]
      ; Stack: [ fvals, fvars, var, env ]            ; len = 4
      `(,scan-else-2)
-     (cg-cdr stack)    ; [ -fvals; +(cdr fvals)  ]     ; len = 4
-     (asm 'SWAP1)      ; [ (cdr fvals) <-> fvars ]     ; len = 4
-     (cg-cdr stack)    ; [ -fvars; +(cdr fvars)  ]     ; len = 4
-     (asm 'SWAP1)      ; [ (cdr fvals) <-> (cdr fvars) ] ; len = 4
-     (cg-goto scan) ; [ fvals, fvars, var, env ]
+     (cg-cdr stack)    ; [ fvals'; fvars; var; env ]
+     (asm 'SWAP1)      ; [ fvars; fvals'; var; env ]
+     (cg-cdr stack)    ; [ fvars'; fvals'; var; env ]
+     (asm 'SWAP1)      ; [ fvals'; fvars'; var; env ]
+     (cg-goto scan)    ; [ fvals'; fvars'; var; env ]
      `(,term))))
   
 
@@ -696,21 +696,19 @@ These optimizations are currently unimplemented:
 (define (cg-add-binding-to-frame name value frame)
   (append
    (debug-label 'cg-add-binding-to-frame)
-   (cg-intros (list name value frame)) ; +[ name; value ; frame ]
-   ; STACK                     [ name; value; frame ]  ; len = 3
-   (asm 'DUP3)               ; [ +frame ]              ; len = 4
-   (cg-car stack)            ; [ -frame; +vars ]       ; len = 4
-   (asm 'SWAP1)              ; [ name <-> vars ]       ; len = 4
-   (cg-cons stack stack )    ; [ -name; -vars; +vars' ]; len = 3
-   (asm 'DUP4)               ; [ +frame ]              ; len = 4
-   (cg-set-car! stack stack) ; [ -frame; -vars' ]      ; len = 2
-   ; STACK                     [ 
-   (asm 'DUP2)               ; [ +frame ]              ; len = 3
-   (cg-cdr stack)            ; [ -frame; +vals ]       ; len = 3
-   (asm 'SWAP1)              ; [ vals <-> value ]      ; len = 3
-   (cg-cons stack stack )    ; [ -vals; -value; vals'] ; len = 2
-   (asm 'SWAP1)              ; [ frame <-> vals' ]     ; len = 2
-   (cg-set-car! stack stack) ; [ -frame; -vals' ]      ; len = 0
+   (cg-intros (list name value frame)) ; [ name; value ; frame ]
+   (asm 'DUP3)               ; [ frame; name; value; frame ]
+   (cg-car stack)            ; [ vars; name; value; frame ]
+   (asm 'SWAP1)              ; [ name; vars; value; frame ]
+   (cg-cons stack stack )    ; [ vars'; value; frame ]
+   (asm 'DUP3)               ; [ frame; vars'; value; frame ]
+   (cg-set-car! stack stack) ; [ value; frame ]
+   (asm 'DUP2)               ; [ frame; value; frame ]
+   (cg-cdr stack)            ; [ vals; value; frame ]
+   (asm 'SWAP1)              ; [ value; vals; frame ]
+   (cg-cons stack stack )    ; [ vals'; frame ]
+   (asm 'SWAP1)              ; [ frame; vals' ]
+   (cg-set-cdr! stack stack) ; [ ]
    ))   
 
 ;;; Runtime support
