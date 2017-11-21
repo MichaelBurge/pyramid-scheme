@@ -41,7 +41,7 @@
 (define-type Linkage (U 'next 'return LabelName))
 (define-type Target RegisterName)
 (define-type iseq-or-label (U label inst-seq))
-(struct inst-seq ([ needs : RegisterNames ] [ modifies : RegisterNames ] [ statements : Instructions ]))
+(struct inst-seq ([ needs : RegisterNames ] [ modifies : RegisterNames ] [ statements : Instructions ]) #:transparent)
 
 (define-type RegisterNames (Listof RegisterName))
 ; A DispatchObject is like an object in an OOP language.

@@ -186,15 +186,16 @@ numerical value to insert. It generates a relocation, but needs to leave a speci
                     (cons (opcode-byte op) op))
                   opcode-table)))
 
-(: serialize-print (-> EthInstructions Void))
+(: serialize-print (-> EthInstructions bytes))
 (define (serialize-print is)
-  (let ((bs (serialize is)))
+  (let* ((bs (serialize is)))
     (write (bytes->hex-string bs))
     (newline)
     (print-relocations *label-map* *relocation-table*)
     (apply-relocations! bs *relocation-table* *label-map*)
     (write (bytes->hex-string (wrap-loader bs)))
-    (newline)))
+    (newline)
+    bs))
 
 ; Consider using wrap-loader to prepend an initializer program.
 (: serialize (-> EthInstructions bytes))
@@ -275,12 +276,15 @@ Either a label or integer can be pushed onto the stack.
       (eth-push-size push)))
 
 (define (print-relocations symbols relocs)
-  (let ((show (lambda (k v) (display `(,k ,v)) (newline))))
+  (let ((show (lambda (lbl os)
+                (display `(,(label-name lbl) ,(integer->hex os)))
+                (newline))))
     (display "Symbol Table:") (newline)
     (dict-for-each symbols show)
     (newline) (display "Relocations:") (newline)
     (for/set ([ reloc relocs ])
-      (display reloc)
+      (display `(,(integer->hex (relocation-pos reloc))
+                 ,(label-name (relocation-symbol reloc))))
       (newline)
       )))
     
@@ -314,7 +318,23 @@ Either a label or integer can be pushed onto the stack.
                        (eth-asm 'RETURN))))           ; 1
     (bytes-append (serialize loader)
                   bs)))
-    
-    
+
+
+(: push-op? (-> opcode Boolean))
+(define (push-op? op)
+  (and (>= (opcode-byte op) #x60)
+       (<= (opcode-byte op) #x7f)))
+
+(: op-extra-size (-> opcode Fixnum))
+(define (op-extra-size op)
+  (if (push-op? op)
+      (- (opcode-byte op) #x5f)
+      0))
+  
+(: integer->hex (-> Integer String))
+(define (integer->hex n)
+  (bytes->hex-string (integer->bytes n assumed-label-size #f)))
+      
+
 ;; (remember-label (label 'derp))
 ;; (push-true-value (eth-push 5 'derp))

@@ -95,8 +95,7 @@
                                             (list (perform (op 'set-variable-value!
                                                                `(,(const var)
                                                                  ,(reg 'val)
-                                                                 ,(reg 'env))))
-                                                  (assign target (const 'ok))))))))
+                                                                 ,(reg 'env))))))))))
 
 (: compile-definition (-> PyrDefinition Target Linkage inst-seq))
 (define (compile-definition exp target linkage)
@@ -110,8 +109,7 @@
                                             (list (perform (op 'define-variable!
                                                                `(,(const var)
                                                                  ,(reg 'val)
-                                                                 ,(reg 'env))))
-                                                  (assign target (const 'ok))))))))
+                                                                 ,(reg 'env))))))))))
 
 
 (define (new-label-number)

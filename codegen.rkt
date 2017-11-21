@@ -35,7 +35,7 @@ Boxed values are pointers to a tag. Depending on the tag, additional data follow
  * 6: Nil:                 0 words     - Only the tag is used.
 
 Additionally, there are derived objects used in the standard library:
- * Environment: (pair frame enclosing-environment)
+ * Environment: (pair frame (Nil | enclosing-environment))
  * Frame:       (pair vars  vals)
  * List:        Nil | (pair X List)
 
@@ -83,8 +83,9 @@ These optimizations are currently unimplemented:
 
 (define MEM-ENV           #x20)
 (define MEM-CONTINUE      #x40)
-(define MEM-ALLOCATOR     #x60)
-(define MEM-DYNAMIC-START #x80) ; This should be the highest hardcoded memory address.
+(define MEM-NIL           #x60)
+(define MEM-ALLOCATOR     #x80)
+(define MEM-DYNAMIC-START #xa0) ; This should be the highest hardcoded memory address.
 
 ; Global variables
 (define WORD       #x20) ; 256-bit words / 8 bit granularity addresses = 32 8-bit words, or 0x20.
@@ -154,31 +155,43 @@ These optimizations are currently unimplemented:
 (: cg-op-define-variable!          (Generator3 MExpr MExpr MExpr)) ; Creates an object with a given name and value in the given environment
 (: cg-op-false?                    (Generator  MExpr))       ; Evaluates to 1 if the expression is 0
 (: cg-op-list                      (Generator  MExpr))       ; Creates a 1-element vector with the given object.
+(: cg-op-cons                      (Generator2 MExpr MExpr))
 
 (define (cg-op-box exp)
-  (if (const? exp)
-      (cond ((integer? (const-value exp)) (cg-make-fixnum exp))
-            ((symbol?  (const-value exp)) (cg-make-symbol exp))
-            (else
-             (error "Unsupported boxed constant -- cg-op-box:" exp)))
-      (error "Can only box constants -- cg-op-box: " exp)))
+  (append
+   (debug-label 'cg-op-box)
+   (if (const? exp)
+       (cond ((integer? (const-value exp)) (cg-make-fixnum exp))
+             ((symbol?  (const-value exp)) (cg-make-symbol exp))
+             (else
+              (error "Unsupported boxed constant -- cg-op-box:" exp)))
+       (error "Can only box constants -- cg-op-box: " exp))))
 
 (define (cg-op-extend-environment vars vals env)
-  (append (cg-intros (list vars vals env))
-          (cg-make-pair stack stack)
-          (cg-make-pair stack stack)))
+  (append
+   (debug-label 'cg-op-extend-environment)
+   (cg-intros (list vars vals env))
+   (cg-make-pair stack stack)
+   (cg-make-pair stack stack)))
 
 (define (cg-op-make-compiled-procedure code env)
-  (cg-make-compiled-procedure code env))
+  (append
+   (debug-label 'cg-op-make-compiled-procedure)
+   (cg-make-compiled-procedure code env)))
 
 (define (cg-op-compiled-procedure-entry obj)
-  (cg-read-address-offset obj (const 1)))
+  (append
+   (debug-label 'cg-op-compiled-procedure-entry)
+   (cg-read-address-offset obj (const 1))))
 
 (define (cg-op-compiled-procedure-env obj)
-  (cg-read-address-offset obj (const 2)))
+  (append
+   (debug-label 'cg-op-compiled-procedure-env)
+   (cg-read-address-offset obj (const 2))))
   
 (define (cg-op-primitive-procedure? obj)
-  (append 
+  (append
+   (debug-label 'cg-op-primitive-procedure?)
    (cg-mexpr obj)
    (cg-mexpr (const TAG-PRIMITIVE-PROCEDURE))
    (cg-eq? stack stack)))
@@ -187,6 +200,8 @@ These optimizations are currently unimplemented:
   (append (cg-list->stack argl)
           (cg-mexpr proc)
           (asm 'JUMP))) ; The return label must be on the stack
+
+(define (cg-op-cons a b) (cg-cons a b))
 
 ; Could be implemented in Pyramid, but lookup-variable-value would be needed to lookup that definition.
 ; PSEUDOCODE:
@@ -203,13 +218,14 @@ These optimizations are currently unimplemented:
 ;;             (cdr frame))))
 ;;   (env-loop env))
 (define (cg-op-lookup-variable-value name env)
-  (let ((env-loop    (make-label 'env-loop))
-        (scan        (make-label 'scan))
-        (scan-else-1 (make-label 'scan))
-        (scan-else-2 (make-label 'scan))
-        (term        (make-label 'term))
+  (let ((env-loop    (make-label 'lookup-variable-value-env-loop))
+        (scan        (make-label 'lookup-variable-value-scan))
+        (scan-else-1 (make-label 'lookup-variable-value-scan))
+        (scan-else-2 (make-label 'lookup-variable-value-scan))
+        (term        (make-label 'lookup-variable-value-term))
         )
     (append
+     (debug-label 'cg-op-lookup-variable-value)
      (cg-intros (list name env))
      ; Stack: [ var, env ]                          ; len = 2
      `(,env-loop)
@@ -220,7 +236,7 @@ These optimizations are currently unimplemented:
      (asm 'SWAP1)   ; [ fvars <-> frame ]           ; len = 4
      (cg-cdr stack) ; [ -frame ; +fvals ]           ; len = 4
      ; Stack: [ fvals, fvars, var, env ]            ; len = 4
-     `(,(label scan))
+     `(,scan)
      (asm 'DUP1)      ; [ +fvals ]                  ; len = 5
      (cg-null? stack) ; [ -fvals; +null? ]          ; len = 5
      (asm 'ISZERO)    ; [ -null?; +non-null? ]      ; len = 5
@@ -264,16 +280,17 @@ These optimizations are currently unimplemented:
 ;;     (scan (car frame)
 ;;           (cdr frame))))
 (define (cg-op-define-variable! name value env)
-  (let ((scan        (make-label 'scan))
-        (scan-else-1 (make-label 'scan))
-        (scan-else-2 (make-label 'scan))
-        (term        (make-label 'term))
+  (let ((scan        (make-label 'define-variable!-scan))
+        (scan-else-1 (make-label 'define-variable!-scan))
+        (scan-else-2 (make-label 'define-variable!-scan))
+        (term        (make-label 'define-variable!-term))
         )
     (append
+     (debug-label 'cg-op-define-variable!)
      (cg-intros (list name value env))
      ; Stack:            [ name; value; env ]              ; len = 3
-     (asm 'DUP3)       ; [ +env; ]                         ; len = 4
-     (cg-car stack)    ; [ -env; +frame ]                  ; len = 4
+     (asm 'DUP3)       ; [ env; name; value; env ]         ; len = 4
+     (cg-car stack)    ; [ frame; name; value; env ]       ; len = 4
      ; Stack:            [ frame; name; value; env ]       ; len = 4
      (asm 'DUP1)       ; [ +frame ]                        ; len = 5
      (cg-cdr stack)    ; [ -frame; +fvals ]                ; len = 5
@@ -286,6 +303,9 @@ These optimizations are currently unimplemented:
      (asm 'ISZERO)     ; [ -null? ; + !null? ]             ; len = 6
      (cg-branch scan-else-1 stack) ; [ - ! null? ]         ; len = 5
      (cg-pop 2)        ; [ -fvars; -fvals ]                ; len = 3
+     (asm 'SWAP2)      ; [ env; value; name ]              ; len = 3
+     (cg-car stack)    ; [ frame; value; name ]            ; len = 3
+     (asm 'SWAP2)      ; [ name; value; frame ]            ; len = 3
      (cg-add-binding-to-frame stack stack stack) ; [ -name; -value; -env ] ; len = 0
      (cg-goto term) ; []                           ; len = 0
      ; Stack:            [ fvars; fvals; name; value; env ]; len = 5
@@ -375,8 +395,9 @@ These optimizations are currently unimplemented:
       ((eq? name 'lookup-variable-value)     (cg-op-lookup-variable-value     (car args) (cadr args)))
       ((eq? name 'false?)                    (cg-op-false?                    (car args)))
       ((eq? name 'list)                      (cg-op-list                      (car args)))
+      ((eq? name 'cons)                      (cg-op-cons                      (car args) (cadr args)))
       (else
-       (error "Unknown primitive op - cg-mexpr-op" name args)))))
+       (error "Unknown primitive op - cg-mexpr-op:" name args)))))
 
 (: cg-mexpr-label (Generator label))
 (define (cg-mexpr-label exp) (list (eth-push 'shrink exp)))
@@ -445,22 +466,26 @@ These optimizations are currently unimplemented:
           (asm 'MLOAD)))
 
 (define (cg-read-address-offset addr os)
-  (append (cg-intros (list addr os))
-          (cg-add stack stack)
-          (cg-swap 2)
-          (cg-mul (const WORD) stack)
-          (cg-read-address stack)))
+  (append
+   (debug-label 'cg-read-address-offset)
+   (cg-intros (list addr os))  ; [ addr; os ]
+   (cg-reverse 2)              ; [ os; addr ]
+   (cg-mul (const WORD) stack) ; [ os'; addr ]
+   (cg-add stack stack)        ; [ addr' ]
+   (cg-read-address stack)))   ; [ val ]
 
 (define (cg-write-address dest val)
   (append (cg-intros (list dest val))
           (asm 'MSTORE)))
 
 (define (cg-write-address-offset dest os val)
-  (append (cg-intros (list dest os val))
-          (cg-swap 2)
-          (cg-mul (const WORD) stack)
-          (cg-add stack stack)
-          (cg-write-address stack stack)))
+  (append
+   (debug-label 'cg-write-address-offset)
+   (cg-intros (list dest os val))   ; [ addr; os; val ]
+   (cg-reverse 2)                   ; [ os; addr; val ]
+   (cg-mul (const WORD) stack)      ; [ os'; addr; val ]
+   (cg-add stack stack)             ; [ addr'; val ]
+   (cg-write-address stack stack))) ; [ ]
 
 
 
@@ -528,6 +553,7 @@ These optimizations are currently unimplemented:
   (let ((loop (make-label 'loop))
         (term (make-label 'term)))
     (append
+     (debug-label 'cg-list->vector)
      (cg-mexpr exp)                      ; [ +list ]
      ; 1. Calculate the length of the list
      (asm 'DUP1)                         ; [ +list ]
@@ -536,7 +562,7 @@ These optimizations are currently unimplemented:
      (cg-make-vector stack '())          ; [ -len; +vector ]
      ; 3. Loop through the list, setting vector elements.
      ; STACK:                            [ i; vector; list ]
-     `(,(label loop))
+     `(,loop)
      ; 4. Check if loop should be terminated
      (asm 'SWAP2)                        ; [ list; vector; i ]
      (asm 'DUP1)                         ; [ list; list; vector; i]
@@ -579,6 +605,7 @@ These optimizations are currently unimplemented:
   (let ((loop      (make-label 'loop))
         (terminate (make-label 'terminate)))
     (append
+     (debug-label 'cg-list-length)
      (list (eth-push 1 0))    ; [ +len ]
      (cg-mexpr exp)           ; [ +list ]
      ; STACK                    [ list ; len ]
@@ -586,7 +613,7 @@ These optimizations are currently unimplemented:
      (asm 'DUP1)              ; [ +list ]
      (cg-pair? exp)           ; [ -list; + pair? ]
      (cg-op-false? stack)     ; [ -pair?; + ! pair? ]
-     (cg-branch terminate)    ; [ - ! pair? ]
+     (cg-branch terminate stack) ; [ - ! pair? ]
      (asm 'SWAP1)             ; [ len <-> list ]
      (cg-add stack (const 1)) ; [ -len; +len' ]
      (asm 'SWAP1)             ; [ list <-> len' ]
@@ -621,6 +648,7 @@ These optimizations are currently unimplemented:
   (let ((loop (make-label 'loop))
         (term (make-label 'term)))
     (append
+     (debug-label 'cg-vector->stack)
      (cg-mexpr vec)               ; [ vec ]
      (asm 'DUP1)                  ; [ vec; vec ]
      (cg-vector-len stack)        ; [ i; vec ]
@@ -629,7 +657,7 @@ These optimizations are currently unimplemented:
      (cg-eq? stack (const 0))     ; [ eq?; i; vec ]
      (cg-branch term stack)       ; [ i; vec ]
      (asm 'DUP1)                  ; [ i; i; vec ]
-     (cg-sub stack 1)             ; [ i'; i; vec ]
+     (cg-sub stack (const 1))     ; [ i'; i; vec ]
      (asm 'DUP3)                  ; [ vec; i'; i; vec ]
      (cg-vector-read stack stack) ; [ x; i; vec ]
      (asm 'SWAP2)                 ; [ vec; i; x ]
@@ -643,19 +671,21 @@ These optimizations are currently unimplemented:
 
 (define (cg-vector-write vec os val)
   (append
+   (debug-label 'cg-vector-write)
    (cg-intros (list vec os val))
    (asm 'SWAP1)             ; [ os; vec; val ]
-   (cg-add (const (* 3 WORD)) stack) ; [ os'; vec; val ]
+   (cg-add (const 3) stack) ; [ os'; vec; val ]
    (asm 'SWAP1)             ; [ vec; os'; val ]
-   (cg-write-address stack stack stack))) ; [ ]
+   (cg-write-address-offset stack stack stack))) ; [ ]
    
 (define (cg-vector-read vec os)
   (append
+   (debug-label 'cg-vector-read)
    (cg-intros (list vec os))
    (asm 'SWAP1)                  ; [ os; vec ]
-   (cg-add (const (* 3 WORD)) stack)      ; [ os'; vec ]
+   (cg-add (const 3) stack)      ; [ os'; vec ]
    (asm 'SWAP1)                  ; [ vec; os' ]
-   (cg-read-address stack stack))) ; [ x ]
+   (cg-read-address-offset stack stack))) ; [ x ]
 
 
 
@@ -664,24 +694,24 @@ These optimizations are currently unimplemented:
 ;;  (set-car! frame (cons var (car frame)))
 ;;  (set-cdr! frame (cons val (cdr frame))))
 (define (cg-add-binding-to-frame name value frame)
-  (append (cg-intros (list name value frame)) ; -+[ name; value ; frame ]
-          (cg-mexpr value)          ; [ +value ]              ; len = 2
-          (cg-mexpr name)           ; [ +name ]               ; len = 3
-          ; STACK                     [ name; value; frame ]  ; len = 3
-          (asm 'DUP3)               ; [ +frame ]              ; len = 4
-          (cg-car stack)            ; [ -frame; +vars ]       ; len = 4
-          (asm 'SWAP1)              ; [ vars <-> name ]       ; len = 4
-          (cg-cons stack stack )    ; [ -vars; -name; vars' ] ; len = 3
-          (asm 'DUP4)               ; [ +frame ]              ; len = 4
-          (cg-set-car! stack stack) ; [ -frame; -vars' ]      ; len = 2
-          ; STACK                     [ 
-          (asm 'DUP2)               ; [ +frame ]              ; len = 3
-          (cg-cdr stack)            ; [ -frame; +vals ]       ; len = 3
-          (asm 'SWAP1)              ; [ vals <-> value ]      ; len = 3
-          (cg-cons stack stack )    ; [ -vals; -value; vals'] ; len = 2
-          (asm 'SWAP1)              ; [ frame <-> vals' ]     ; len = 2
-          (cg-set-car! stack stack) ; [ -frame; -vals' ]      ; len = 0
-          ))   
+  (append
+   (debug-label 'cg-add-binding-to-frame)
+   (cg-intros (list name value frame)) ; +[ name; value ; frame ]
+   ; STACK                     [ name; value; frame ]  ; len = 3
+   (asm 'DUP3)               ; [ +frame ]              ; len = 4
+   (cg-car stack)            ; [ -frame; +vars ]       ; len = 4
+   (asm 'SWAP1)              ; [ name <-> vars ]       ; len = 4
+   (cg-cons stack stack )    ; [ -name; -vars; +vars' ]; len = 3
+   (asm 'DUP4)               ; [ +frame ]              ; len = 4
+   (cg-set-car! stack stack) ; [ -frame; -vars' ]      ; len = 2
+   ; STACK                     [ 
+   (asm 'DUP2)               ; [ +frame ]              ; len = 3
+   (cg-cdr stack)            ; [ -frame; +vals ]       ; len = 3
+   (asm 'SWAP1)              ; [ vals <-> value ]      ; len = 3
+   (cg-cons stack stack )    ; [ -vals; -value; vals'] ; len = 2
+   (asm 'SWAP1)              ; [ frame <-> vals' ]     ; len = 2
+   (cg-set-car! stack stack) ; [ -frame; -vals' ]      ; len = 0
+   ))   
 
 ;;; Runtime support
 
@@ -698,6 +728,8 @@ These optimizations are currently unimplemented:
 (: cg-allocate                 (Generator MExpr))              ; Returns a pointer to a newly-allocated block of 256-bit words.
 (: cg-allocate-initialize      (Generator2 MExpr MExprs))      ; Allocates memory and initializes each word from the argument list.
 (: cg-initialize-program       (Generator Nothing))
+(: cg-make-environment         (Generator Nothing))
+(: cg-make-frame               (Generator Nothing))
 (: cg-return                   (Generator MExpr))              ; Ends the program with a boxed value as the output.
 (define (cg-tag exp) (append (cg-read-address exp)))
 
@@ -709,7 +741,7 @@ These optimizations are currently unimplemented:
   (cg-allocate-initialize (const 2) (list (const TAG-SYMBOL) sym)))
 
 (define (cg-make-compiled-procedure code env)
-  (cg-allocate-initialize (const 2) (list (const TAG-COMPILED-PROCEDURE) code env)))
+  (cg-allocate-initialize (const 3) (list (const TAG-COMPILED-PROCEDURE) code env)))
 
 ;(define (cg-make-primitive-procedure code env)
 
@@ -719,29 +751,34 @@ These optimizations are currently unimplemented:
 (define cg-cons cg-make-pair)
 
 (define (cg-make-vector capacity exps)
-  (append (cg-mexpr capacity)
-          (asm 'DUP1)
-          (cg-add stack (const 3))
-          (cg-allocate-initialize stack
-                                  (append (list TAG-VECTOR
-                                                stack
-                                                (const (length exps)))
-                                          exps))))
+  (append
+   (debug-label 'cg-make-vector)
+   (cg-mexpr capacity)
+   (asm 'DUP1)
+   (cg-add stack (const 3))
+   (cg-allocate-initialize stack
+                           (append (list (const TAG-VECTOR)
+                                         stack
+                                         (const (length exps)))
+                                   exps))))
 
-(define (cg-make-nil)
-  (cg-allocate-initialize (const 1) (list (const TAG-NIL))))
+(define (cg-make-nil) (list (eth-push 1 MEM-NIL)))
+;  (cg-allocate-initialize (const 1) (list (const TAG-NIL))))
 
 (define (cg-make-list lst)
-  (if (null? lst)
-      (cg-make-nil)
-      (append
-       (cg-mexpr (car lst))
-       (cg-make-list (cdr lst))
-       (cg-swap 2)
-       (cg-cons stack stack))))
+  (append
+   (debug-label 'cg-make-list)
+   (if (null? lst)
+       (cg-make-nil)
+       (append
+        (cg-mexpr (car lst))
+        (cg-make-list (cdr lst))
+        (cg-swap 2)
+        (cg-cons stack stack)))))
 
 (define (cg-allocate size)
   (append
+   (debug-label 'cg-allocate)
    (cg-mexpr size)                                ; [ size ]
    (cg-mul (const WORD) stack)                    ; [ size']
    (cg-read-address (const MEM-ALLOCATOR))        ; [ ptr; size' ]
@@ -764,6 +801,7 @@ These optimizations are currently unimplemented:
          (cg-add (const WORD) stack)    ; [ ptr'; optr; exp* ]
          (loop (cdr exps)))))
   (append
+   (debug-label 'cg-allocate-initialize)
    (cg-intros (cons size inits))        ; [ size; exp* ]
    (cg-allocate stack)                  ; [ optr; exp* ]
    (asm 'DUP1)                          ; [ optr; optr; exp* ]
@@ -774,15 +812,33 @@ These optimizations are currently unimplemented:
             
 (define (cg-initialize-program)
   (append
+   (debug-label 'cg-initialize-program)
    ; Set the dynamic memory allocator pointer
    (list (eth-push 1 MEM-DYNAMIC-START))
    (list (eth-push 1 MEM-ALLOCATOR))
    (cg-write-address stack stack)
    ; Initialize an empty environment
-   (cg-make-nil)
-   (list (eth-push 1 MEM-ENV))
-   (cg-write-address stack stack)))
+   (cg-make-environment)
+   (cg-write-address (const MEM-ENV) stack)
+   ; Initialize the memory-backed registers
+   (cg-write-address (const MEM-CONTINUE) (const 31337))
+   ; Initialize global constants
+   (cg-write-address (const MEM-NIL) (const TAG-NIL))
+   ))
 
+(define (cg-make-environment)
+  (append
+   (cg-make-nil)   ; Enclosing environment
+   (cg-make-frame) ; Empty frame
+   (cg-cons stack stack)
+   ))
+
+(define (cg-make-frame)
+  (append
+   (cg-make-nil)
+   (cg-make-nil)
+   (cg-cons stack stack)))
+    
 ; TODO: Make this work for more than just integers.
 (define (cg-return exp)
   (append
@@ -902,7 +958,14 @@ SWAP1 -> [ x1; x2; x3; c ]
 
 ; (: cg-move-front (Generator Fixnum))
 
+; The only expressions that don't affect the stack are reads from the stack-aliased registers.
 (define (stack-write? exp)
   (cond ((reg? exp) (or (eq? (reg-name exp) 'env)
                         (eq? (reg-name exp) 'continue)))
         (else true)))
+
+; Debug labels are not used for flow control. They generate entries in the relocation table that
+; help locate the code that generated an assembly fragment. They have 1 byte of overhead for a
+; JUMPDEST instruction, but even that could be eliminated if necessary.
+(define (debug-label sym) (list (make-label sym)))
+; (define (debug-label sym) '())
