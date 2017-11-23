@@ -46,6 +46,10 @@
 ;; (define prog-assign
 ;;   '(define x 1234))
 
+(: prog-eq? Pyramid)
+(define prog-eq?
+  '((= 9876 5432)))
+
 (: prog-factorial Pyramid)
 (define prog-factorial 
   '((define (factorial n)
@@ -56,7 +60,7 @@
 
 ; (display-all (inst-seq-statements (compile-pyramid prog-factorial 'val 'next)))
 
-(full-debug-output prog-factorial)
+(full-debug-output prog-eq?)
 
 ;; (define prog prog-const)
 

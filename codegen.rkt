@@ -96,15 +96,19 @@ These optimizations are currently unimplemented:
 ; Top-level code generator
 (: codegen (Generator Instructions))
 (define (codegen is)
-  (define (loop is)
-    (if (null? is)
-        '()
-        (append (codegen-one (car is))
-                (loop        (cdr is)))))
   (append
    (cg-initialize-program)
-   (loop is)
+   (cg-install-standard-library)
+   (codegen-list is)
    (cg-return stack)))
+
+(: codegen-list (Generator Instructions))
+(define (codegen-list is)
+    (if (null? is)
+        '()
+        (append (codegen-one  (car is))
+                (codegen-list (cdr is)))))
+  
 
 (: codegen-one (Generator Instruction))
 (define (codegen-one i)
@@ -195,16 +199,21 @@ These optimizations are currently unimplemented:
 (define (cg-op-primitive-procedure? obj)
   (append
    (debug-label 'cg-op-primitive-procedure?)
-   (cg-mexpr obj)
-   (cg-mexpr (const TAG-PRIMITIVE-PROCEDURE))
-   (cg-eq? stack stack)))
+   (cg-tag obj)
+   (cg-eq? (const TAG-PRIMITIVE-PROCEDURE) stack)))
+
+(define (cg-op-primitive-procedure-entry obj)
+  (append
+   (debug-label 'cg-op-primitive-procedure-entry)
+   (cg-read-address-offset obj (const 1))))
 
 (define (cg-op-apply-primitive-procedure proc argl)
   (append
    (debug-label 'cg-op-apply-primitive-procedure)
-   (cg-list->stack argl)
-   (cg-mexpr proc)
-   (asm 'JUMP))) ; The return label must be on the stack
+   ; Arguments passed as a dynamic list.
+   (cg-mexpr argl)
+   (cg-op-primitive-procedure-entry proc)
+   (asm 'JUMP)))
 
 (define (cg-op-cons a b)
   (append (debug-label 'cg-op-cons)
@@ -766,7 +775,7 @@ These optimizations are currently unimplemented:
 (: cg-make-fixnum              (Generator  MExpr))
 (: cg-make-symbol              (Generator  MExpr))
 (: cg-make-compiled-procedure  (Generator2 MExpr MExpr))
-;(: cg-make-primitive-procedure (Generator2 MExpr))
+(: cg-make-primitive-procedure (Generator  MExpr))
 (: cg-make-pair                (Generator2 MExpr MExpr))
 (: cg-make-vector              (Generator2 MExpr MExprs))
 (: cg-make-nil                 (Generator  Nothing))
@@ -775,6 +784,7 @@ These optimizations are currently unimplemented:
 (: cg-allocate                 (Generator MExpr))              ; Returns a pointer to a newly-allocated block of 256-bit words.
 (: cg-allocate-initialize      (Generator2 MExpr MExprs))      ; Allocates memory and initializes each word from the argument list.
 (: cg-initialize-program       (Generator Nothing))
+(: cg-install-standard-library (Generator Nothing))
 (: cg-make-environment         (Generator Nothing))
 (: cg-make-frame               (Generator Nothing))
 (: cg-return                   (Generator MExpr))              ; Ends the program with a boxed value as the output.
@@ -796,7 +806,10 @@ These optimizations are currently unimplemented:
    (debug-label 'cg-make-compiled-procedure)
    (cg-allocate-initialize (const 3) (list (const TAG-COMPILED-PROCEDURE) code env))))
 
-;(define (cg-make-primitive-procedure code env)
+(define (cg-make-primitive-procedure code)
+  (append
+   (debug-label 'cg-make-primitive-procedure)
+   (cg-allocate-initialize (const 2) (list (const TAG-PRIMITIVE-PROCEDURE) code))))
 
 (define (cg-make-pair fst snd)
   (append
@@ -886,6 +899,22 @@ These optimizations are currently unimplemented:
    (cg-write-address (const MEM-NIL) (const TAG-NIL))
    ))
 
+(define (cg-install-standard-library)
+  (let ((label-= (make-label '=))
+        (label-install (make-label 'install)))
+    (append
+     (debug-label 'cg-install-standard-library)
+     (cg-goto label-install)
+     ; = operator
+     `(,label-=)
+     (cg-unroll-list 2 (reg 'argl))
+     (cg-eq? stack stack)
+     (cg-goto (reg 'continue))
+     ; Install the primitives
+     `(,label-install)
+     (cg-make-primitive-procedure label-=)
+     (cg-op-define-variable! (const '=) stack (reg 'env)))))
+
 (define (cg-make-environment)
   (append
    (debug-label 'cg-make-environment)
@@ -910,6 +939,17 @@ These optimizations are currently unimplemented:
    (cg-reverse 2)   
    (asm 'RETURN)))
 
+(: cg-unroll-list (Generator Fixnum))
+(define (cg-unroll-list num exp)
+  (if (eq? num 0)
+      '()
+      (append
+       (cg-mexpr exp)
+       (asm 'DUP1)
+       (cg-car stack)
+       (asm 'SWAP1)
+       (cg-cdr stack)
+       (cg-unroll-list (- num 1) stack))))
 
 ;;; Arithmetic
 
@@ -1070,3 +1110,4 @@ SWAP1 -> [ x1; x2; x3; c ]
 (define (cg-throw sym)
   (append (debug-label sym)
           (asm 'REVERT)))
+
