@@ -26,7 +26,7 @@ numerical value to insert. It generates a relocation, but needs to leave a speci
 
 ; Global variables
 (define *byte-offset* 0)
-(define *label-map* (make-hash '()))
+(define *symbol-table* (make-hash '()))
 (define *relocation-table* (set))
 
 (: opcode-table (Listof opcode))
@@ -171,7 +171,7 @@ numerical value to insert. It generates a relocation, but needs to leave a speci
     ,(opcode #xf3 'RETURN)
     ,(opcode #xf4 'DELEGATECALL)
     
-    ,(opcode #xfd 'PUSH)
+    ,(opcode #xfd 'REVERT)
     ,(opcode #xfe 'INVALID)
     ,(opcode #xff 'SELFDESTRUCT)
     ))
@@ -191,8 +191,9 @@ numerical value to insert. It generates a relocation, but needs to leave a speci
   (let* ((bs (serialize is)))
     (write (bytes->hex-string bs))
     (newline)
-    (print-relocations *label-map* *relocation-table*)
-    (apply-relocations! bs *relocation-table* *label-map*)
+    ; (print-symbol-table *symbol-table*)
+    (print-relocations *relocation-table*)
+    (apply-relocations! bs *relocation-table* *symbol-table*)
     (write (bytes->hex-string (wrap-loader bs)))
     (newline)
     bs))
@@ -247,7 +248,7 @@ numerical value to insert. It generates a relocation, but needs to leave a speci
 
 (: remember-label (-> label Void))
 (define (remember-label lbl)
-  (dict-set! *label-map* lbl (- *byte-offset* 1)))
+  (dict-set! *symbol-table* lbl (- *byte-offset* 1)))
 
 (: push-true-value (-> eth-push integer))
 #| push-true-value:
@@ -260,7 +261,7 @@ Either a label or integer can be pushed onto the stack.
   (let ((val (eth-push-value push)))
     (cond ((label? val) (begin
                           (generate-relocation (relocation *byte-offset* val))
-                          (dict-ref *label-map* (label-name val) 0)))
+                          (dict-ref *symbol-table* (label-name val) 0)))
           ; Symbols are unexpected: Labels are wrapped in a struct; quotes are expanded to integers in the code generator.
           ((symbol? val) (error "Unexpected symbol - push-true-val" val))
           ((integer? val) val)
@@ -275,18 +276,24 @@ Either a label or integer can be pushed onto the stack.
           (integer-bytes (push-true-value push)))
       (eth-push-size push)))
 
-(define (print-relocations symbols relocs)
+(define (print-symbol-table symbols)
   (let ((show (lambda (lbl os)
-                (display `(,(label-name lbl) ,(integer->hex os)))
-                (newline))))
-    (display "Symbol Table:") (newline)
-    (dict-for-each symbols show)
-    (newline) (display "Relocations:") (newline)
-    (for/set ([ reloc relocs ])
-      (display `(,(integer->hex (relocation-pos reloc))
-                 ,(label-name (relocation-symbol reloc))))
-      (newline)
-      )))
+                (display (label-name lbl))
+                (write-char #\tab)
+                (display (integer->hex os))
+                (newline)))
+        (symbols-list (sort (dict->list symbols) < #:key (lambda (x) (cdr x)))))
+    (display "Symbol Table:") (newline)    
+    (for ([ symbol symbols-list ])
+      (show (car symbol) (cdr symbol)))
+    (newline)))
+
+(define (print-relocations relocs)
+  (display "Relocations:") (newline)
+  (for/set ([ reloc relocs ])
+    (display `(,(integer->hex (relocation-pos reloc))
+               ,(label-name (relocation-symbol reloc))))
+    (newline)))
     
 
 (: apply-relocations! (-> bytes RelocationTable LabelMap bytes))

@@ -19,8 +19,8 @@
 ; TEST 3: (codegen (inst-seq-statements (compile-pyramid 5 'val 'next))) ; integer should be boxed
 ; TEST 4: (codegen (list (assign 'val (op 'box (list (const 5))))))
 ; TEST 5: (codegen-one (save 'continue))
-; TEST 6:
-(display-all (cg-intros (list (const 1) (const 2) (const 3) (const 4))))
+; TEST 6: (display-all (cg-intros (list (const 1) (const 2) (const 3) (const 4))))
+; TEST 7: (eq? #f (stack-read? (op 'lookup-variable-value `(,(const 'factorial) ,(reg 'env)))))
 
 (: full-debug-output (-> Pyramid Void))
 (define (full-debug-output prog)

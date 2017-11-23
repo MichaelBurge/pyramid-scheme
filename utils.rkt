@@ -9,3 +9,9 @@
         ((< n 16777216)   3)
         ((< n 4294967296) 4)
         (else            32)))
+
+(: invert-dict (-> (Dict Any) (Dict Any)))
+(define (invert-dict dict)
+  (make-hash
+   (map (lambda (x) (cons (cdr x) (car x)))
+        (dict->list dict))))

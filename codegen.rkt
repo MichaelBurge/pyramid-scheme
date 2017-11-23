@@ -12,11 +12,12 @@
 #|
 -- Registers -> Stack --
 The abstract machine uses 5 256-bit virtual registers
-* env:      &(0 * WORD)
-* proc:     STACK
+* env:      &(1 * WORD)
+* proc:     &(2 * WORD)
+* continue: &(3 * WORD)
+* argl:     &(4 * WORD)
 * val:      STACK
-* argl:     STACK
-* continue: &(1 * WORD)
+
 Addresses have 8-bit granularity, so we multiply by WORD so they don't overlap.
 Arguments to procedures are passed on the stack. The first argument is the first stack entry.
 
@@ -82,10 +83,12 @@ These optimizations are currently unimplemented:
 (define TAG-NIL                 6)
 
 (define MEM-ENV           #x20)
-(define MEM-CONTINUE      #x40)
-(define MEM-NIL           #x60)
-(define MEM-ALLOCATOR     #x80)
-(define MEM-DYNAMIC-START #xa0) ; This should be the highest hardcoded memory address.
+(define MEM-PROC          #x40)
+(define MEM-CONTINUE      #x60)
+(define MEM-ARGL          #x80)
+(define MEM-NIL           #xa0)
+(define MEM-ALLOCATOR     #xc0)
+(define MEM-DYNAMIC-START #xe0) ; This should be the highest hardcoded memory address.
 
 ; Global variables
 (define WORD       #x20) ; 256-bit words / 8 bit granularity addresses = 32 8-bit words, or 0x20.
@@ -170,9 +173,9 @@ These optimizations are currently unimplemented:
 (define (cg-op-extend-environment vars vals env)
   (append
    (debug-label 'cg-op-extend-environment)
-   (cg-intros (list vars vals env))
-   (cg-make-pair stack stack)
-   (cg-make-pair stack stack)))
+   (cg-intros (list vars vals env)) ; [ vars; vals; env ]
+   (cg-make-pair stack stack)       ; [ frame; env ]
+   (cg-make-pair stack stack)))     ; [ env' ]
 
 (define (cg-op-make-compiled-procedure code env)
   (append
@@ -197,38 +200,51 @@ These optimizations are currently unimplemented:
    (cg-eq? stack stack)))
 
 (define (cg-op-apply-primitive-procedure proc argl)
-  (append (cg-list->stack argl)
-          (cg-mexpr proc)
-          (asm 'JUMP))) ; The return label must be on the stack
+  (append
+   (debug-label 'cg-op-apply-primitive-procedure)
+   (cg-list->stack argl)
+   (cg-mexpr proc)
+   (asm 'JUMP))) ; The return label must be on the stack
 
-(define (cg-op-cons a b) (cg-cons a b))
+(define (cg-op-cons a b)
+  (append (debug-label 'cg-op-cons)
+          (cg-cons a b)))
 
 ; Could be implemented in Pyramid, but lookup-variable-value would be needed to lookup that definition.
 ; PSEUDOCODE:
-;; (define (lookup-variable-value var env)
-;;   (define (env-loop env)
-;;     (define (scan vars vals)
-;;       (if (null? vals)
-;;           (env-loop (cdr env))
-;;           (if (eq? var (car vars))
-;;               (car vals)
-;;               (scan (cdr vars) (cdr vals)))))
-;;     (let ((frame (car env)))
-;;       (scan (car frame)
-;;             (cdr frame))))
-;;   (env-loop env))
+
+#|
+(define (lookup-variable-value var env)
+  (define (env-loop env)
+    (define (scan vars vals)
+      (if (null? vals)
+          (env-loop (cdr env))
+          (if (eq? var (car vars))
+              (car vals)
+              (scan (cdr vars) (cdr vals)))))
+    (if (null? env)
+        (error "Nonexistent variable:" var)
+        (let ((frame (car env)))
+          (scan (car frame)
+                (cdr frame)))))
+  (env-loop env))
+|#
 (define (cg-op-lookup-variable-value name env)
   (let ((env-loop    (make-label 'lookup-variable-value-env-loop))
         (scan        (make-label 'lookup-variable-value-scan))
-        (scan-else-1 (make-label 'lookup-variable-value-scan))
-        (scan-else-2 (make-label 'lookup-variable-value-scan))
+        (scan-else-1 (make-label 'lookup-variable-value-scan-else-1))
+        (scan-else-2 (make-label 'lookup-variable-value-scan-else-2))
         (term        (make-label 'lookup-variable-value-term))
+        (not-found   (make-label 'lookup-variable-value-not-found))
         )
     (append
      (debug-label 'cg-op-lookup-variable-value)
      (cg-intros (list name env))
      ; Stack: [ var, env ]                          ; len = 2
      `(,env-loop)
+     (asm 'DUP2)    ; [ env; name; env ]
+     (cg-null? stack) ; [ null?; name; env ]
+     (cg-branch not-found stack) ; [ name; env ]
      (asm 'DUP2)    ; [ env; name; env ]
      (cg-car stack) ; [ frame; name; env ]
      (asm 'DUP1)    ; [ frame; frame; name; env ]
@@ -260,12 +276,15 @@ These optimizations are currently unimplemented:
      (cg-goto term)    ; [ val ]
      ; Stack: [ fvals, fvars, var, env ]            ; len = 4
      `(,scan-else-2)
-     (cg-cdr stack)    ; [ fvals'; fvars; var; env ]
+     (cg-cdr stack)    ; [ fvals; fvars; var; env ]
      (asm 'SWAP1)      ; [ fvars; fvals'; var; env ]
      (cg-cdr stack)    ; [ fvars'; fvals'; var; env ]
      (asm 'SWAP1)      ; [ fvals'; fvars'; var; env ]
      (cg-goto scan)    ; [ fvals'; fvars'; var; env ]
+     `(,not-found)
+     (asm 'REVERT)
      `(,term))))
+
   
 
 ; PSEUDOCODE:
@@ -281,8 +300,8 @@ These optimizations are currently unimplemented:
 ;;           (cdr frame))))
 (define (cg-op-define-variable! name value env)
   (let ((scan        (make-label 'define-variable!-scan))
-        (scan-else-1 (make-label 'define-variable!-scan))
-        (scan-else-2 (make-label 'define-variable!-scan))
+        (scan-else-1 (make-label 'define-variable!-scan-else-1))
+        (scan-else-2 (make-label 'define-variable!-scan-else-2))
         (term        (make-label 'define-variable!-term))
         )
     (append
@@ -333,13 +352,18 @@ These optimizations are currently unimplemented:
      `(,term))))
 
 (define (cg-op-false? exp)
-  (append (cg-mexpr exp)
-          (asm 'ISZERO)))
+  (append
+   (debug-label 'cg-op-false?)
+   (cg-mexpr exp)
+   (asm 'ISZERO)))
 
 (define (cg-op-list exp)
-  (append (cg-mexpr exp)
-          (cg-make-nil)
-          (cg-cons stack stack)))
+  (append
+   (debug-label 'cg-op-list)
+   (cg-mexpr exp)          ; [ x ]
+   (cg-make-nil)           ; [ nil; x ]
+   (cg-reverse 2)          ; [ x; nil ] 
+   (cg-cons stack stack))) ; [ x:nil]
   
 
 (: cg-mexpr (Generator MExpr))
@@ -354,15 +378,21 @@ These optimizations are currently unimplemented:
 
 (: cg-mexpr-reg   (Generator reg))
 (define (cg-mexpr-reg dest)
-  (cond ((eq? (reg-name dest) 'env)      (cg-read-address (const MEM-ENV)))
-        ((eq? (reg-name dest) 'continue) (cg-read-address (const MEM-CONTINUE)))
-        (else                            (cg-mexpr-stack))))
+  (let ((reg (reg-name dest)))
+    (cond ((eq? reg 'env)      (cg-read-address (const MEM-ENV)))
+          ((eq? reg 'proc)     (cg-read-address (const MEM-PROC)))
+          ((eq? reg 'continue) (cg-read-address (const MEM-CONTINUE)))
+          ((eq? reg 'argl)     (cg-read-address (const MEM-ARGL)))
+          (else                (cg-mexpr-stack)))))
 
 (: cg-write-reg (Generator2 reg MExpr))
 (define (cg-write-reg dest exp)
-  (cond ((eq? (reg-name dest) 'env)      (cg-write-address (const MEM-ENV)  exp))
-        ((eq? (reg-name dest) 'continue) (cg-write-address (const MEM-CONTINUE) exp))
-        (else                            (cg-write-stack exp))))
+  (let ((reg (reg-name dest)))
+    (cond ((eq? reg 'env)      (cg-write-address (const MEM-ENV)  exp))
+          ((eq? reg 'proc)     (cg-write-address (const MEM-PROC)  exp))
+          ((eq? reg 'continue) (cg-write-address (const MEM-CONTINUE) exp))
+          ((eq? reg 'argl)     (cg-write-address (const MEM-ARGL) exp))
+          (else                (cg-write-stack exp)))))
 
 (: cg-mexpr-const (Generator const))
 (define (cg-mexpr-const exp)
@@ -459,11 +489,14 @@ These optimizations are currently unimplemented:
         ((eq? size 13) (asm 'SWAP13))
         ((eq? size 14) (asm 'SWAP14))
         ((eq? size 15) (asm 'SWAP15))
+        ((eq? size 0)  '())
         (else (error "Unknown swap size -- cg-swap" size))))
 
 (define (cg-read-address addr)
-  (append (cg-mexpr addr)
-          (asm 'MLOAD)))
+  (append
+   (debug-label 'cg-read-address)
+   (cg-mexpr addr)
+   (asm 'MLOAD)))
 
 (define (cg-read-address-offset addr os)
   (append
@@ -475,8 +508,10 @@ These optimizations are currently unimplemented:
    (cg-read-address stack)))   ; [ val ]
 
 (define (cg-write-address dest val)
-  (append (cg-intros (list dest val))
-          (asm 'MSTORE)))
+  (append
+   (debug-label 'cg-write-address)
+   (cg-intros (list dest val))
+   (asm 'MSTORE)))
 
 (define (cg-write-address-offset dest os val)
   (append
@@ -519,24 +554,32 @@ These optimizations are currently unimplemented:
 
 
 (define (cg-null? exp)
-  (append (cg-mexpr exp)
-          (cg-tag stack)
-          (cg-eq? stack (const TAG-NIL))))
+  (append
+   (debug-label 'cg-null?)
+   (cg-tag exp)
+   (cg-eq? (const TAG-NIL) stack)))
 
 (define (cg-pair? exp)
-  (append (cg-mexpr exp)
-          (cg-tag stack)
-          (cg-eq? stack (const TAG-PAIR))))
+  (append
+   (debug-label 'cg-pair?)
+   (cg-tag exp)
+   (cg-eq? (const TAG-PAIR) stack)))
 
-(define (cg-car exp) 
-  (cg-read-address-offset exp (const 1)))
+(define (cg-car exp)
+  (append
+   (debug-label 'cg-car)
+   (cg-read-address-offset exp (const 1))))
 
 (define (cg-cdr exp)
-  (cg-read-address-offset exp (const 2)))
+  (append
+   (debug-label 'cg-cdr)
+   (cg-read-address-offset exp (const 2))))
 
 (define (cg-list->stack exp)
-  (append (cg-list->vector exp)
-          (cg-vector->stack stack)))     
+  (append
+   (debug-label 'cg-list->stack)
+   (cg-list->vector exp)
+   (cg-vector->stack stack)))     
 
 ; PSEUDOCODE
 ; (define (list->vector list)
@@ -587,10 +630,14 @@ These optimizations are currently unimplemented:
      (cg-pop 3))))                       ; [ ]
 
 (define (cg-set-car! addr val)
-  (cg-write-address-offset addr (const 1) val))
+  (append
+   (debug-label 'cg-set-car!)
+   (cg-write-address-offset addr (const 1) val)))
 
 (define (cg-set-cdr! addr val)
-  (cg-write-address-offset addr (const 2) val))
+  (append
+   (debug-label 'cg-set-cdr!)
+   (cg-write-address-offset addr (const 2) val)))
 
 ; PSEUDOCODE
 #|
@@ -667,7 +714,9 @@ These optimizations are currently unimplemented:
      (cg-pop 2))))                ; [ xs ]
 
 (define (cg-vector-len vec)
-  (cg-read-address-offset vec (const 2)))
+  (append
+   (debug-label 'cg-vector-len)
+   (cg-read-address-offset vec (const 2))))
 
 (define (cg-vector-write vec os val)
   (append
@@ -733,18 +782,26 @@ These optimizations are currently unimplemented:
 
 
 (define (cg-make-fixnum val)
-  (cg-allocate-initialize (const 2) (list (const TAG-FIXNUM) val)))
+  (append
+   (debug-label 'cg-make-fixnum)
+   (cg-allocate-initialize (const 2) (list (const TAG-FIXNUM) val))))
 
 (define (cg-make-symbol sym)
-  (cg-allocate-initialize (const 2) (list (const TAG-SYMBOL) sym)))
+  (append
+   (debug-label 'cg-make-symbol)
+   (cg-allocate-initialize (const 2) (list (const TAG-SYMBOL) sym))))
 
 (define (cg-make-compiled-procedure code env)
-  (cg-allocate-initialize (const 3) (list (const TAG-COMPILED-PROCEDURE) code env)))
+  (append
+   (debug-label 'cg-make-compiled-procedure)
+   (cg-allocate-initialize (const 3) (list (const TAG-COMPILED-PROCEDURE) code env))))
 
 ;(define (cg-make-primitive-procedure code env)
 
 (define (cg-make-pair fst snd)
-  (cg-allocate-initialize (const 3) (list (const TAG-PAIR) fst snd)))
+  (append
+   (debug-label 'cg-make-pair)
+   (cg-allocate-initialize (const 3) (list (const TAG-PAIR) fst snd))))
 
 (define cg-cons cg-make-pair)
 
@@ -763,16 +820,19 @@ These optimizations are currently unimplemented:
 (define (cg-make-nil) (list (eth-push 1 MEM-NIL)))
 ;  (cg-allocate-initialize (const 1) (list (const TAG-NIL))))
 
+; NOTE: It is currently only valid to call cg-make-list on non-stack items.
 (define (cg-make-list lst)
+  (define (loop n)
+    (if (eq? n 0) ; [ lst; *vals ]
+        '()
+        (append
+         (cg-swap 1)              ; [ val'; lst; *vals ]
+         (cg-cons stack stack)))) ; [ 'lst; *vals ]
   (append
    (debug-label 'cg-make-list)
-   (if (null? lst)
-       (cg-make-nil)
-       (append
-        (cg-mexpr (car lst))
-        (cg-make-list (cdr lst))
-        (cg-swap 2)
-        (cg-cons stack stack)))))
+   (cg-intros (reverse lst)) ; [ *vals ]
+   (cg-make-nil)             ; [ nil; *vals ]
+   (loop (length lst))))
 
 (define (cg-allocate size)
   (append
@@ -820,12 +880,15 @@ These optimizations are currently unimplemented:
    (cg-write-address (const MEM-ENV) stack)
    ; Initialize the memory-backed registers
    (cg-write-address (const MEM-CONTINUE) (const 31337))
+   (cg-write-address (const MEM-PROC)     (const 1337))
+   (cg-write-address (const MEM-ARGL)     (const 337))
    ; Initialize global constants
    (cg-write-address (const MEM-NIL) (const TAG-NIL))
    ))
 
 (define (cg-make-environment)
   (append
+   (debug-label 'cg-make-environment)
    (cg-make-nil)   ; Enclosing environment
    (cg-make-frame) ; Empty frame
    (cg-cons stack stack)
@@ -833,6 +896,7 @@ These optimizations are currently unimplemented:
 
 (define (cg-make-frame)
   (append
+   (debug-label 'cg-make-frame)
    (cg-make-nil)
    (cg-make-nil)
    (cg-cons stack stack)))
@@ -840,6 +904,7 @@ These optimizations are currently unimplemented:
 ; TODO: Make this work for more than just integers.
 (define (cg-return exp)
   (append
+   (debug-label 'cg-return)
    (cg-add (const WORD) exp)
    `(,(eth-push 1 WORD))
    (cg-reverse 2)   
@@ -858,23 +923,33 @@ These optimizations are currently unimplemented:
 (: cg-sub (Generator2 MExpr MExpr))
 
 (define (cg-unbox-integer exp)
-  (cg-read-address-offset exp (const 1)))
+  (append
+   (debug-label 'cg-unbox-integer)
+   (cg-read-address-offset exp (const 1))))
 
 (define (cg-eq? a b)
-  (append (cg-intros (list a b))
-          (asm 'EQ)))
+  (append
+   (debug-label 'cg-eq?)
+   (cg-intros (list a b))
+   (asm 'EQ)))
 
 (define (cg-mul a b)
-  (append (cg-intros (list a b))
-          (asm 'MUL)))
+  (append
+   (debug-label 'cg-mul)
+   (cg-intros (list a b))
+   (asm 'MUL)))
 
 (define (cg-add a b)
-  (append (cg-intros (list a b))
-          (asm 'ADD)))
+  (append
+   (debug-label 'cg-add)
+   (cg-intros (list a b))
+   (asm 'ADD)))
 
 (define (cg-sub a b)
-  (append (cg-intros (list a b))
-          (asm 'SUB)))
+  (append
+   (debug-label 'cg-sub)
+   (cg-intros (list a b))
+   (asm 'SUB)))
 
 ; Record that a label is located at a specific Ethereum bytecode offset.
 ;; (: mark-label (-> LabelName Address Void))
@@ -932,10 +1007,20 @@ Remaining 3 stk arguments ignored.
         '()
         (let ((x (car exprs))
               (xs (cdr exprs)))
-          (append (if (stack-write? x)
-                      (cg-insert x n)
-                      '())
-                  (loop xs (+ n 1))))))
+          (append
+           (cond ((stack-read? x)
+                  (append
+                   (debug-label 'cg-intros-stack-read)
+                   (cg-swap n)
+                   (cg-mexpr x)
+                   (cg-swap n)))
+                 ((stack-write? x)
+                  (append
+                   (debug-label 'cg-intros-stack-write)
+                   (cg-insert x n)))
+                 (else
+                  (debug-label 'cg-intros-null)))
+           (loop xs (+ n 1))))))
   (loop exprs 0))
 
 #|
@@ -958,12 +1043,30 @@ SWAP1 -> [ x1; x2; x3; c ]
 
 ; The only expressions that don't affect the stack are reads from the stack-aliased registers.
 (define (stack-write? exp)
-  (cond ((reg? exp) (or (eq? (reg-name exp) 'env)
-                        (eq? (reg-name exp) 'continue)))
-        (else true)))
+  (cond ((reg? exp)
+         (let ((reg (reg-name exp)))
+           (or (eq? reg 'env)
+               (eq? reg 'proc)
+               (eq? reg 'continue)
+               (eq? reg 'argl))))
+          (else true)))
+
+(define (stack-read? exp)
+  (define (is-stack? x) (and (reg? x)
+                             (eq? 'val (reg-name x))))
+  (if (op? exp)
+      (if (list? (op-args exp))
+          (memf is-stack? (op-args exp))
+          (is-stack? (op-args exp)))
+      false))
 
 ; Debug labels are not used for flow control. They generate entries in the relocation table that
 ; help locate the code that generated an assembly fragment. They have 1 byte of overhead for a
 ; JUMPDEST instruction, but even that could be eliminated if necessary.
 (define (debug-label sym) (list (make-label sym)))
 ; (define (debug-label sym) '())
+
+(: cg-throw (Generator Symbol))
+(define (cg-throw sym)
+  (append (debug-label sym)
+          (asm 'REVERT)))
