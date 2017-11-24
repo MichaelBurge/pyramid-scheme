@@ -342,6 +342,11 @@ Either a label or integer can be pushed onto the stack.
 (define (integer->hex n)
   (bytes->hex-string (integer->bytes n assumed-label-size #f)))
       
+(: instruction-size (-> EthInstruction Fixnum))
+(define (instruction-size i)
+  (if (eth-push? i)
+      (+ 1 (eth-push-size i))
+      1))
 
 ;; (remember-label (label 'derp))
 ;; (push-true-value (eth-push 5 'derp))

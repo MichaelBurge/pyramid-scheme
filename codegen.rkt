@@ -210,9 +210,9 @@ These optimizations are currently unimplemented:
 (define (cg-op-apply-primitive-procedure proc argl)
   (append
    (debug-label 'cg-op-apply-primitive-procedure)
+   (cg-intros (list proc argl))
    ; Arguments passed as a dynamic list.
-   (cg-mexpr argl)
-   (cg-op-primitive-procedure-entry proc)
+   (cg-op-primitive-procedure-entry stack)
    (asm 'JUMP)))
 
 (define (cg-op-cons a b)
@@ -316,48 +316,48 @@ These optimizations are currently unimplemented:
     (append
      (debug-label 'cg-op-define-variable!)
      (cg-intros (list name value env))
-     ; Stack:            [ name; value; env ]              ; len = 3
-     (asm 'DUP3)       ; [ env; name; value; env ]         ; len = 4
-     (cg-car stack)    ; [ frame; name; value; env ]       ; len = 4
-     ; Stack:            [ frame; name; value; env ]       ; len = 4
-     (asm 'DUP1)       ; [ +frame ]                        ; len = 5
-     (cg-cdr stack)    ; [ -frame; +fvals ]                ; len = 5
-     (asm 'SWAP1)      ; [ frame <=> fvals ]               ; len = 5
-     (cg-car stack)    ; [ -frame; +fvars ]                ; len = 5
-     ; Stack:            [ fvars; fvals; name; value; env ]; len = 5
+     ; Stack:            [ name; value; env ]
+     (asm 'DUP3)       ; [ env; name; value; env ]
+     (cg-car stack)    ; [ frame; name; value; env ]
+     ; Stack:            [ frame; name; value; env ]
+     (asm 'DUP1)       ; [ frame; frame; name; value; env ]
+     (cg-cdr stack)    ; [ fvals; frame; name; value; env ]
+     (asm 'SWAP1)      ; [ frame; fvals; name; value; env ]
+     (cg-car stack)    ; [ fvars; fvals; name; value; env ]
+     ; Stack:            [ fvars; fvals; name; value; env ]
      `(,scan)
-     (asm 'DUP1)       ; [ +fvars ]                        ; len = 6
-     (cg-null? stack)  ; [ -fvars; +null? ]                ; len = 6
-     (asm 'ISZERO)     ; [ -null? ; + !null? ]             ; len = 6
-     (cg-branch scan-else-1 stack) ; [ - ! null? ]         ; len = 5
-     (cg-pop 2)        ; [ -fvars; -fvals ]                ; len = 3
-     (asm 'SWAP2)      ; [ env; value; name ]              ; len = 3
-     (cg-car stack)    ; [ frame; value; name ]            ; len = 3
-     (asm 'SWAP2)      ; [ name; value; frame ]            ; len = 3
-     (cg-add-binding-to-frame stack stack stack) ; [ -name; -value; -env ] ; len = 0
-     (cg-goto term) ; []                           ; len = 0
-     ; Stack:            [ fvars; fvals; name; value; env ]; len = 5
+     (asm 'DUP1)       ; [ fvars; fvars; fvals; name; value; env ]
+     (cg-null? stack)  ; [ null?; fvars; fvals; name; value; env ]
+     (asm 'ISZERO)     ; [ !null?; fvars; fvals; name; value; env ]
+     (cg-branch scan-else-1 stack) ; [ fvars; fvals; name; value; env ]
+     (cg-pop 2)        ; [ name; value; env ]
+     (asm 'SWAP2)      ; [ env; value; name ]
+     (cg-car stack)    ; [ frame; value; name ]
+     (asm 'SWAP2)      ; [ name; value; frame ]
+     (cg-add-binding-to-frame stack stack stack) ; [ ]
+     (cg-goto term) ; []
+     ; Stack:               [ fvars; fvals; name; value; env ]
      `(,scan-else-1)
-     (asm 'DUP3)       ; [ +name ]                         ; len = 6
-     (asm 'DUP1)       ; [ +fvars ]                        ; len = 7
-     (cg-car stack)    ; [ -fvars; name' ]                 ; len = 7
-     (cg-eq? stack stack) ; [ -name'; -name; +(eq? name' name)]; len = 6
-     (asm 'ISZERO)     ; [ -(eq? name name'); name != name']; len = 6
-     (cg-branch scan-else-2 stack) ; [ - name != name' ]   ; len = 5
-     ; Stack:            [ fvars; fvals; name; value; env ]; len = 5
-     (asm 'SWAP1)      ; [ fvals <-> fvars ]               ; len = 4
-     (asm 'DUP4)       ; [ +value ]                        ; len = 5
-     (cg-reverse 2)    ; [ fvals <-> value ]               ; len = 5
-     (cg-set-car! stack stack) ; [ -value; -fvals ]        ; len = 3
-     (cg-pop 3)        ; [ -name; -value; -env ]           ; len = 0
-     (cg-goto term)                                ; len = 0
-     ; Stack             [ fvars; fvals; name; value; env ]; len = 5
+     (asm 'DUP3)          ; [ name; fvars; fvals; name; value; env ]
+     (asm 'DUP2)          ; [ fvars; name; fvars; fvals; name; value; env ]
+     (cg-car stack)       ; [ name'; name; fvars; fvals; name; value; env ]
+     (cg-eq? stack stack) ; [ eq?; fvars; fvals; name; value; env ]
+     (asm 'ISZERO)        ; [ neq?; fvars; fvals; name; value; env ]
+     (cg-branch scan-else-2 stack) ; [ fvars; fvals; name; value; env ]
+     ; Stack:               [ fvars; fvals; name; value; env ]
+     (asm 'SWAP1)         ; [ fvals; fvars; name; value; env ]
+     (asm 'DUP4)          ; [ value; fvals; fvars; name; value; env ]
+     (cg-reverse 2)       ; [ fvals; value; fvars; name; value; env ]
+     (cg-set-car! stack stack) ; [ fvars; name; value; env ]
+     (cg-pop 4)           ; [ ]
+     (cg-goto term)       ; [ ]
+     ; Stack                [ fvars; fvals; name; value; env ]
      `(,scan-else-2)
-     (cg-cdr stack)    ; [ -fvars; +(cdr fvars) ]          ; len = 5
-     (cg-reverse 2)    ; [ fvals <-> fvars ]               ; len = 5
-     (cg-cdr stack)    ; [ -fvals; +(cdr fvals) ]          ; len = 5
-     (cg-reverse 2)    ; [ fvals <-> fvars ]               ; len = 5
-     (cg-goto scan)
+     (cg-cdr stack)       ; [ fvars'; fvals; name; value; env ]
+     (cg-reverse 2)       ; [ fvals; fvars'; name; value; env ]
+     (cg-cdr stack)       ; [ fvals'; fvars'; name; value; env ]
+     (cg-reverse 2)       ; [ fvars'; fvals'; name; value; env ]
+     (cg-goto scan)       ; [ fvars'; fvals'; name; value; env ]
      `(,term))))
 
 (define (cg-op-false? exp)
@@ -472,9 +472,11 @@ These optimizations are currently unimplemented:
           (asm 'JUMPI)))
 
 (define (cg-reverse size)
-  (if (eq? size 2)
-      (asm 'SWAP1)
-      (error "Unsupported size -- cg-reverse" size)))
+  (cond ((eq? size 2) (asm 'SWAP1))
+        ((eq? size 3)  ; [ x1; x2; x3 ]
+         (asm 'SWAP2)) ; [ x3; x2; x1 ]
+        (else
+         (error "Unsupported size -- cg-reverse" size))))
 
 (define (cg-pop size)
   (if (eq? size 0)
@@ -901,6 +903,8 @@ These optimizations are currently unimplemented:
 
 (define (cg-install-standard-library)
   (let ((label-= (make-label '=))
+        (label-* (make-label '*))
+        (label-sub (make-label 'sub))
         (label-install (make-label 'install)))
     (append
      (debug-label 'cg-install-standard-library)
@@ -908,12 +912,42 @@ These optimizations are currently unimplemented:
      ; = operator
      `(,label-=)
      (cg-unroll-list 2 (reg 'argl))
+     (cg-unbox-integer stack)
+     (asm 'SWAP1)
+     (cg-unbox-integer stack)
      (cg-eq? stack stack)
+     (cg-make-fixnum stack)
+     (cg-goto (reg 'continue))
+     ; * operator
+     `(,label-*)
+     (cg-unroll-list 2 (reg 'argl))
+     (cg-unbox-integer stack)
+     (asm 'SWAP1)
+     (cg-unbox-integer stack)
+     (cg-mul stack stack)
+     (cg-make-fixnum stack)
+     (cg-goto (reg 'continue))
+     ; - operator
+     `(,label-sub)
+     (cg-unroll-list 2 (reg 'argl))
+     (cg-unbox-integer stack)
+     (asm 'SWAP1)
+     (cg-unbox-integer stack)
+     (cg-sub stack stack)
+     (cg-make-fixnum stack)
      (cg-goto (reg 'continue))
      ; Install the primitives
      `(,label-install)
      (cg-make-primitive-procedure label-=)
-     (cg-op-define-variable! (const '=) stack (reg 'env)))))
+     (cg-op-define-variable! (const '=) stack (reg 'env))
+     
+     (cg-make-primitive-procedure label-*)
+     (cg-op-define-variable! (const '*) stack (reg 'env))
+
+     (cg-make-primitive-procedure label-sub)
+     (cg-op-define-variable! (const '-) stack (reg 'env))
+     )))
+                                  
 
 (define (cg-make-environment)
   (append
@@ -941,15 +975,20 @@ These optimizations are currently unimplemented:
 
 (: cg-unroll-list (Generator Fixnum))
 (define (cg-unroll-list num exp)
-  (if (eq? num 0)
-      '()
-      (append
-       (cg-mexpr exp)
-       (asm 'DUP1)
-       (cg-car stack)
-       (asm 'SWAP1)
-       (cg-cdr stack)
-       (cg-unroll-list (- num 1) stack))))
+  (define (loop n)
+    (if (eq? n 0)
+        '()
+        (append
+         (asm 'DUP1)
+         (cg-car stack)
+         (asm 'SWAP1)
+         (cg-cdr stack)
+         (loop (- n 1)))))
+  (append
+   (debug-label 'cg-unroll-list)
+   (cg-mexpr exp)
+   (loop num)
+   (cg-reverse (+ num 1)))) ; +1 because of trailing NIL or tail
 
 ;;; Arithmetic
 

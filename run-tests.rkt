@@ -48,19 +48,31 @@
 
 (: prog-eq? Pyramid)
 (define prog-eq?
-  '((= 9876 5432)))
+  '(= 1234 1234))
+  ; '(= 9876 5432))
+
+(: prog-multiply Pyramid)
+(define prog-multiply
+  '(begin
+     (define x1 1)
+     (define x2 (* x1 2))
+     (define x3 (* x2 3))
+     (define x4 (* x3 4))
+     (define x5 (* x4 5))
+     x5))
 
 (: prog-factorial Pyramid)
 (define prog-factorial 
-  '((define (factorial n)
-     (if (= n 1)
-         1
-         (* (factorial (- n 1)) n)))
-    (factorial 10)))
+  '(begin
+     (define (factorial n)
+       (if (= n 1)
+           1
+           (* (factorial (- n 1)) n)))
+     (factorial 5)))
 
 ; (display-all (inst-seq-statements (compile-pyramid prog-factorial 'val 'next)))
 
-(full-debug-output prog-eq?)
+(full-debug-output prog-multiply)
 
 ;; (define prog prog-const)
 

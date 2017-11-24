@@ -2,6 +2,7 @@
 // 2. Paste the output of dissassembler.rkt into Program
 // 3. Paste this file into the script editor
 // 4. "EVM Simulator"->"Show Sidebar"->"Initialize"
+
 var COL_STEP = 0;
 var COL_SYMBOL = 1;
 var COL_PC = 2;
@@ -10,6 +11,8 @@ var COL_MEMORY = 4;
 var COL_INSTRUCTION = 5;
 
 var COL_PROG_PC = 0;
+var COL_PROG_SYMBOL = 1;
+var COL_PROG_INSTRUCTION = 2;
 
 // UI
 function onOpen() {
@@ -41,7 +44,16 @@ function next() { nextn(1); }
 function next10() { nextn(10); }
 function next50() { nextn(50); }
 function next100() { nextn(100); }
-function next1000() { nextn(1000); }
+function next1000() {
+    for (var i = 0; i < 10; i++) {
+        next100();
+    }
+}
+function next10000() {
+    for (var i = 0; i < 10; i++) {
+        next1000();
+    }
+}
 
 function nextn(n) {
     var machine = getCurrentState();
@@ -115,13 +127,14 @@ function dispatch(machine, i) { // instruction
             Logger.log("Unhandled instruction", op[0]);
             _signalError(machine); break;
     }
-    machine.pc = _normalizePc(machine.instructionTable, machine.pc+1);
+    machine.pc++;
     machine.step++;
     return machine;
 }
 
 function op_push(machine, size, data) {
     _pushStack(machine, data);
+    machine.pc += size;
 }
 
 function op_pop(machine) {
@@ -189,16 +202,27 @@ function op_binop(machine, f) {
 function getCurrentState() {
     var sheet = simulationSheet();
     var row = lastRow();
+    var instructionTable = programSheet().getDataRange().getValues();
     var machine = {
         step: parseInt(row[COL_STEP]),
         pc: parseInt(row[COL_PC],16),
         stack: JSON.parse(row[COL_STACK]),
         memory: JSON.parse(row[COL_MEMORY]),
         instruction: row[COL_INSTRUCTION],
-        instructionTable: programSheet().getDataRange().getValues()
+        instructionTable: instructionTable,
+        pcRows: buildPcRows(instructionTable)
     };
     updateExtraInfo(machine);
     return machine;
+}
+
+function buildPcRows(instructionTable) {
+    var ret = {};
+    for (var i = 1; i < instructionTable.length; i++) {
+        var pc = parseInt(instructionTable[i][COL_PROG_PC], 16);
+        ret[pc] = i;
+    }
+    return ret;
 }
 
 function newMachineRow(machine) {
@@ -206,39 +230,15 @@ function newMachineRow(machine) {
 }
 
 function insertRowsAt(sheet, index, rows) {
-    sheet.getRange(index, 1, rows.length, rows[0].length).setValues(rows);
+    if (rows.length > 0) {
+        sheet.getRange(index, 1, rows.length, rows[0].length).setValues(rows);
+    }
 }
 
 function updateExtraInfo(machine) {
-    machine.rowId = _pcRowId(machine.instructionTable, machine.pc);
-    machine.symbol = machine.instructionTable[machine.rowId-1][1];
-    machine.instruction = machine.instructionTable[machine.rowId-1][2];
-}
-
-function _find(data, pred) {
-    for (var i = 1; i < data.length; i++) {
-        var row = data[i];
-        if (pred(i, row)) {
-            return [i, row];
-        }
-    }
-    return null;
-}
-
-// Labels and push instructions create holes in the range of PC.
-// Sets PC to the first valid row with PC <= target.
-function _normalizePc(instructionTable, target) {
-    var result = _find(instructionTable, function(i, row) {
-        return parseInt(row[COL_PROG_PC], 16) >= target;
-    });
-    return parseInt(result[1][COL_PROG_PC], 16);
-}
-
-function _pcRowId(instructionTable, pc) {
-    var result = _find(instructionTable, function(i, row) {
-        return parseInt(row[COL_PROG_PC], 16) >= pc;
-    });
-    return result[0]+1;
+    machine.rowId = machine.pcRows[machine.pc];
+    machine.symbol = machine.instructionTable[machine.rowId][1];
+    machine.instruction = machine.instructionTable[machine.rowId][2];
 }
 
 function _pushStack(machine, value) {
