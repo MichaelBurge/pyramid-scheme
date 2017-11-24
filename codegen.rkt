@@ -16,7 +16,7 @@ The abstract machine uses 5 256-bit virtual registers
 * proc:     &(2 * WORD)
 * continue: &(3 * WORD)
 * argl:     &(4 * WORD)
-* val:      STACK
+* val:      &(5 * WORD)
 
 Addresses have 8-bit granularity, so we multiply by WORD so they don't overlap.
 Arguments to procedures are passed on the stack. The first argument is the first stack entry.
@@ -86,9 +86,10 @@ These optimizations are currently unimplemented:
 (define MEM-PROC          #x40)
 (define MEM-CONTINUE      #x60)
 (define MEM-ARGL          #x80)
-(define MEM-NIL           #xa0)
-(define MEM-ALLOCATOR     #xc0)
-(define MEM-DYNAMIC-START #xe0) ; This should be the highest hardcoded memory address.
+(define MEM-VAL           #xa0)
+(define MEM-NIL           #xc0)
+(define MEM-ALLOCATOR     #xe0)
+(define MEM-DYNAMIC-START #x100) ; This should be the highest hardcoded memory address.
 
 ; Global variables
 (define WORD       #x20) ; 256-bit words / 8 bit granularity addresses = 32 8-bit words, or 0x20.
@@ -139,11 +140,11 @@ These optimizations are currently unimplemented:
 
 (: cg-save    (Generator InstSave))
 (define (cg-save i)
-  (cg-write-reg (reg 'val) (reg (save-reg-name i))))
+  (cg-write-stack (reg (save-reg-name i))))
 
 (: cg-restore (Generator InstRestore))
 (define (cg-restore i)
-  (cg-write-reg (reg (restore-reg-name i)) (reg 'val)))
+  (cg-write-reg (reg (restore-reg-name i)) stack))
 
 (: cg-perform (Generator InstPerform))
 (define (cg-perform i)
@@ -382,6 +383,7 @@ These optimizations are currently unimplemented:
         ((op?    exp)  (cg-mexpr-op    exp))
         ((symbol? exp) (cg-mexpr-label (label exp)))
         ((label? exp)  (cg-mexpr-label exp))
+        ((stack? exp)  '())
         (else
          (error "Unknown mexpr - cg-mexpr" exp (list? exp)))))
 
@@ -392,7 +394,9 @@ These optimizations are currently unimplemented:
           ((eq? reg 'proc)     (cg-read-address (const MEM-PROC)))
           ((eq? reg 'continue) (cg-read-address (const MEM-CONTINUE)))
           ((eq? reg 'argl)     (cg-read-address (const MEM-ARGL)))
-          (else                (cg-mexpr-stack)))))
+          ((eq? reg 'val)      (cg-read-address (const MEM-VAL)))
+          (else
+           (error "Unknown register - cg-mexpr-reg:" dest)))))
 
 (: cg-write-reg (Generator2 reg MExpr))
 (define (cg-write-reg dest exp)
@@ -401,7 +405,9 @@ These optimizations are currently unimplemented:
           ((eq? reg 'proc)     (cg-write-address (const MEM-PROC)  exp))
           ((eq? reg 'continue) (cg-write-address (const MEM-CONTINUE) exp))
           ((eq? reg 'argl)     (cg-write-address (const MEM-ARGL) exp))
-          (else                (cg-write-stack exp)))))
+          ((eq? reg 'val)      (cg-write-address (const MEM-VAL) exp))
+          (else
+           (error "Unknown register - cg-write-reg:" dest exp)))))
 
 (: cg-mexpr-const (Generator const))
 (define (cg-mexpr-const exp)
@@ -546,9 +552,6 @@ These optimizations are currently unimplemented:
     (loop lst 0)))
 
 (define (asm sym) (list (eth-asm sym)))
-
-; TODO: (+ stack (const 5)) would leave a 5 on the top of the stack, which is incorrect.
-(define stack (reg 'val))
 
 ;;; Lists
 
@@ -887,7 +890,7 @@ These optimizations are currently unimplemented:
   (append
    (debug-label 'cg-initialize-program)
    ; Set the dynamic memory allocator pointer
-   (list (eth-push 1 MEM-DYNAMIC-START))
+   (list (eth-push 2 MEM-DYNAMIC-START))
    (list (eth-push 1 MEM-ALLOCATOR))
    (cg-write-address stack stack)
    ; Initialize an empty environment
@@ -1121,22 +1124,13 @@ SWAP1 -> [ x1; x2; x3; c ]
 ; (: cg-move-front (Generator Fixnum))
 
 ; The only expressions that don't affect the stack are reads from the stack-aliased registers.
-(define (stack-write? exp)
-  (cond ((reg? exp)
-         (let ((reg (reg-name exp)))
-           (or (eq? reg 'env)
-               (eq? reg 'proc)
-               (eq? reg 'continue)
-               (eq? reg 'argl))))
-          (else true)))
+(define (stack-write? exp) (not (stack? exp)))
 
 (define (stack-read? exp)
-  (define (is-stack? x) (and (reg? x)
-                             (eq? 'val (reg-name x))))
   (if (op? exp)
       (if (list? (op-args exp))
-          (memf is-stack? (op-args exp))
-          (is-stack? (op-args exp)))
+          (memf stack? (op-args exp))
+          (stack? (op-args exp)))
       false))
 
 ; Debug labels are not used for flow control. They generate entries in the relocation table that
@@ -1149,4 +1143,3 @@ SWAP1 -> [ x1; x2; x3; c ]
 (define (cg-throw sym)
   (append (debug-label sym)
           (asm 'REVERT)))
-

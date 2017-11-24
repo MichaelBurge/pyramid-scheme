@@ -12,6 +12,7 @@
 (require "codegen.rkt")
 (require "serializer.rkt")
 (require "disassembler.rkt")
+(require "utils.rkt")
 
 ; TODO: Turn these into unit tests.
 ; TEST 1: (cg-intros (list (const 1234) (const 4321)))
@@ -21,6 +22,9 @@
 ; TEST 5: (codegen-one (save 'continue))
 ; TEST 6: (display-all (cg-intros (list (const 1) (const 2) (const 3) (const 4))))
 ; TEST 7: (eq? #f (stack-read? (op 'lookup-variable-value `(,(const 'factorial) ,(reg 'env)))))
+
+(integer-bytes 256)
+(push-true-size (eth-push 'shrink 256))
 
 (: full-debug-output (-> Pyramid Void))
 (define (full-debug-output prog)
