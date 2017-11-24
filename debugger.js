@@ -2,7 +2,6 @@
 // 2. Paste the output of dissassembler.rkt into Program
 // 3. Paste this file into the script editor
 // 4. "EVM Simulator"->"Show Sidebar"->"Initialize"
-
 var COL_STEP = 0;
 var COL_SYMBOL = 1;
 var COL_PC = 2;
@@ -49,10 +48,14 @@ function nextn(n) {
     var sheet = simulationSheet();
     var index = machine.step+2;
     var rows = [];
-    for (var i = 0; i < n; i++) {
-        machine = dispatch(machine, machine.instruction);
-        updateExtraInfo(machine);
-        rows.push(newMachineRow(machine));
+    try {
+        for (var i = 0; i < n; i++) {
+            machine = dispatch(machine, machine.instruction);
+            updateExtraInfo(machine);
+            rows.push(newMachineRow(machine));
+        }
+    } catch (e) {
+        // _signalError aborts, but we still need to write what rows we could.
     }
     insertRowsAt(sheet, index, rows);
     SpreadsheetApp.flush();
@@ -73,12 +76,6 @@ function lastRow() {
     var rowId = range.getLastRow() - 1;
     var data = range.getValues();
     return data[rowId];
-}
-
-
-
-function instructionAt(machine, rowId) {
-    return machine.instructionTable[rowId-1][2];
 }
 
 function dispatch(machine, i) { // instruction
@@ -214,8 +211,8 @@ function insertRowsAt(sheet, index, rows) {
 
 function updateExtraInfo(machine) {
     machine.rowId = _pcRowId(machine.instructionTable, machine.pc);
-    machine.symbol = machine.instructionTable[machine.rowId][1];
-    machine.instruction = machine.instructionTable[machine.rowId][2];
+    machine.symbol = machine.instructionTable[machine.rowId-1][1];
+    machine.instruction = machine.instructionTable[machine.rowId-1][2];
 }
 
 function _find(data, pred) {
