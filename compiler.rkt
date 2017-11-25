@@ -254,8 +254,7 @@
          (end-with-linkage linkage
                            (inst-seq '(continue proc argl)
                                      (list target)
-                                     (list (assign 'continue after-call)
-                                           (assign target
+                                     (list (assign target
                                                    (op 'apply-primitive-procedure
                                                        `(,(reg 'proc)
                                                          ,(reg 'argl)))))))))

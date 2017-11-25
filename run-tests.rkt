@@ -46,24 +46,27 @@
 
 ; (serialize-print (codegen-one (assign 'val (const 9999))))
 
-;; (: prog-assign Pyramid)
-;; (define prog-assign
-;;   '(define x 1234))
+(: prog-assign Pyramid)
+(define prog-assign
+  '(define x 1234))
 
 (: prog-eq? Pyramid)
 (define prog-eq?
   '(= 1234 1234))
   ; '(= 9876 5432))
 
+(: prog-define Pyramid)
+(define prog-define
+  '(begin
+     (define x1 1)
+     x1))
+
 (: prog-multiply Pyramid)
 (define prog-multiply
   '(begin
-     (define x1 1)
-     (define x2 (* x1 2))
-     (define x3 (* x2 3))
-     (define x4 (* x3 4))
-     (define x5 (* x4 5))
-     x5))
+     (define x1 9999)
+     (define x2 (* x1 7777))
+     x2))
 
 (: prog-factorial Pyramid)
 (define prog-factorial 

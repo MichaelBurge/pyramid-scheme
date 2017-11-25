@@ -101,7 +101,7 @@ These optimizations are currently unimplemented:
    (cg-initialize-program)
    (cg-install-standard-library)
    (codegen-list is)
-   (cg-return stack)))
+   (cg-return (reg 'val))))
 
 (: codegen-list (Generator Instructions))
 (define (codegen-list is)
@@ -132,23 +132,38 @@ These optimizations are currently unimplemented:
 (define (cg-assign i)
   (let ((value   (assign-value-exp i))
         (target (assign-reg-name i)))
-    (cg-write-reg (reg target) value)))
+    (append
+     (debug-label 'cg-assign)
+     (cg-write-reg (reg target) value)
+     (debug-label 'cg-assign-end))))
 
 (: cg-test    (Generator InstTest))
 (define (cg-test i)
-  (cg-mexpr (test-condition i)))
+  (append
+   (debug-label 'cg-test)
+   (cg-mexpr (test-condition i))
+   (debug-label 'cg-test-end)))
 
 (: cg-save    (Generator InstSave))
 (define (cg-save i)
-  (cg-write-stack (reg (save-reg-name i))))
+  (append
+   (debug-label 'cg-save)
+   (cg-write-stack (reg (save-reg-name i)))
+   (debug-label 'cg-save-end)))
 
 (: cg-restore (Generator InstRestore))
 (define (cg-restore i)
-  (cg-write-reg (reg (restore-reg-name i)) stack))
+  (append
+   (debug-label 'cg-restore)
+   (cg-write-reg (reg (restore-reg-name i)) stack)
+   (debug-label 'cg-restore-end)))
 
 (: cg-perform (Generator InstPerform))
 (define (cg-perform i)
-  (cg-mexpr-op (perform-action i)))
+  (append
+   (debug-label 'cg-perform)
+   (cg-mexpr-op (perform-action i))
+   (debug-label 'cg-perform-end)))
 
 ;;; Primitive operations emitted by the abstract compiler
 
@@ -209,12 +224,15 @@ These optimizations are currently unimplemented:
    (cg-read-address-offset obj (const 1))))
 
 (define (cg-op-apply-primitive-procedure proc argl)
-  (append
-   (debug-label 'cg-op-apply-primitive-procedure)
-   (cg-intros (list proc argl))
-   ; Arguments passed as a dynamic list.
-   (cg-op-primitive-procedure-entry stack)
-   (asm 'JUMP)))
+  (let ((after-op (make-label 'after-op)))
+    (append
+     (debug-label 'cg-op-apply-primitive-procedure)
+     (cg-intros (list proc argl after-op))
+     ; Arguments passed as a dynamic list.
+     (cg-op-primitive-procedure-entry stack) ; [ primop-entry; args; return ]
+     (asm 'JUMP)
+     `(,after-op))))
+
 
 (define (cg-op-cons a b)
   (append (debug-label 'cg-op-cons)
@@ -909,36 +927,33 @@ These optimizations are currently unimplemented:
         (label-* (make-label '*))
         (label-sub (make-label 'sub))
         (label-install (make-label 'install)))
+    ; A binop has
+    ; Input:  [ argl = [ x1; x2; nil ] ] ; length = 1
+    ; Output: [ result ]                 ; length = 1
+    (define (binop-wrap xs)    ; [ argl; return ]
+      (append
+       (cg-unroll-list 2 stack) ; [ x1; x2; nil; return ]  
+       (cg-swap 2)              ; [ nil; x2; x1; return ]
+       (cg-pop 1)               ; [ x2; x1; return ]
+       (cg-unbox-integer stack) ; [ x2'; x1; return ]
+       (asm 'SWAP1)             ; [ x1; x2'; return ]
+       (cg-unbox-integer stack) ; [ x1'; x2'; return ]
+       xs                       ; [ result; return ]
+       (cg-make-fixnum stack)   ; [ result'; return ]
+       (cg-swap 1)              ; [ return; result' ]
+       (cg-goto stack)))        ; [ result' ]
     (append
      (debug-label 'cg-install-standard-library)
      (cg-goto label-install)
      ; = operator
-     `(,label-=)
-     (cg-unroll-list 2 (reg 'argl))
-     (cg-unbox-integer stack)
-     (asm 'SWAP1)
-     (cg-unbox-integer stack)
-     (cg-eq? stack stack)
-     (cg-make-fixnum stack)
-     (cg-goto (reg 'continue))
+     `(,label-=)              
+     (binop-wrap (cg-eq? stack stack))
      ; * operator
      `(,label-*)
-     (cg-unroll-list 2 (reg 'argl))
-     (cg-unbox-integer stack)
-     (asm 'SWAP1)
-     (cg-unbox-integer stack)
-     (cg-mul stack stack)
-     (cg-make-fixnum stack)
-     (cg-goto (reg 'continue))
+     (binop-wrap (cg-mul stack stack))
      ; - operator
      `(,label-sub)
-     (cg-unroll-list 2 (reg 'argl))
-     (cg-unbox-integer stack)
-     (asm 'SWAP1)
-     (cg-unbox-integer stack)
-     (cg-sub stack stack)
-     (cg-make-fixnum stack)
-     (cg-goto (reg 'continue))
+     (binop-wrap (cg-sub stack stack))
      ; Install the primitives
      `(,label-install)
      (cg-make-primitive-procedure label-=)
@@ -976,7 +991,8 @@ These optimizations are currently unimplemented:
    (cg-reverse 2)   
    (asm 'RETURN)))
 
-(: cg-unroll-list (Generator Fixnum))
+; Leaves [ x1; x2; ... ; xn; remaining list ] on the stack.
+(: cg-unroll-list (Generator2 Fixnum MExpr))
 (define (cg-unroll-list num exp)
   (define (loop n)
     (if (eq? n 0)
