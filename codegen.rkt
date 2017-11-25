@@ -26,6 +26,8 @@ General Scheme objects must be "boxed" into a pointer.
 Unboxed numbers could also be manipulated, but cannot be queried for their type and have no memory address.
 In particular, unboxed numbers cannot be returned as the final program result, because RETURN acts on memory.
 
+Boolean values are unboxed, since they are usually immediately consumed. They can be explicitly boxed if necessary.
+
 Boxed values are pointers to a tag. Depending on the tag, additional data follows:
  * 0: Fixnum:              1 word      - The number's value
  * 1: Symbol:              1 word      - 32 8-bit ASCII characters
@@ -118,8 +120,8 @@ These optimizations are currently unimplemented:
         ((symbol?  i) (error "Unexpected symbol - codegen-one"))
         ((assign?  i) (cg-assign  i))
         ((test?    i) (cg-test    i))
-        ((branch?  i) (cg-branch  (branch-dest i) stack))
-        ((goto?    i) (cg-goto    (goto-dest i)))
+        ((branch?  i) (cg-branch (branch-dest i) stack))
+        ((goto?    i) (cg-goto (goto-dest i)))
         ((save?    i) (cg-save    i))
         ((restore? i) (cg-restore i))
         ((perform? i) (cg-perform i))
@@ -691,7 +693,7 @@ These optimizations are currently unimplemented:
      `(,loop)
      (asm 'DUP1)              ; [ +list ]
      (cg-pair? exp)           ; [ -list; + pair? ]
-     (cg-op-false? stack)     ; [ -pair?; + ! pair? ]
+     (asm 'ISZERO)            ; [ -pair?; + ! pair? ]
      (cg-branch terminate stack) ; [ - ! pair? ]
      (asm 'SWAP1)             ; [ len <-> list ]
      (cg-add stack (const 1)) ; [ -len; +len' ]
@@ -942,12 +944,24 @@ These optimizations are currently unimplemented:
        (cg-make-fixnum stack)   ; [ result'; return ]
        (cg-swap 1)              ; [ return; result' ]
        (cg-goto stack)))        ; [ result' ]
+    (define (unboxed-binop-wrap xs)
+      (append
+       (cg-unroll-list 2 stack) ; [ x1; x2; nil; return ]  
+       (cg-swap 2)              ; [ nil; x2; x1; return ]
+       (cg-pop 1)               ; [ x2; x1; return ]
+       (cg-unbox-integer stack) ; [ x2'; x1; return ]
+       (asm 'SWAP1)             ; [ x1; x2'; return ]
+       (cg-unbox-integer stack) ; [ x1'; x2'; return ]
+       xs                       ; [ result; return ]
+       (cg-swap 1)              ; [ return; result ]
+       (cg-goto stack)))        ; [ result ]
+      
     (append
      (debug-label 'cg-install-standard-library)
      (cg-goto label-install)
      ; = operator
      `(,label-=)              
-     (binop-wrap (cg-eq? stack stack))
+     (unboxed-binop-wrap (cg-eq? stack stack))
      ; * operator
      `(,label-*)
      (binop-wrap (cg-mul stack stack))

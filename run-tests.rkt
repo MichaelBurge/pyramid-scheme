@@ -22,9 +22,9 @@
 ; TEST 5: (codegen-one (save 'continue))
 ; TEST 6: (display-all (cg-intros (list (const 1) (const 2) (const 3) (const 4))))
 ; TEST 7: (eq? #f (stack-read? (op 'lookup-variable-value `(,(const 'factorial) ,(reg 'env)))))
+; TEST 8: (push-true-size (eth-push 'shrink 256))
 
-(integer-bytes 256)
-(push-true-size (eth-push 'shrink 256))
+(cg-return (reg 'val))
 
 (: full-debug-output (-> Pyramid Void))
 (define (full-debug-output prog)
@@ -35,9 +35,7 @@
       (newline) (display "Abstract Instructions:") (newline)
       (display-all (inst-seq-statements instructions))
   
-      (newline) (display "EVM Instructions:") (newline)
-
-      (display-all eth-instructions)
+      ; (newline) (display "EVM Instructions:") (newline) (display-all eth-instructions)
       (let ((bs (serialize-print eth-instructions)))
         (print-disassembly bs)))))
 
@@ -68,6 +66,12 @@
      (define x2 (* x1 7777))
      x2))
 
+(: prog-define-func Pyramid)
+(define prog-define-func
+  '(begin
+     (define (f n) n)
+     (f 5)))
+
 (: prog-factorial Pyramid)
 (define prog-factorial 
   '(begin
@@ -79,7 +83,7 @@
 
 ; (display-all (inst-seq-statements (compile-pyramid prog-factorial 'val 'next)))
 
-(full-debug-output prog-multiply)
+(full-debug-output prog-factorial)
 
 ;; (define prog prog-const)
 

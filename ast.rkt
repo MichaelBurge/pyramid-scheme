@@ -74,7 +74,7 @@
 
 (: make-lambda (-> (Listof Pyramid) Pyramid PyrLambda))
 (define (make-lambda parameters body)
-  (list 'lambda parameters body))
+  (list* 'lambda parameters body))
 
 ; '(if pred cons alt)
 ; OR

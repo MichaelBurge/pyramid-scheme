@@ -1,7 +1,8 @@
 // 1. Create a Google Sheet with 2 tabs named Program and Simulation.
 // 2. Paste the output of dissassembler.rkt into Program
 // 3. Paste this file into the script editor
-// 4. "EVM Simulator"->"Show Sidebar"->"Initialize"
+// 4. Add "evmSidebar.html" to the script editor.
+// 5. "EVM Simulator"->"Show Sidebar"->"Initialize"
 
 var COL_STEP = 0;
 var COL_SYMBOL = 1;
@@ -55,6 +56,12 @@ function next10000() {
     }
 }
 
+function next100000() {
+    for (var i = 0; i < 10; i++) {
+        next10000();
+    }
+}
+
 function nextn(n) {
     var machine = getCurrentState();
     var sheet = simulationSheet();
@@ -73,6 +80,22 @@ function nextn(n) {
     SpreadsheetApp.flush();
 }
 
+function showMemory() {
+    var cell = simulationSheet().getActiveCell();
+    var sheet = memorySheet();
+    sheet.clearContents();
+    sheet.clearFormats();
+    var memory = JSON.parse(cell.getValues()[0][0]);
+    var keys = Object.keys(memory);
+    keys.sort();
+    var rows = [];
+    for (var addr in keys) {
+        addr *= 32;
+        rows.push([ addr, memory[addr] ]);
+    }
+    insertRowsAt(sheet, 1, rows);
+}
+
 // Implementation
 function sheet(name) {
     var app = SpreadsheetApp.getActiveSpreadsheet();
@@ -81,6 +104,7 @@ function sheet(name) {
 }
 function simulationSheet() { return sheet("Simulation"); }
 function programSheet() { return sheet("Program"); }
+function memorySheet() { return sheet("Memory"); }
 
 function lastRow() {
     var sheet = simulationSheet();
