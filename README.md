@@ -29,8 +29,8 @@ For now, "run-tests.rkt" is the entry point. To compile an example program there
 
 * Install the Racket language runtime at https://download.racket-lang.org
 * Install necessary packages using "raco pkg install <name>". The packages are:
-  [binaryio-lib](https://docs.racket-lang.org/binaryio/index.html)
-  [errortrace-lib](https://docs.racket-lang.org/errortrace/using-errortrace.html)
+  * [binaryio-lib](https://docs.racket-lang.org/binaryio/index.html)
+  * [errortrace-lib](https://docs.racket-lang.org/errortrace/using-errortrace.html)
   
 ## License
 
