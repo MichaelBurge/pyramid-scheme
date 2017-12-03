@@ -16,7 +16,9 @@ Here is an example of a Pyramid program:
 
 ## Getting Started
 
-The compiler frontend is under construction. For now, "run-tests.rkt" is the entry point. To compile an example program there:
+Pyramid Scheme is under heavy construction. Join our [public Discord channel](https://discord.gg/854RH6x) if you'd like to contribute or use Pyramid to develop Ethereum contracts.
+
+For now, "run-tests.rkt" is the entry point. To compile an example program there:
 
 * Pick an example program like prog-factorial
 * Use "(full-debug-output prog-factorial)" in "run-tests.rkt" to get a bytecode listing
@@ -47,10 +49,6 @@ See [deploy.js](deploy.js) for an example deploy script.
 ## Built With
 
 * [Racket](http://racket-lang.org/)
-
-## Contributing
-
-Pyramid Scheme is under heavy construction. Join our [public Discord channel](https://discord.gg/854RH6x) if you'd like to contribute.
 
 
 ## Authors
