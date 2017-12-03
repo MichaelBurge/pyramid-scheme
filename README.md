@@ -52,4 +52,4 @@ See [deploy.js](deploy.js) for an example deploy script.
 
 ## Authors
 
-* **Michael Burge** - *Initial work* - [MichaelBurge](https://twitter.com/taurineandcode)
+* **Michael Burge** - *Main Developer* - [MichaelBurge](https://twitter.com/taurineandcode)
