@@ -4,13 +4,12 @@ An EVM backend for SICP Scheme. This dialect of Scheme is named Pyramid.
 
 Here is an example of a Pyramid program: 
 ```scheme
-(define prog-factorial 
-  '(begin
-     (define (factorial n)
-       (if (= n 1)
-           1
-           (* (factorial (- n 1)) n)))
-     (factorial 5)))
+(begin
+ (define (factorial n)
+     (if (= n 1)
+         1
+         (* (factorial (- n 1)) n)))
+   (factorial 5))
 
 ```
 
