@@ -2,94 +2,57 @@
 
 An EVM backend for SICP Scheme. This dialect of Scheme is named Pyramid.
 
+Here is an example of a Pyramid program: 
+```scheme
+(define prog-factorial 
+  '(begin
+     (define (factorial n)
+       (if (= n 1)
+           1
+           (* (factorial (- n 1)) n)))
+     (factorial 5)))
+
+```
+
 ## Getting Started
 
-The "run-tests.rkt" is the entry point I was using to get deployable bytecode. My workflow was:
+The compiler frontend is under construction. For now, "run-tests.rkt" is the entry point. To compile an example program there:
 
-Pick an example program like prog-factorial
-Run "(full-debug-output prog-factorial)" in "run-tests.rkt" to get a bytecode listing
-Use the "testrpc" tool to start a test EthereumJS instance
-Paste the hexadecimal string from step 2 into "deploy.js", along with a wallet from step 3.
-Paste the contents of "deploy.js" into a Javascript prompt attached to the Ethereum instance in step 3.
+* Pick an example program like prog-factorial
+* Use "(full-debug-output prog-factorial)" in "run-tests.rkt" to get a bytecode listing
+* Use the "testrpc" tool to start a test EthereumJS instance
+* Paste the hexadecimal string from step 2 into "deploy.js", along with a wallet from step 3.
+* Paste the contents of "deploy.js" into a Javascript prompt attached to the Ethereum instance in step 3.
+
 ### Prerequisites
 
-Install the Racket language runtime at https://download.racket-lang.org
-
+* Install the Racket language runtime at https://download.racket-lang.org
+* Install necessary packages using "raco pkg install <name>". The packages are:
+  [binaryio-lib](https://docs.racket-lang.org/binaryio/index.html)
+  [errortrace-lib](https://docs.racket-lang.org/errortrace/using-errortrace.html)
+  
 ## License
 
 This project is licensed under the MIT License - see the [LICENSE.md](LICENSE.md) file for details
 
-
-<!-- ```
-Give examples
-```
-
-### Installing
-
-A step by step series of examples that tell you have to get a development env running
-
-Say what the step will be
-
-```
-Give the example
-```
-
-And repeat
-
-```
-until finished
-```
-
-End with an example of getting some data out of the system or using it for a little demo
-
-## Running the tests
-
-Explain how to run the automated tests for this system
-
-### Break down into end to end tests
-
-Explain what these tests test and why
-
-```
-Give an example
-```
-
-### And coding style tests
-
-Explain what these tests test and why
-
-```
-Give an example
-```
-
 ## Deployment
 
-Add additional notes about how to deploy this on a live system
+See [deploy.js](deploy.js) for an example deploy script.
+
+1. Start a test Ethereum network using [testrpc](https://www.npmjs.com/package/ethereumjs-testrpc).
+2. Replace the "from" variable in deploy.js with a wallet number that testrpc printed to the terminal.
+3. Replace the "code" variable with the output of the Pyramid compiler
+4. Run the contents of deploy.js on a Javascript console attached to the testrpc instance.
 
 ## Built With
 
-* [Dropwizard](http://www.dropwizard.io/1.0.2/docs/) - The web framework used
-* [Maven](https://maven.apache.org/) - Dependency Management
-* [ROME](https://rometools.github.io/rome/) - Used to generate RSS Feeds
+* [Racket](http://racket-lang.org/)
 
 ## Contributing
 
-Please read [CONTRIBUTING.md](https://gist.github.com/PurpleBooth/b24679402957c63ec426) for details on our code of conduct, and the process for submitting pull requests to us.
+Pyramid Scheme is under heavy construction. Join our [public Discord channel](https://discord.gg/854RH6x) if you'd like to contribute.
 
-## Versioning
-
-We use [SemVer](http://semver.org/) for versioning. For the versions available, see the [tags on this repository](https://github.com/your/project/tags). 
 
 ## Authors
 
-* **Billie Thompson** - *Initial work* - [PurpleBooth](https://github.com/PurpleBooth)
-
-See also the list of [contributors](https://github.com/your/project/contributors) who participated in this project.
-
-
-## Acknowledgments
-
-* Hat tip to anyone who's code was used
-* Inspiration
-* etc
--->
+* **Michael Burge** - *Initial work* - [MichaelBurge](https://twitter.com/taurineandcode)
