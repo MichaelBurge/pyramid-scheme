@@ -24,8 +24,6 @@
 ; TEST 7: (eq? #f (stack-read? (op 'lookup-variable-value `(,(const 'factorial) ,(reg 'env)))))
 ; TEST 8: (push-true-size (eth-push 'shrink 256))
 
-(cg-return (reg 'val))
-
 (: full-debug-output (-> Pyramid Void))
 (define (full-debug-output prog)
   (let* ((the-global-environment (setup-environment))
@@ -56,7 +54,7 @@
 (: prog-define Pyramid)
 (define prog-define
   '(begin
-     (define x1 1)
+     (define x1 1234)
      x1))
 
 (: prog-multiply Pyramid)
@@ -81,9 +79,25 @@
            (* (factorial (- n 1)) n)))
      (factorial 5)))
 
-; (display-all (inst-seq-statements (compile-pyramid prog-factorial 'val 'next)))
+(: prog-mutate Pyramid)
+(define prog-mutate
+  '(set! x 1234))
 
-(full-debug-output prog-factorial)
+(: prog-if Pyramid)
+(define prog-if
+  '(if true 10 100))
+
+(: prog-identity Pyramid)
+(define prog-identity
+  '(define (id x) x))
+
+(: prog-application Pyramid)
+(define prog-application
+  '(id 5))
+
+(display-all (inst-seq-statements (compile-pyramid prog-application 'val 'next)))
+
+; (full-debug-output prog-define)
 
 ;; (define prog prog-const)
 

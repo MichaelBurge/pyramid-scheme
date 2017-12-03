@@ -33,7 +33,7 @@
 (define (assignment-variable (exp : PyrAssign)) (cadr exp))
 
 (: assignment-value (-> PyrAssign Pyramid))
-(define (assignment-value (exp : PyrAssign)) (cddr exp))
+(define (assignment-value (exp : PyrAssign)) (caddr exp))
 
 (: definition? (-> Pyramid Boolean))
 (define (definition? exp)

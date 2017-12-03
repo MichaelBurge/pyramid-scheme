@@ -62,10 +62,8 @@ There is a standard library of primitive operations.
 
 -- Optimizations --
 These optimizations are currently unimplemented:
-* Nil values are currently allocated. These can instead refer to a single shared instance.
 * Values that are allocated and used within a lexical scope should not have infinite extent. Roll back the allocator pointer.
 * Refer to a single copy of primitive operations, rather than always inlining them.
-* Constants always emit PUSH32 instructions. These could be shrunk.
 
 -- Constants --
 * Integers are converted into simple push instructions.
