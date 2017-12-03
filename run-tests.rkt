@@ -95,9 +95,9 @@
 (define prog-application
   '(id 5))
 
-(display-all (inst-seq-statements (compile-pyramid prog-application 'val 'next)))
+; (display-all (inst-seq-statements (compile-pyramid prog-application 'val 'next)))
 
-; (full-debug-output prog-define)
+(full-debug-output prog-define)
 
 ;; (define prog prog-const)
 
