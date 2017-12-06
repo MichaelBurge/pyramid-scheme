@@ -23,6 +23,7 @@
 (define-type PyrCondElse   (Pairof 'else Sequence))
 (define-type PyrCond       (Pairof 'cond (Listof PyrCondClause)))
 (define-type PyrApplication (Pairof Pyramid Sequence))
+(define-type PyrMacro      (List 'defmacro (U VariableName VariableNames) (Listof Racket)))
 (define-type Pyramid (U PyrSelfEvaluating
                         PyrVariable
                         PyrQuote
@@ -32,8 +33,11 @@
                         PyrLambda
                         PyrBegin
                         PyrCond
-                        PyrApplication))
+                        PyrApplication
+                        PyrMacro
+                        ))
 
+(define-type Racket Any)
 (define-type Value Any)
 (define-type Sequence (Listof Pyramid))
 (define-type Assertion Any)

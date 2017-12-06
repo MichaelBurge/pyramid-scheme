@@ -172,3 +172,15 @@
                      (sequence->exp (cond-actions first))
                      (expand-clauses rest))))))
 ;; end of Cond support
+
+#|
+(defmacro (duplicate x)
+  (if (definition? x)
+      x
+      `(begin
+         ,x
+         ,x)))
+|#
+
+(: macro? (-> Pyramid Boolean))
+(define (macro? exp) (tagged-list? exp 'defmacro))

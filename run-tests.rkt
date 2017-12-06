@@ -95,9 +95,15 @@
 (define prog-application
   '(id 5))
 
+(: prog-macro Pyramid)
+(define prog-macro
+  '(begin
+     (defmacro (id exp) exp)
+     (id 5)))
+
 ; (display-all (inst-seq-statements (compile-pyramid prog-application 'val 'next)))
 
-(full-debug-output prog-define)
+(full-debug-output prog-macro)
 
 ;; (define prog prog-const)
 
