@@ -186,16 +186,10 @@ numerical value to insert. It generates a relocation, but needs to leave a speci
                     (cons (opcode-byte op) op))
                   opcode-table)))
 
-(: serialize-print (-> EthInstructions bytes))
-(define (serialize-print is)
+(: serialize-with-relocations (-> EthInstructions bytes))
+(define (serialize-with-relocations is)
   (let* ((bs (serialize is)))
-    ; (write (bytes->hex-string bs))
-    ; (newline)
-    ; (print-symbol-table *symbol-table*)
-    (print-relocations *relocation-table*)
     (apply-relocations! bs *relocation-table* *symbol-table*)
-    (write (bytes->hex-string (wrap-loader bs)))
-    (newline)
     bs))
 
 ; Consider using wrap-loader to prepend an initializer program.

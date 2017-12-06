@@ -363,5 +363,3 @@
     (if val
         (cadr val)
         (error "Unknown operation -- ASSEMBLE" symbol))))
-
-'(REGISTER SIMULATOR LOADED)

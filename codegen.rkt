@@ -66,13 +66,16 @@ These optimizations are currently unimplemented:
 * Refer to a single copy of primitive operations, rather than always inlining them.
 
 -- Constants --
-* Integers are converted into simple push instructions.
+* Integers are converted into push instructions.
 * Quotes are always variable names. Labels have their own classification in MExpr.
 * Quotes are converted into 256-bit integers by treating up to 32 characters as 8-bit ASCII.
 * Lists emits a series of (cons) calls corresponding to the elements.
 
 |#
-    
+
+; Global variables
+(define *use-debug-symbols?* (make-parameter #f))
+
 ; Constants
 (define TAG-FIXNUM              0)
 (define TAG-SYMBOL              1)
@@ -91,7 +94,6 @@ These optimizations are currently unimplemented:
 (define MEM-ALLOCATOR     #xe0)
 (define MEM-DYNAMIC-START #x100) ; This should be the highest hardcoded memory address.
 
-; Global variables
 (define WORD       #x20) ; 256-bit words / 8 bit granularity addresses = 32 8-bit words, or 0x20.
 
 ; Top-level code generator
@@ -1164,8 +1166,10 @@ SWAP1 -> [ x1; x2; x3; c ]
 ; Debug labels are not used for flow control. They generate entries in the relocation table that
 ; help locate the code that generated an assembly fragment. They have 1 byte of overhead for a
 ; JUMPDEST instruction, but even that could be eliminated if necessary.
-(define (debug-label sym) (list (make-label sym)))
-; (define (debug-label sym) '())
+(define (debug-label sym)
+  (if *use-debug-symbols?*
+      (list (make-label sym))
+      '()))
 
 (: cg-throw (Generator Symbol))
 (define (cg-throw sym)
