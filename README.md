@@ -1,4 +1,4 @@
-# pyramid-scheme
+# Pyramid Scheme
 
 An EVM backend for SICP Scheme. This dialect of Scheme is named Pyramid.
 
@@ -17,13 +17,20 @@ Here is an example of a Pyramid program:
 
 Pyramid Scheme is under heavy construction. Join our [public Discord channel](https://discord.gg/854RH6x) if you'd like to contribute or use Pyramid to develop Ethereum contracts.
 
-For now, "run-tests.rkt" is the entry point. To compile an example program there:
+After installing the prerequisites(listed below), 
 
-* Pick an example program like prog-factorial
-* Use "(full-debug-output prog-factorial)" in "run-tests.rkt" to get a bytecode listing
-* Use the "testrpc" tool to start a test EthereumJS instance
-* Paste the hexadecimal string from step 2 into "deploy.js", along with a wallet from step 3.
-* Paste the contents of "deploy.js" into a Javascript prompt attached to the Ethereum instance in step 3.
+```bash
+$ ./pyramid examples/factorial.pyr
+<long hex string>
+```
+
+To deploy that program on a test network:
+* Use the [testrpc](https://www.npmjs.com/package/ethereumjs-testrpc) tool to start a test EthereumJS instance
+* Change the `from` variable in [deploy.js](deploy.js) to one of the test addresses that `testrpc` output.
+* Change the `code` variable to be the hex string that the Pyramid compiler output
+* Copy the contents of `deploy.js` into the `testrpc` Javascript prompt.
+
+You can see advanced command line options using `pyramid --help`.
 
 ### Prerequisites
 
@@ -32,24 +39,22 @@ For now, "run-tests.rkt" is the entry point. To compile an example program there
   * [binaryio-lib](https://docs.racket-lang.org/binaryio/index.html)
   * [errortrace-lib](https://docs.racket-lang.org/errortrace/using-errortrace.html)
   
+### Editor
+
+I recommend Emacs with `racket-mode`. You should add Pyramid's `.pyr` extension to the list of `racket-mode` file extensions:
+
+```
+(add-to-list 'auto-mode-alist '("\\.pyr\\'" . racket-mode))
+```
+
 ## License
 
 This project is licensed under the MIT License - see the [LICENSE.md](LICENSE.md) file for details
-
-## Deployment
-
-See [deploy.js](deploy.js) for an example deploy script.
-
-1. Start a test Ethereum network using [testrpc](https://www.npmjs.com/package/ethereumjs-testrpc).
-2. Replace the "from" variable in deploy.js with a wallet number that testrpc printed to the terminal.
-3. Replace the "code" variable with the output of the Pyramid compiler
-4. Run the contents of deploy.js on a Javascript console attached to the testrpc instance.
 
 ## Built With
 
 * [Racket](http://racket-lang.org/)
 
-
 ## Authors
 
-* **Michael Burge** - *Main Developer* - [MichaelBurge](https://twitter.com/taurineandcode)
+* [Michael Burge](https://twitter.com/taurineandcode) - *Main Developer*
