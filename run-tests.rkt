@@ -24,76 +24,7 @@
 ; TEST 7: (eq? #f (stack-read? (op 'lookup-variable-value `(,(const 'factorial) ,(reg 'env)))))
 ; TEST 8: (push-true-size (eth-push 'shrink 256))
 
-
-
-(: prog-const Pyramid)
-
-
 ; (serialize-print (codegen-one (assign 'val (const 9999))))
-
-(: prog-eq? Pyramid)
-(define prog-eq?
-  '(= 1234 1234))
-  ; '(= 9876 5432))
-
-(: prog-define Pyramid)
-(define prog-define
-  '(begin
-     (define x1 1234)
-     x1))
-
-(: prog-multiply Pyramid)
-(define prog-multiply
-  '(begin
-     (define x1 9999)
-     (define x2 (* x1 7777))
-     x2))
-
-(: prog-define-func Pyramid)
-(define prog-define-func
-  '(begin
-     (define (f n) n)
-     (f 5)))
-
-(: prog-factorial Pyramid)
-(define prog-factorial 
-  '(begin
-     (define (factorial n)
-       (if (= n 1)
-           1
-           (* (factorial (- n 1)) n)))
-     (factorial 5)))
-
-(: prog-mutate Pyramid)
-(define prog-mutate
-  '(set! x 1234))
-
-(: prog-if Pyramid)
-(define prog-if
-  '(if true 10 100))
-
-(: prog-identity Pyramid)
-(define prog-identity
-  '(define (id x) x))
-
-(: prog-application Pyramid)
-(define prog-application
-  '(id 5))
-
-
 ; (display-all (inst-seq-statements (compile-pyramid prog-application 'val 'next)))
-
 ; (full-debug-output prog-macro)
 
-;; (define prog prog-const)
-
-
-
-
-
-
-;; ; (struct->vector (op 'derp (const 5)))
-
-;; (display-all eth-instructions)
-
-;; (serialize-print eth-instructions)

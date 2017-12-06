@@ -1,0 +1,4 @@
+(let ((x (if true 'red 'green)))
+  (cond ((eq? x 'red)   #xff0000)
+        ((eq? x 'green) #x00ff00)
+        (else           #x0000ff)))
