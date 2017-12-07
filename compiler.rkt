@@ -13,6 +13,8 @@
 
 ; Global variables
 (define label-counter 0)
+(define *available-macros* (make-parameter (make-empty-namespace)))
+(define *macro-namespace* (make-parameter (make-base-namespace)))
 
 (: make-pyramid-machine (-> ControllerText Machine))
 (define (make-pyramid-machine text)
@@ -21,23 +23,25 @@
 (: compile-pyramid (-> Pyramid Target Linkage inst-seq))
 (define (compile-pyramid exp target linkage)
   (cond ((self-evaluating? exp)
-         (compile-self-evaluating (cast exp PyrSelfEvaluating) target linkage))
-        ((quoted? exp) (compile-quoted (cast exp PyrQuote) target linkage))
+         (compile-self-evaluating exp target linkage))
+        ((quoted? exp) (compile-quoted exp target linkage))
+        ((macro? exp) (compile-macro exp target linkage))
         ((variable? exp)
-         (compile-variable (cast exp PyrVariable) target linkage))
+         (compile-variable exp target linkage))
         ((assignment? exp)
-         (compile-assignment (cast exp PyrAssign) target linkage))
+         (compile-assignment exp target linkage))
         ((definition? exp)
-         (compile-definition (cast exp PyrDefinition) target linkage))
-        ((if? exp) (compile-if (cast exp PyrIf) target linkage))
-        ((lambda? exp) (compile-lambda (cast exp PyrLambda) target linkage))
+         (compile-definition exp target linkage))
+        ((if? exp) (compile-if exp target linkage))
+        ((lambda? exp) (compile-lambda exp target linkage))
         ((begin? exp)
-         (compile-sequence (begin-actions (cast exp PyrBegin))
+         (compile-sequence (begin-actions exp)
                            target
                            linkage))
-        ((cond? exp) (compile-pyramid (cond->if (cast exp PyrCond)) target linkage))
+        ((cond? exp) (compile-pyramid (cond->if exp) target linkage))
+        ((macro-application? exp) (compile-macro-application exp target linkage))
         ((application? exp)
-         (compile-application (cast exp PyrApplication) target linkage))
+         (compile-application exp target linkage))
         (else
          (error "Unknown expression type -- COMPILE" exp))))
 
@@ -73,6 +77,19 @@
   (end-with-linkage linkage
                     (inst-seq '() (list target)
                               (list (assign target (const (text-of-quotation exp)))))))
+
+(: compile-macro (-> Pyramid Target Linkage inst-seq))
+(define (compile-macro exp target linkage)
+  (let* ((mac-name (macro-variable exp))
+         (arg-names (macro-args exp))
+         (mac-body (macro-body exp))
+         (macro-exp `(lambda ,arg-names ,mac-body))
+         (macro (eval macro-exp (*macro-namespace*)))
+         )
+    (namespace-set-variable-value! mac-name macro)
+    (inst-seq '() '() '())
+    ))
+
 
 (: compile-variable (-> PyrVariable Target Linkage inst-seq))
 (define (compile-variable exp target linkage)
@@ -196,6 +213,15 @@
                 (preserving '(proc continue)
                             (construct-arglist operand-codes)
                             (compile-procedure-call target linkage)))))
+
+(: compile-macro-application (-> PyrApplication Target Linkage inst-seq))
+(define (compile-macro-application exp target linkage)
+  (let* ((name (operator exp))
+         (macro (namespace-variable-value name))
+         (result (apply macro (operands exp)))
+         )
+    (compile-pyramid result target linkage)))
+    
 
 (: construct-arglist (-> (Listof inst-seq) inst-seq))
 (define (construct-arglist operand-codes)
@@ -384,3 +410,19 @@
    (list-union (registers-modified seq1)
                (registers-modified seq2))
    (append (statements seq1) (statements seq2))))
+
+(: macro-application? (-> Pyramid Boolean))
+(define (macro-application? exp)
+  (if (application? exp)
+      (let ((name (operator exp)))
+        (if (symbol? name)
+            (namespace-contains *available-macros* name)
+            #f))
+      #f))
+
+(define (namespace-contains namespace name)
+  (let ((result (make-parameter #t)))
+    (begin
+      (namespace-variable-value name #t (lambda () (result #f)))
+      (result))))
+

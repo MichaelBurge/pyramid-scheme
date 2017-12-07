@@ -184,3 +184,7 @@
 
 (: macro? (-> Pyramid Boolean))
 (define (macro? exp) (tagged-list? exp 'defmacro))
+
+(define macro-variable definition-variable)
+(define (macro-args exp) (cdadr exp))
+(define (macro-body exp) (caddr exp))

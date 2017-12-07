@@ -1,3 +1,8 @@
 (begin
   (defmacro (id exp) exp)
-  (id 5))
+  (id 5)
+  (defmacro (dup exp)
+  	    `(begin
+	       ,exp
+	       ,exp))
+  (dup 10))
