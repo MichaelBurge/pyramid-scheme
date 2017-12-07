@@ -51,6 +51,11 @@
       (print-relocations *relocation-table*)
       (print-disassembly bs))))
 
+(define (install-macro-library)
+  (parameterize ([ current-namespace (*macro-namespace*) ])
+    (namespace-require "macro.rkt")
+    (namespace-variable-value 'accesses-memory?)))
+
 (: standard-output (-> Pyramid Void))
 (define (standard-output prog)
   (let* (;(the-global-environment (setup-environment))
@@ -63,6 +68,7 @@
 (define (main)
   (let* ((fh (open-input-file file-to-compile))
          (prog (read fh)))
+    (install-macro-library)
     (if (*verbose?*)
         (verbose-output prog)
         (standard-output prog))))

@@ -218,7 +218,8 @@
 (define (compile-macro-application exp target linkage)
   (let* ((name (operator exp))
          (macro (namespace-variable-value name))
-         (result (apply macro (operands exp)))
+         (result (parameterize ([ current-namespace (*macro-namespace*) ])
+                   (apply macro (operands exp))))
          )
     (compile-pyramid result target linkage)))
     
