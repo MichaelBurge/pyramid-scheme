@@ -40,10 +40,10 @@ You can see advanced command line options using `pyramid --help`.
   
 ### Editor
 
-I recommend Emacs with `racket-mode`. You should add Pyramid's `.pyr` extension to the list of `racket-mode` file extensions:
+I recommend Emacs with `racket-mode`. You should add Pyramid's `.pmd` extension to the list of `racket-mode` file extensions:
 
 ```
-(add-to-list 'auto-mode-alist '("\\.pyr\\'" . racket-mode))
+(add-to-list 'auto-mode-alist '("\\.pmd\\'" . racket-mode))
 ```
 
 ## License
