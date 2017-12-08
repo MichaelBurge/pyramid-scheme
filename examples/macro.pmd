@@ -10,6 +10,6 @@
     (if (accesses-memory? exp)
         '5
         '10))
-  (check-memory 'aoeu)
+  (check-memory (define x 5))
   )
 
