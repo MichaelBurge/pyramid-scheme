@@ -1,12 +1,63 @@
 #lang errortrace typed/racket/no-check
 
 (require "types.rkt")
+(require "serializer.rkt")
 
 (define-type EthWord Integer)
 
-(struct evm ([ step : Fixnum ] [ pc : Fixnum ] [ stack : (Listof EthWord) ] [ Memory : (Dict EthWord) ]))
+(struct evm ([ step : Fixnum ] [ pc : Fixnum ] [ stack : (Listof EthWord) ] [ memory : (Dict EthWord) ] [ gas : Fixnum ]))
+
+; Appendix G in Ethereum Yellow Paper: http://gavwood.com/paper.pdf
+(define G_zero          0)
+(define G_base          2)
+(define G_verylow       3)
+(define G_low           5)
+(define G_mid           8)
+(define G_high          10)
+(define G_extcode       700)
+(define G_balance       400)
+(define G_sload         200)
+(define G_jumpdest      1)
+(define G_sset          20000)
+(define G_sreset        5000)
+(define R_sclear        15000)
+(define R_suicide       24000)
+(define G_suicide       5000)
+(define G_create        32000)
+(define G_codedeposit   200)
+(define G_call          700)
+(define G_callvalue     9000)
+(define G_callstipend   2300)
+(define G_newaccount    25000)
+(define G_exp           10)
+(define G_expbyte       10)
+(define G_memory        3)
+(define G_txcreate      32000)
+(define G_txdatazero    4)
+(define G_txdatanonzero 68)
+(define G_transaction   21000)
+(define G_log           375)
+(define G_logdata       8)
+(define G_logtopic      375)
+(define G_sha3          30)
+(define G_sha3word      6)
+(define G_copy          3)
+(define G_blockhash     20)
+
+(define dups '(DUP1 DUP2 DUP3 DUP4 DUP5 DUP6 DUP7 DUP8 DUP9 DUP10 DUP11 DUP12 DUP13 DUP14 DUP15 DUP16))
+(define swaps '(SWAP1 SWAP2 SWAP3 SWAP4 SWAP5 SWAP6 SWAP7 SWAP8 SWAP9 SWAP10 SWAP11 SWAP12 SWAP13 SWAP14 SWAP15 SWAP16))
+
+(define W_zero '(STOP RETURN))
+(define W_base '(ADDRESS ORIGIN CALLER CALLVALUE CALLDATASIZE CODESIZE GASPRICE COINBASE TIMESTAMP NUMBER DIFFICULTY GASLIMIT POP PC MSIZE GAS))
+(define W_verylow '(ADD SUB NOT LT GT SLT SGT EQ ISZERO AND OR XOR BYTE CALLDATALOAD MLOAD MSTORE MSTORE8))
+(define W_low '(MUL DIV SDIV MOD SMOD SIGNEXTEND))
+(define W_mid '(ADDMOD MULMOD JUMP))
+(define W_high '(JUMPI))
+(define W_extcode '(EXTCODESIZE))
 
 (: simulate-instructions (-> evm EthInstructions Fixnum (Listof evm)))
+(define (simulate-instructions vm is max-iterations)
+  (simulate vm (make-instruction-dict is) max-iterations))
 
 (: simulate (-> evm (Dict EthInstruction) Fixnum (Listof evm)))
 (define (simulate vm is max-iterations)
@@ -24,6 +75,7 @@
                     (error "Unknown opcode found - simulate-one:" i)))))
     (struct-copy evm vm1
                  [ pc (+ (evm-pc vm) (instruction-size i))]
+                 [ gas (+ (evm-gas vm) (instruction-gas vm i)) ]
                  [ step (+ (evm-step vm) 1) ])))
                           
 
@@ -67,7 +119,6 @@
         ((eq? sym 'JUMPDEST) (simulate-nop))
         (else
          (error "Unimplemented evm instruction found - simulate-asm:" sym))))
-                           
 
 (: simulate-unop (-> evm (-> Integer Integer) evm))
 (define (simulate-unop vm f)
@@ -96,14 +147,14 @@
     (struct-copy evm (cdr x2) [ stack new-stack ])))
 
 (: simulate-mstore (-> evm evm))
-(define (simulate-mstore (-> evm evm))
+(define (simulate-mstore vm)
   (let* ((addr (pop-stack vm))
          (val  (pop-stack (cdr addr)))
          (new-memory (dict-set (evm-memory vm) (car addr) (car val))))
     (struct-copy evm (cdr val) [ memory new-memory ])))
 
 (: simulate-mload (-> evm evm))
-(define (simulate-mload (-> evm evm))
+(define (simulate-mload vm)
   (let ((addr (pop-stack vm)))
     (push-stack vm (read-memory vm addr))))
 
@@ -114,8 +165,8 @@
 
 (: simulate-jumpi (-> evm evm))
 (define (simulate-jumpi vm)
-  (let ((addr (pop-stack vm))
-        (pred (pop-stack (cdr addr))))
+  (let* ((addr (pop-stack vm))
+         (pred (pop-stack (cdr addr))))
     (if (eq? 0 pred)
         (cdr pred)
         (set-pc (cdr pred) (car addr)))))
@@ -145,3 +196,54 @@
 (: get-stack (-> evm Fixnum Integer))
 (define (get-stack vm amount)
   (list-ref (evm-stack vm) amount))
+
+(: make-instruction-dict (-> EthInstructions (Dict EthInstruction)))
+(define (make-instruction-dict is)
+  (let ((os-table (make-hash))
+        (os 0))
+    (for ([ i is ])
+      (dict-set! os-table os i)
+      (set! os (+ os (instruction-size i))))))
+
+(: instruction-gas (-> evm EthInstruction Fixnum))
+(define (instruction-gas vm i)
+  (define (C_sstore)  (error "C_sstore unimplemented"))
+  (define (C_call)    (error "C_call unimplemented"))
+  (define (C_suicide) (error "C_suicide unimplemented"))
+  (define (is-asm sym) (equal? i eth-asm sym))
+  (define (is-asms syms) (ormap is-asm syms))
+  (cond ((is-asm 'SSTORE) (C_sstore))
+        ((is-asm 'EXP)
+         (if (eq? 0 (get-stack vm 1))
+             G_exp
+             (+ G_exp (* G_expbyte (+ 1 (floor (log (get-stack vm 1) 256)))))))
+        ((is-asms '(CALLDATACOPY CODECOPY)) (+ G_verylow (* G_copy (ceiling (/ (get-stack vm 2) 32)))))
+        ((is-asm 'EXTCODECOPY) (+ G_extcode (* G_copy (ceiling (/ (get-stack vm 3) 32)))))
+        ((is-asm 'LOG0) (+ G_log (* G_logdata (get-stack vm 1)) + (* 0 G_logtopic)))
+        ((is-asm 'LOG1) (+ G_log (* G_logdata (get-stack vm 1)) + (* 1 G_logtopic)))
+        ((is-asm 'LOG2) (+ G_log (* G_logdata (get-stack vm 1)) + (* 2 G_logtopic)))
+        ((is-asm 'LOG3) (+ G_log (* G_logdata (get-stack vm 1)) + (* 3 G_logtopic)))
+        ((is-asm 'LOG4) (+ G_log (* G_logdata (get-stack vm 1)) + (* 4 G_logtopic)))
+        ((is-asms '(CALL CALLCODE DELEGATECALL)) (C_call))
+        ((is-asm 'SUICIDE)   (C_suicide))
+        ((is-asm 'CREATE)    G_create)
+        ((is-asm 'SHA3)      (+ G_sha3 (* G_sha3word (ceiling (/ (get-stack vm 1) 32)))))
+        ((is-asm 'JUMPDEST)  G_jumpdest)
+        ((is-asm 'SLOAD)     G_sload)
+        ((is-asms W_zero)    G_zero)
+        ((is-asms W_base)    G_base)
+        ((is-asms W_verylow) G_verylow)
+        ((is-asms dups)      G_verylow)
+        ((is-asms swaps)     G_verylow)
+        ((eth-push? i)       G_verylow)
+        ((is-asms W_low)     G_low)
+        ((is-asms W_mid)     G_mid)
+        ((is-asms W_high)    G_high)
+        ((is-asms W_extcode) G_extcode)
+        ((is-asm 'BALANCE)   G_balance)
+        ((is-asm 'BLOCKHASH) G_blockhash)
+        (else
+         (error "Unknown instruction - instruction-gas:" i))))
+
+        
+                     
