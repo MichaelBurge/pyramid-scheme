@@ -13,6 +13,7 @@
 (require "serializer.rkt")
 (require "disassembler.rkt")
 (require "utils.rkt")
+(require "simulator.rkt")
 
 ; TODO: Turn these into unit tests.
 ; TEST 1: (cg-intros (list (const 1234) (const 4321)))
