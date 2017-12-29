@@ -1,0 +1,194 @@
+(include "psl.pmd")
+
+(define storage (storage-allocator))
+(define memory  (memory-allocator))
+
+(define PRIORITY-KING 0)
+(define PRIORITY-DUKE 1)
+(define PRIORITY-LORD 2)
+(define PRIORITY-BARON 3)
+(define PRIORITY-KNIGHT 4)
+(define PRIORITY-PEASANT 5) ; Not sellable
+(define NUM-SELLABLE-PRIORITIES 5)
+
+(define EVENT-SET-KING 0)
+(define EVENT-ADD-DUKE 1)
+(define EVENT-ADD-BARON 2)
+(define EVENT-REMOVE-DUKE 3)
+(define EVENT-REMOVE-BARON 4)
+(define EVENT-BID-ACCEPTED 5)
+(define EVENT-ASK-ACCEPTED 6)
+(define EVENT-BALANCE-UPDATED 7)
+
+(store
+ (owner     (scalar (origin)))
+ (king      (scalar (origin)))
+ (dukes     (linked-list))
+ (deposits  (map))
+ (balances  (map))
+ (books     (vector (replicate NUM-SELLABLE-PRIORITIES make-book)))
+ )
+
+; Return  Name & Args           Body
+(exports
+ (address get_creator           (get owner))
+ (uint256 get_balance           (get (at balances (origin))))
+ (void    deposit               (on-deposit (origin) (txn-amount)))
+ (void    withdraw              (on-withdraw (origin))
+ (void    (bid priority amount) (on-bid (origin) priority amount))
+ (void    (ask amount)          (on-ask (origin) amount))
+ (void    (cancel-orders)       (on-cancel (origin)))
+ (void    (bless target)        (on-bless (origin) target))
+ (void    extract               (on-extract))
+ (void    suicide               (suicide! (get owner)))
+ (void    '()                   (on-deposit (origin) (txn-amount))))
+
+(define (on-deposit sender amount)
+  (modify! (at deposits sender)
+           (+ amount)))
+
+(define (on-withdraw sender) (withdraw-balance! sender))
+
+(define (on-extract sender)
+  (if (owner? sender)
+      (on-withdraw-owner sender)
+      (error "on-extract: Must be contract owner")))
+
+(define (withdraw-owner! address) (withdraw! address (balance **instance**)))
+(define (withdraw-balance! address) (withdraw! address (user-balance address)))
+(define (on-cancel address)
+  (withdraw-bid-priority address PRIORITY-KING)
+  (withdraw-bid-priority address PRIORITY-DUKE)
+  (withdraw-bid-priority address PRIORITY-LORD)
+  (withdraw-bid-priority address PRIORITY-BARON)
+  (withdraw-bid-priority address PRIORITY-KNIGHT)
+
+  (withdraw-ask-priority address PRIORITY-KING)
+  (withdraw-ask-priority address PRIORITY-DUKE)
+  (withdraw-ask-priority address PRIORITY-LORD)
+  (withdraw-ask-priority address PRIORITY-BARON)
+  (withdraw-ask-priority address PRIORITY-KNIGHT)
+  )
+
+(define (withdraw-bid-priority address priority)
+  (delete-at! (book-bids (priority-book priority))
+              address))
+             
+; Transaction must deposit the difference between user's previous bid and this one.
+(define (on-bid bidder priority amount)
+  (let* ((book        (priority-book priority))
+         (current-bid (book-user-bid book bidder)))
+    (assert-deposit amount)
+    (book-bid! book bidder amount)
+    (withdraw! bidder current-bid)))
+    
+(define (on-ask bidder amount)
+  (let* ((book (priority-book priority)))
+    (book-ask! book bidder amount)))
+
+(define (on-bless source target)
+  (assert-cooldown! source)
+  (cond ((king? source) (add-duke! target))
+        ((lord? source) (add-baron! target))
+        (else (error "on-bless: Unexpected source priority"))))
+
+(define (owner? address) (eq? address (get owner)))
+(define (balance? address) (member? balances address))
+(define (priority-bid? priority address) (book-bid? (priority-book priority) address))
+
+(define (priority-book priority) (get (at books priority)))
+
+(define (set-king! target)
+  (log1 target EVENT-SET-KING)
+  (write! king target))
+
+(define (add-duke! target)
+  (log1 target EVENT-ADD-DUKE)
+  (push dukes target))
+  
+(define (add-baron! target)
+  (log1 target EVENT-ADD-BARON)
+  (push barons target))
+
+(define (remove-duke! target)
+  (log1 target EVENT-REMOVE-DUKE)
+  (delete dukes (eq? target)))
+
+(define (remove-baron! target)
+  (log1 target EVENT-REMOVE-BARON)
+  (delete barons (eq? target)))
+
+(define (transfer-priority! priority from to)
+  (cond ((eq? priority PRIORITY-KING)   (transfer-priority-king! from to))
+        ((eq? priority PRIORITY-DUKE)   (transfer-priority-duke! from to))
+        ((eq? priority PRIORITY-LORD)   (transfer-priority-lord! from to))
+        ((eq? priority PRIORITY-BARON)  (transfer-priority-baron! from to))
+        ((eq? priority PRIORITY-KNIGHT) (transfer-priority-knight! from to))
+        (else (error "transfer-priority!: Unknown priority"))))
+
+(define (transfer-priority-king! from to)
+  (set-king! to))
+
+(define (transfer-priority-duke! from to)
+  (remove-duke! from)
+  (add-duke! to))
+
+(define transfer-priority-lord! transfer-deposits!)
+
+(define (transfer-priority-baron! from to)
+  (remove-baron! from)
+  (add-baron! to))
+
+(define transfer-priority-knight! transfer-deposits!)
+
+(define (transfer-deposits! from to)
+  (let ((from-amount (get (at deposits from)))
+        (to-amount   (get (at deposits to))))
+    (write! (at deposits from) 0)
+    (write! (at deposits to) (+ from-amount to-amount))))
+
+(define (modify-balance! address f) (modify! balances address f))
+
+; Order book data structure
+(define (on-match priority this bid ask)
+  (log1 (l bid) EVENT-BID-ACCEPTED) ;; TODO: Log the entire bid
+  (log1 (l ask) EVENT-ASK-ACCEPTED) ;; TODO: Log the entire ask
+  (transfer-priority! priority (l ask) (l bid))
+  (modify-balance! (l ask) (+ (r ask)))
+  )
+(define (make-book) (book on-match))
+
+(struct (book match-callback)
+  [ bids (sorted-map (on r cmp))      ]
+  [ asks (sorted-map (on r cmp))      ]
+  [ on-match (partial match-callback this) ]
+  )
+
+(define (book-bid? book user) (member? book user))
+(define (book-bid! book user amount)
+  (write! (at (book-bids book) user)
+          amount)
+  (try-cross-bid/ask! book))
+
+(define (book-ask! book user amount)
+  (write! (at (book-asks book) user)
+          amount)
+  (try-cross-bid/ask! book))
+
+(define (book-bid book) (peek-front (book-bids book)))
+(define (book-ask book) (peek       (book-asks book)))
+
+(define (book-pop-bid! book) (pop   (book-bids book)))
+(define (book-pop-ask! book) (shift (book-asks book)))
+
+(define (try-cross-bid/ask! book)
+  (let ((bid (book-bid book))
+        (ask (book-ask book)))
+    (if (> (r bid) (r ask))
+        (begin
+          (book-pop-bid! book)
+          (book-pop-ask! book)
+          ((book-on-match book) bid ask))
+        (void))))
+
+    
