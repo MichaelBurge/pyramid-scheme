@@ -1,0 +1,91 @@
+(require "primitives.pmd")
+
+; EVM Instructions
+(define (log0 data) (undefined))
+(define (log1 data t1) (undefined))
+(define (log2 data t1 t2) (undefined))
+(define (log3 data t1 t2 t3) (undefined))
+(define (log4 data t1 t2 t3 t4) (undefined))
+
+; Types
+
+(defmacro (struct) (undefined))
+(defmacro (instance) (undefined)
+
+; Typeclasses
+(struct container (at at! front front! back back! size capacity start) #:prefix "")
+(struct reference (get set) #:prefix "")
+(struct iterator (ref next done?))
+
+(define (default-front ctr)    (at ctr 0))
+(define (default-front! ctr)   (at! ctr 0))
+(define (default-back ctr)     (at ctr (- (size ctr) 1)))
+(define (default-back! ctr)    (at! ctr (- (size ctr) 1)))
+
+; Primitives
+(define (apply proc args) (undefined))
+(define pair prim-cons)
+(define l prim-car)
+(define r prim-cdr)
+(define l! prim-set-car!)
+(define r! prim-set-cdr!)
+
+(define (vector x ...) (undefined))
+(defmacro λ (undefined))
+; Generators
+
+(define (replicate n v) (undefined))
+; modify! :: Container k v => k -> (v -> v) -> 
+(define (modify! ctr key f)
+  (let ((ref (at ctr key)))
+    (set ref (f (get ref)))))
+
+(define (member? ctr key) (undefined))
+(define (find ctr pred) (undefined))
+(define (try-get key on-find on-fail)
+; Like find, but returns an at! reference
+(define (find! ctr pred) (undefined))
+
+(define (delete! ctr pred) (get (find! ctr pred)))
+(define (delete-at! ctr key) (get (at! ctr key)))
+
+(define (peek ctr)          (get (back ctr)))
+(define (pop! ctr)           (get (back! ctr)))
+(define (push! ctr value)    (set (back! ctr) value))
+(define (peek-front ctr)    (get (front ctr)))
+(define (shift! ctr)         (get (front! ctr)))
+(define (unshift! ctr value) (set (front! ctr) value))
+
+; Utility
+(define (autofold) (undefined))
+(define (autocurry) (undefined))
+(define (autocurryfold) (undefined))
+
+(define + (autocurryfold prim-+))
+(define - (autocurry prim--))
+(define * (autocurryfold prim-*))
+(define / (autocurry prim-/))
+(define % (autocurry prim-%))
+
+(define (pred i) (- i 1))
+(define (assert x) (undefined))
+(define (assert-deposit) (undefined))
+(define (void))
+
+(define (circular f)
+  (let ((this null))
+    (set! this (f this))
+    this))
+
+(define (on f op) (lambda (a b) (op (f a) (f b))))
+(defmacro (-> args ...) (undefined))
+(defmacro (. args ...) (undefined))
+
+; Contract
+(define (withdraw! target amount) (undefined))
+(define (suicide! target) (prim-suicide))
+(define **contract** (prim-address))
+(define balance prim-balance)
+
+(defmacro (let xs) (undefined))
+(defmacro (let* xs) (undefined))

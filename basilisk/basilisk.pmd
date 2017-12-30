@@ -26,7 +26,7 @@
  (dukes     (linked-list))
  (deposits  (map))
  (balances  (map))
- (books     (vector (replicate NUM-SELLABLE-PRIORITIES make-book)))
+ (books     (apply vector (replicate linked-list NUM-SELLABLE-PRIORITIES make-book)))
  )
 
 ; Return  Name & Args           Body
@@ -54,7 +54,7 @@
       (on-withdraw-owner sender)
       (error "on-extract: Must be contract owner")))
 
-(define (withdraw-owner! address) (withdraw! address (balance **instance**)))
+(define (withdraw-owner! address) (withdraw! address (balance **contract**)))
 (define (withdraw-balance! address) (withdraw! address (user-balance address)))
 (define (on-cancel address)
   (withdraw-bid-priority address PRIORITY-KING)

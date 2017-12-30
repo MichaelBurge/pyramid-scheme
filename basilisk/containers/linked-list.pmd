@@ -1,0 +1,73 @@
+(require "base.pmd")
+
+(define (ll-iter-ref lst) (ll-front lst))
+(define (ll-iter-next! lst) (r lst))
+(define (ll-iter-done? lst) (null? lst))
+
+(define (ll-unshift! lst x)
+  (let ((link (pair (l lst) (r lst))))
+    (l! lst x)
+    (r! lst link)))
+
+(define (ll-shift! lst)
+  (l! lst (-> lst r l))
+  (r! lst (-> lst r r)))
+
+(define (ll-at lst i)
+  (if (eq? i 0)
+      (ll-front lst i)
+      (ll-at (r lst) (pred i))))
+
+(define (ll-at! lst i)
+  (if (eq? i 0)
+      (ll-front! lst i)
+      (ll-at! (r lst) (pred i))))
+
+(define (ll-front lst)
+  (reference (λ () (l lst))
+             (λ (x) (l! lst x))))
+              
+
+(define (ll-front! lst)
+  (reference (λ () (ll-shift! lst))
+             (λ (x) (ll-unshift! lst x))))
+
+(define (ll-back lst)
+  (cond ((null? lst)     null)
+        ((null? (r lst)) (ll-front lst))
+        (else            (ll-back (r lst)))))
+      
+(define (ll-back! lst)
+  (if (null? lst)
+      (ll-front! lst)
+      (ll-back! (r lst))))
+
+(define (ll-size lst)
+  (if (null? lst)
+      0
+      (+ 1 (ll-size (r lst)))))
+
+(define ll-capacity ll-size)
+
+(define (ll-start lst)
+  (list-iterator lst))
+
+(instance container linked-list
+          (
+           ll-at
+           ll-at!
+           ll-front
+           ll-front!
+           ll-back
+           ll-back!
+           ll-size
+           ll-capacity
+           ll-start
+           ))
+
+(instance iterator list-iterator
+          (
+           ll-iter-ref
+           ll-iter-next
+           ll-iter-done
+           ))
