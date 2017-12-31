@@ -24,9 +24,9 @@
  (owner     (scalar (origin)))
  (king      (scalar (origin)))
  (dukes     (linked-list))
- (deposits  (map))
- (balances  (map))
- (books     (apply vector (replicate linked-list NUM-SELLABLE-PRIORITIES make-book)))
+ (deposits  (linked-list))
+ (balances  (linked-list))
+ (books     (vector (replicate NUM-SELLABLE-PRIORITIES make-book)))
  )
 
 ; Return  Name & Args           Body
@@ -83,7 +83,7 @@
     (withdraw! bidder current-bid)))
     
 (define (on-ask bidder amount)
-  (let* ((book (priority-book priority)))
+  (let ((book (priority-book priority)))
     (book-ask! book bidder amount)))
 
 (define (on-bless source target)
@@ -147,7 +147,8 @@
     (write! (at deposits from) 0)
     (write! (at deposits to) (+ from-amount to-amount))))
 
-(define (modify-balance! address f) (modify! balances address f))
+(define (modify-balance! address f)
+  (modify! (lookup balances address) f))
 
 ; Order book data structure
 (define (on-match priority this bid ask)
@@ -156,29 +157,25 @@
   (transfer-priority! priority (l ask) (l bid))
   (modify-balance! (l ask) (+ (r ask)))
   )
-(define (make-book) (book on-match))
+(define (make-book) (pair (association-list) (association-list)))
 
-(struct (book match-callback)
-  ([ bids (sorted-map (on r cmp))      ]
-   [ asks (sorted-map (on r cmp))      ]
-   [ on-match (partial match-callback this) ]))
-
+(define (book-bids book) (l book))
+(define (book-asks book) (r book))
+  
 (define (book-bid? book user) (member? book user))
 (define (book-bid! book user amount)
-  (write! (at (book-bids book) user)
-          amount)
+  (assoc-insert! (book-bids book) user amount >)
   (try-cross-bid/ask! book))
 
 (define (book-ask! book user amount)
-  (write! (at (book-asks book) user)
-          amount)
+  (assoc-insert! (book-bids book) user amount <)
   (try-cross-bid/ask! book))
 
 (define (book-bid book) (peek-front (book-bids book)))
 (define (book-ask book) (peek       (book-asks book)))
 
-(define (book-pop-bid! book) (pop   (book-bids book)))
-(define (book-pop-ask! book) (shift (book-asks book)))
+(define (book-pop-bid! book) (shift! (book-bids book)))
+(define (book-pop-ask! book) (shift! (book-asks book)))
 
 (define (try-cross-bid/ask! book)
   (let ((bid (book-bid book))
@@ -187,7 +184,8 @@
         (begin
           (book-pop-bid! book)
           (book-pop-ask! book)
-          ((book-on-match book) bid ask))
+          (on-match book bid ask)
+          )
         (void))))
 
     

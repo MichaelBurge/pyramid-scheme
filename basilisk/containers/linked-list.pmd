@@ -1,7 +1,8 @@
 (require "base.pmd")
 
 (define (ll-iter-ref lst) (ll-front lst))
-(define (ll-iter-next! lst) (r lst))
+(define (ll-iter-ref! lst) (ll-front! lst))
+(define (ll-iter-next lst) (r lst))
 (define (ll-iter-done? lst) (null? lst))
 
 (define (ll-unshift! lst x)
@@ -52,22 +53,24 @@
 (define (ll-start lst)
   (list-iterator lst))
 
-(instance container linked-list
-          (
-           ll-at
-           ll-at!
-           ll-front
-           ll-front!
-           ll-back
-           ll-back!
-           ll-size
-           ll-capacity
-           ll-start
-           ))
+;; (instance container linked-list
+;;           null
+;;           (
+;;            ll-at
+;;            ll-at!
+;;            ll-front
+;;            ll-front!
+;;            ll-back
+;;            ll-back!
+;;            ll-size
+;;            ll-capacity
+;;            ll-start
+;;            ))
 
-(instance iterator list-iterator
-          (
-           ll-iter-ref
-           ll-iter-next
-           ll-iter-done
-           ))
+;; (instance iterator list-iterator
+;;           (
+;;            ll-iter-ref
+;;            ll-iter-ref!
+;;            ll-iter-next
+;;            ll-iter-done
+;;            ))

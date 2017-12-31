@@ -1,0 +1,37 @@
+(require "base.pmd")
+
+; This is a "WIP Things" module
+
+;; (define (log0 data) (undefined))
+;; (define (log2 data t1 t2) (undefined))
+;; (define (log3 data t1 t2 t3) (undefined))
+;; (define (log4 data t1 t2 t3 t4) (undefined))
+
+; Types
+
+(defmacro (struct) (undefined))
+(defmacro (instance) (undefined))
+
+; Typeclasses
+
+(struct container (at at! front front! back back! size capacity start) #:prefix "")
+(struct reference (get set) #:prefix "")
+(struct iterator (ref ref! next done?))
+(define (default-at
+(define (default-front ctr)    (at ctr 0))
+(define (default-front! ctr)   (at! ctr 0))
+(define (default-back ctr)     (at ctr (- (size ctr) 1)))
+(define (default-back! ctr)    (at! ctr (- (size ctr) 1)))
+
+; Utility
+(defmacro (-> args ...) (undefined))
+(defmacro (. args ...) (undefined))
+
+; Inspects array of function, converts into chain of lambda () calls.
+(define (autocurry) (undefinde))
+
+; (+ 1 2 3 4) = (prim-+ 1 (prim-+ 2 (prim-+ 3 4)))
+(define (autofold) (undefined))
+(define (autocurryfold) (undefined))
+(define + (autocurryfold prim-*))
+(define * (autocurryfold prim-*))

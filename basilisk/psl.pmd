@@ -1,0 +1,27 @@
+(require "base.pmd")
+(require "containers/linked-list.pmd")
+
+; Temporary hacks
+
+;; container
+(define linked-list null)
+(define at       ll-at)
+(define at!      ll-at!)
+(define front    ll-front)
+(define front!   ll-front!)
+(define back     ll-back)
+(define back!    ll-back!)
+(define size     ll-size)
+(define capacity ll-capacity)
+(define start    ll-start)
+
+;; reference
+(define reference pair)
+(define (read x) ((l x)))
+(define (write x v) ((r x) v))
+
+;; iterator
+(define ref ll-iter-ref)
+(define ref! ll-iter-ref!)
+(define next ll-iter-next)
+(define done? ll-iter-done?)
