@@ -26,7 +26,7 @@
  (dukes     (linked-list))
  (deposits  (linked-list))
  (balances  (linked-list))
- (books     (vector (replicate NUM-SELLABLE-PRIORITIES make-book)))
+ (books     (vector-f NUM-SELLABLE-PRIORITIES (λ i (make-book))))
  )
 
 ; Return  Name & Args           Body
@@ -93,7 +93,7 @@
         (else (error "on-bless: Unexpected source priority"))))
 
 (define (owner? address) (eq? address (get owner)))
-(define (balance? address) (member? balances address))
+(define (balance? address) (assoc-member? balances address))
 (define (priority-bid? priority address) (book-bid? (priority-book priority) address))
 
 (define (priority-book priority) (get (at books priority)))

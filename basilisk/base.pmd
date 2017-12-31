@@ -1,51 +1,50 @@
 (require "primitives.pmd")
 
+(define serialize serialize-fixnum)
+
+(define (serialize-fixnum data)
+  (assert (fixnum? data))
+  (vector-singleton (unbox data)))
+  
 ; EVM Instructions
-(define (log1 data t1) (undefined))
+(define (log1 data t1)
+  (let ([bs (serialize data) ])
+    (%-log1 bs t1)))
 
 ; Primitives
-(define (apply proc args) (undefined))
-(define pair prim-cons)
-(define l prim-car)
-(define r prim-cdr)
-(define l! prim-set-car!)
-(define r! prim-set-cdr!)
+(define pair %-cons)
+(define l %-car)
+(define r %-cdr)
+(define l! %-set-car!)
+(define r! %-set-cdr!)
 
-(define (vector x ...) (undefined))
-(defmacro (λ args) `(lambda ,(first args) ,(second args)))
-; Generators
+(define (vector xs)
+  (let ([sz (length xs)]
+        [vec (%-vector-new sz)])
+    (copy-list->vector! vec 0 xs)))
 
-(define (replicate n v) (undefined))
-; modify! :: Container k v => k -> (v -> v) -> 
-(define (modify! ref f)
-  (write! ref (f (read ref))))
+(define (copy-list->vector! vec i xs)
+  (if (null? xs)
+      (void)
+      (begin
+        (%-vector-write! vec i (l xs))
+        (copy-list->vector! vec (+ i 1) (r xs)))))
 
-(define (member? ctr key) (undefined))
-(define (find ctr pred) (undefined))
-(define (try-get key on-find on-fail)
-; Like find, but returns an at! reference
-(define (find! ctr pred) (undefined))
+(define (vector-initialize! vec i sz f)
+  (if (eq? sz 0)
+      (void)
+      (begin
+        (%-vector-write! vec i (f))
+        (%-vector-write-f! vec (+ i 1) f))))
 
-(define (delete! ctr pred) (get (find! ctr pred)))
-(define (delete-at! ctr key) (get (at! ctr key)))
-(define (insert-sorted! ctr pred val) (undefined))
-(define (lookup ctr key) (find ctr (lambda (x) (eq? (l x) key))))
-(define (assoc-delete! ctr key) (undefined))
-(define (assoc-update! ctr key value pred) (undefined))
-(define (assoc-insert! ctr key value pred) (undefined))
+(define (vector-f sz f)
+  (let ([ vec (%-vector-new sz) ])
+    (vector-initalize! vec 0 sz f)))
 
-(define (peek ctr)           (get (back ctr)))
-(define (pop! ctr)           (get (back! ctr)))
-(define (push! ctr value)    (set (back! ctr) value))
-(define (peek-front ctr)     (get (front ctr)))
-(define (shift! ctr)         (get (front! ctr)))
-(define (unshift! ctr value) (set (front! ctr) value))
-(define (1º ctr) (get (at ctr 0)))
-(define (2º ctr) (get (at ctr 1)))\
-(define first 1º)
-(define second 2º)
-(define (1º! ctr x) (set (at ctr 0) x))
-(define (2º! ctr x) (set (at ctr 1) x))
+(define (vector-singleton x)
+  (vector-f 1 (λ () x)))
+
+(defmacro λ lambda)
 
 ; Utility
 (define (curry2 f)
@@ -53,16 +52,18 @@
     (lambda (y)
       (f x y))))
 
-(define + (curry2 prim-+))
-(define - (curry2 prim--))
-(define * (curry2 prim-*))
-(define / (curry2 prim-/))
-(define % (curry2 prim-%))
+(define + (curry2 %-+))
+(define - (curry2 %--))
+(define * (curry2 %-*))
+(define / (curry2 %-/))
+(define % (curry2 %-%))
 
 (define (pred i) (- i 1))
-(define (assert x) (undefined))
-(define (assert-deposit) (undefined))
-(define (void))
+(define (assert x)
+  (if x
+      (void)
+      (%-throw)))
+(define (void) (begin))
 
 (define (circular f)
   (let ((this null))
@@ -70,12 +71,6 @@
     this))
 
 (define (on f op) (λ (a b) (op (f a) (f b))))
-
-; Contract
-(define (withdraw! target amount) (undefined))
-(define (suicide! target) (prim-suicide target))
-(define **contract** (prim-address))
-(define balance prim-balance)
 
 (defmacro (let xs)
   (begin

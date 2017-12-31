@@ -7,6 +7,9 @@
 ;; (define (log3 data t1 t2 t3) (undefined))
 ;; (define (log4 data t1 t2 t3 t4) (undefined))
 
+; Primitives
+(define (replicate n v) (undefined))
+
 ; Types
 
 (defmacro (struct) (undefined))
@@ -24,6 +27,7 @@
 (define (default-back! ctr)    (at! ctr (- (size ctr) 1)))
 
 ; Utility
+(define (apply proc args) (undefined))
 (defmacro (-> args ...) (undefined))
 (defmacro (. args ...) (undefined))
 
