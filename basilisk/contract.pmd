@@ -1,0 +1,12 @@
+(require "base.pmd")
+
+; EVM utilities
+
+(defmacro store (undefined))
+(defmacro exports (undefined))
+
+(define withdraw! %-withdraw!)
+(define suicide! %-suicide!)
+(define **contract** (%-address))
+(define balance %-balance)
+(define (assert-deposit amount) (undefined))

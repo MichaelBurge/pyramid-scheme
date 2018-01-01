@@ -1,0 +1,118 @@
+(require "base.pmd")
+
+; container
+;; Typeclass
+(define linked-list null)
+(define at       ll-at)
+(define at!      ll-at!)
+(define front    ll-front)
+(define front!   ll-front!)
+(define back     ll-back)
+(define back!    ll-back!)
+(define size     ll-size)
+(define capacity ll-capacity)
+(define start    ll-start)
+
+;; Helpers
+(define (loop body)
+  (let ([ stop? false ]
+        [ break (λ () (set! stop? true)) ]
+        [ step (λ (x)
+                 (if stop?
+                     x
+                     (step (body break x)))) ])
+    (step null)))
+
+(define (c-loop init stop? step body)
+  (let ([i (init) ])
+    (loop
+     (λ (break x)
+       (if (stop? i)
+           (begin
+             (break)
+             i)
+           (begin
+             (body)
+             (step)))))))
+
+(define (ctr-loop ctr body)
+  (c-loop (start ctr) done? next body))
+
+(define (find ctr pred?)
+  (let ([ not-found (reference (λ () null)
+                               (λ (x) (write (front! ctr) x)))])
+    (ctr-loop
+     (λ (break i)
+       (if (pred? (read (ref i)))
+           (begin
+             (break)
+             (ref i))
+           not-found)))))
+  
+(define (find! ctr pred)
+  (let ([ not-found (front! ctr) ])
+    (ctr-loop
+     (λ (break i)
+       (if (pred? (read (ref i)))
+           (begin
+             (break)
+             (ref! i))
+           not-found)))))
+
+(define (any? ctr pred?)
+  (ctr-loop
+   (λ (break i)
+     (if (pred? (read (ref i)))
+         (begin
+           (break)
+           true)
+         false))))
+                
+(define (all? ctr pred?)
+  (not (any? ctr (λ (x) (not (pred? x))))))
+
+(define (empty? ctr) (eq? 0 (size ctr)))
+(define (delete! ctr pred) (get (find! ctr pred)))
+(define (delete-at! ctr key) (get (at! ctr key)))
+(define (lookup ctr key) (find ctr (λ x (eq? (l x) key))))
+(define (assoc-delete! ctr key) (delete! ctr (λ assoc (eq? key (l assoc)))))
+(define (assoc-member? ctr key) (any? ctr (λ (x) (eq? (l x) key))))
+(define (assoc-update! ctr key value pred)
+  (assoc-delete! ctr key)
+  (assoc-insert! ctr key value pred))
+
+(define (assoc-insert! ctr key value pred?)
+  (write (cond ((empty? ctr)                   (front! ctr))
+               ((pred? key (read (front ctr))) (front! ctr))
+               (else                           (find! ctr (λ (x) (pred? x key)))))
+         value))
+                                        
+
+(define (peek ctr)           (get (back ctr)))
+(define (pop! ctr)           (get (back! ctr)))
+(define (push! ctr value)    (set (back! ctr) value))
+(define (peek-front ctr)     (get (front ctr)))
+(define (shift! ctr)         (get (front! ctr)))
+(define (unshift! ctr value) (set (front! ctr) value))
+(define (1º ctr) (get (at ctr 0)))
+(define (2º ctr) (get (at ctr 1)))
+(define first 1º)
+(define second 2º)
+(define (1º! ctr x) (set (at ctr 0) x))
+(define (2º! ctr x) (set (at ctr 1) x))
+
+; reference
+;; Typeclass
+(define reference pair)
+(define (read x) ((l x)))
+(define (write! x v) ((r x) v))
+
+;; Helpers
+(define (modify! ref f)
+  (write! ref (f (read ref))))
+
+;; iterator
+(define ref ll-iter-ref)
+(define ref! ll-iter-ref!)
+(define next ll-iter-next)
+(define done? ll-iter-done?)

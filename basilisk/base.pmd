@@ -12,6 +12,8 @@
     (%-log1 bs t1)))
 
 ; Primitives
+(define null %-null)
+
 (define pair %-cons)
 (define l %-car)
 (define r %-cdr)
