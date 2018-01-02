@@ -2,22 +2,59 @@
 
 ; container
 ;; Typeclass
+
+; TODO: It should be possible to write these as (define at (bind-allocator ll-at)), though even that is temporary.
 (define linked-list null)
-(define at       ll-at)
-(define at!      ll-at!)
-(define front    ll-front)
-(define front!   ll-front!)
-(define back     ll-back)
-(define back!    ll-back!)
-(define size     ll-size)
-(define capacity ll-capacity)
-(define start    ll-start)
+(define (at ctr k)
+  (with-allocator
+    (l ctr)
+    (λ (ll-at (r ctr) k))))
+
+(define (at! ctr k)
+  (with-allocator
+    (l ctr)
+    (λ (ll-at! (r ctr) k))))
+
+(define (front ctr)
+  (with-allocator
+    (l ctr)
+    (λ (ll-front ctr))))
+
+(define (front! ctr)
+  (with-allocator
+    (l ctr)
+    (λ (ll-front! ctr))))
+  
+(define (back ctr)
+  (with-allocator
+    (l ctr)
+    (λ (ll-back ctr))))
+
+(define (back! ctr)
+  (with-allocator
+    (l ctr)
+    (λ (ll-back! ctr))))
+  
+(define (size ctr)
+  (with-allocator
+    (l ctr)
+    (λ (ll-size ctr))))
+  
+(define (capacity ctr)
+  (with-allocator
+    (l ctr)
+    (λ (ll-capacity ctr))))
+
+(define (start ctr)
+  (with-allocator
+    (l ctr)
+    (λ (ll-start ctr))))
 
 ;; Helpers
 (define (loop body)
   (let ([ stop? false ]
-        [ break (λ () (set! stop? true)) ]
-        [ step (λ (x)
+        [ break (λ (set! stop? true)) ]
+        [ step (λ x
                  (if stop?
                      x
                      (step (body break x)))) ])
@@ -39,8 +76,8 @@
   (c-loop (start ctr) done? next body))
 
 (define (find ctr pred?)
-  (let ([ not-found (reference (λ () null)
-                               (λ (x) (write (front! ctr) x)))])
+  (let ([ not-found (reference (λ null)
+                               (λ x (write (front! ctr) x)))])
     (ctr-loop
      (λ (break i)
        (if (pred? (read (ref i)))
@@ -69,14 +106,14 @@
          false))))
                 
 (define (all? ctr pred?)
-  (not (any? ctr (λ (x) (not (pred? x))))))
+  (not (any? ctr (λ x (not (pred? x))))))
 
 (define (empty? ctr) (eq? 0 (size ctr)))
 (define (delete! ctr pred) (get (find! ctr pred)))
 (define (delete-at! ctr key) (get (at! ctr key)))
 (define (lookup ctr key) (find ctr (λ x (eq? (l x) key))))
 (define (assoc-delete! ctr key) (delete! ctr (λ assoc (eq? key (l assoc)))))
-(define (assoc-member? ctr key) (any? ctr (λ (x) (eq? (l x) key))))
+(define (assoc-member? ctr key) (any? ctr (λ x (eq? (l x) key))))
 (define (assoc-update! ctr key value pred)
   (assoc-delete! ctr key)
   (assoc-insert! ctr key value pred))
@@ -84,7 +121,7 @@
 (define (assoc-insert! ctr key value pred?)
   (write (cond ((empty? ctr)                   (front! ctr))
                ((pred? key (read (front ctr))) (front! ctr))
-               (else                           (find! ctr (λ (x) (pred? x key)))))
+               (else                           (find! ctr (λ x (pred? x key)))))
          value))
                                         
 
