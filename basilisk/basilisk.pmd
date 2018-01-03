@@ -1,14 +1,12 @@
 (include "psl.pmd")
 
-(define storage (storage-allocator))
-(define memory  (memory-allocator))
-
 (define PRIORITY-KING 0)
 (define PRIORITY-DUKE 1)
 (define PRIORITY-LORD 2)
 (define PRIORITY-BARON 3)
 (define PRIORITY-KNIGHT 4)
 (define PRIORITY-PEASANT 5) ; Not sellable
+(define PRIORITY-ENEMY 6) ; Not sellable
 (define NUM-SELLABLE-PRIORITIES 5)
 
 (define EVENT-SET-KING 0)
@@ -20,24 +18,27 @@
 (define EVENT-ASK-ACCEPTED 6)
 (define EVENT-BALANCE-UPDATED 7)
 
-(store
- (owner     (scalar (origin)))
- (king      (scalar (origin)))
- (dukes     (linked-list))
- (deposits  (linked-list))
- (balances  (linked-list))
- (books     (vector-f NUM-SELLABLE-PRIORITIES (λ i (make-book))))
- )
+; Most variables are stored in temporary memory
+; These variables use permanent storage.
+(with-allocator storage
+  (define owner    (scalar (origin)))
+  (define king     (scalar (origin)))
+  (define dukes    (linked-list))
+  (define deposits (linked-list))
+  (define balances (linked-list))
+  (define books    (vector-f NUM-SELLABLE-PRIORITIES (λ i (make-book))))
+  )
 
 ; Return  Name & Args           Body
 (exports
  (address get_creator           (get owner))
  (uint256 get_balance           (get (at balances (origin))))
+ (uint256 get_priority          (user-priority (origin)))
  (void    deposit               (on-deposit (origin) (txn-amount)))
  (void    withdraw              (on-withdraw (origin))
  (void    (bid priority amount) (on-bid (origin) priority amount))
  (void    (ask amount)          (on-ask (origin) amount))
- (void    (cancel-orders)       (on-cancel (origin)))
+ (void    (cancel_orders)       (on-cancel (origin)))
  (void    (bless target)        (on-bless (origin) target))
  (void    extract               (on-extract))
  (void    suicide               (suicide! (get owner)))
@@ -82,9 +83,10 @@
     (book-bid! book bidder amount)
     (withdraw! bidder current-bid)))
     
-(define (on-ask bidder amount)
-  (let ((book (priority-book priority)))
-    (book-ask! book bidder amount)))
+(define (on-ask asker amount)
+  (let* ([priority (user-priority asker) ])
+          [book (priority-book priority)])
+    (book-ask! book asker amount)))
 
 (define (on-bless source target)
   (assert-cooldown! source)
@@ -125,6 +127,20 @@
         ((eq? priority PRIORITY-BARON)  (transfer-priority-baron! from to))
         ((eq? priority PRIORITY-KNIGHT) (transfer-priority-knight! from to))
         (else (error "transfer-priority!: Unknown priority"))))
+
+(define (user-priority user)
+  (cond ((king? user) PRIORITY-KING)
+        ((duke? user) PRIORITY-DUKE)
+        ((lord? user) PRIORITY-LORD)
+        ((baron? user) PRIORITY-BARON)
+        ((knight? user) PRIORITY-KNIGHT)
+        (else PRIORITY-PEASANT)))
+
+(define (king? user) (eq? user (read king)))
+(define (duke? user) (undefined))
+(define (lord? user) (undefined))
+(define (baron? user) (undefined))
+(define (knight? user) (undefined))
 
 (define (transfer-priority-king! from to)
   (set-king! to))

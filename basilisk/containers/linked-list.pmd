@@ -1,5 +1,7 @@
 (require "base.pmd")
 
+(define (linked-list) (pair **allocator** null))
+
 (define (ll-iter-ref lst) (ll-front lst))
 (define (ll-iter-ref! lst) (ll-front! lst))
 (define (ll-iter-next lst) (r lst))

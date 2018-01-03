@@ -32,3 +32,33 @@ Functions defined here are available to Pyramid programs within macros.
                             (write? i)))
   (contains-instruction? exp inst-pred))
 
+#|
+
+(define (%-sig-str sig)
+  (let ([ name (second sig) ]
+        [ types (fourth sig) ])
+    (string-append
+     name
+     "("
+     (string-join (map symbol->string types) ",")
+     ")")))
+
+; Example: $ echo -n 'baz(uint32,bool)' | keccak-256sum
+(define (%-selector sig)
+  (with-input-from-string (%-sig-str sig)
+    (lambda ()
+      (with-output-to-string
+        (lambda ()
+          (system "keccak-256sum")))))))
+
+(define (%-parse-types tys)
+  (let ([ os 4 ]
+        [ parse-ty (lambda ()
+                     (let ([ ret `(parse-fixnum ,os) ])
+                       (set! os (+ os 32))
+                       ret))])
+    
+    (map parse-ty tys)))
+
+(define (%-register-export sig) (undefined))
+|#

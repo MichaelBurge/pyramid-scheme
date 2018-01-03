@@ -10,6 +10,7 @@
 (define (%-address) (undefined))
 (define (%-balance address) (undefined))
 (define (%-log1 bs t1) (undefined))
+(define (%-calldataload x) (undefined))
 
 (define (%-mem-alloc sz) (undefined))
 (define (%-mem-ptr-read ptr os) (undefined))
@@ -18,6 +19,8 @@
 (define (%-store-ptr-write! ptr os x) (undefined))
 (define (%-box) (undefined))
 (define (%-unbox x) (undefined))
+
+(define (%-throw) (undefined))
 
 (define %-TAG-FIXNUM 0)
 (define %-TAG-SYMBOL 1)
@@ -31,7 +34,7 @@
 (define %-MEM-PROC           #x40)
 (define %-MEM-CONTINUE       #x60)
 (define %-MEM-ARGL           #x80)
-(define %-MEM-VAL            #a0)
-(define %-MEM-NIL            #c0)
-(define %-MEM-ALLOCATOR      #e0)
-(define %-MEM-DYNAMIC-START #100)
+(define %-MEM-VAL            #xa0)
+(define %-MEM-NIL            #xc0)
+(define %-MEM-ALLOCATOR      #xe0)
+(define %-MEM-DYNAMIC-START #x100)

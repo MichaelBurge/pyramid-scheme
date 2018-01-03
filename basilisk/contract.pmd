@@ -2,8 +2,52 @@
 
 ; EVM utilities
 
-(defmacro store (undefined))
-(defmacro exports (undefined))
+#|
+Macro: (exports (uint256 x 5))
+- Add an entry to the compiler's ABI table
+- Emit a dispatch table that switches on the given function
+- Serialize the returned value using the listed return type
+- 
+Before:
+(exports (uint256 x 5)
+         (address (y a b c) (+ a b c)))
+After:
+(%register-export '(x uint256 ()))
+(%register-export '(y address (uint256 uint256 uint256)))
+
+
+|#
+(define txn-selector (fixnum-bytes 4 (%-calldataload 0)))
+
+(define (parse-fixnum os) (undefined))
+
+(defmacro (exports rows)
+  ; (return-type name arg-names arg-types)
+  (define (row-signature row)
+    (let ([ col-type (first row) ]
+          [ col-name (second row) ])
+      (if (symbol? col-name)
+          `(,col-type ,col-name () ())
+          `(,col-type ,(first col-name) ,(rest col-name) ,(map "uint256" (rest col-name))))))
+  (define (wrap-sig sig body)
+    (let ([ args (third sig) ])
+      (if (null? args)
+          body
+          (cons `(lambda ,args body) (%-parse-types args)))))
+  (define (export-row row)
+    (let* ([ sig (row-signature row) ]
+           [ body (wrap-sig sig (third row)) ]
+           [ sltr (%-selector sig )])
+      (%-register-export sig)
+      (if (eq? sltr 'any)
+          `(else ,body)
+          `((eq? ,sltr txn-selector) ,body)
+          )))
+  (define (export-table rows) (map export-row rows))
+  `(cond ,(export-table rows))
+  )
+          
+        
 
 (define withdraw! %-withdraw!)
 (define suicide! %-suicide!)

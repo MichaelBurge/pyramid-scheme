@@ -2,4 +2,9 @@
 (require "containers/linked-list.pmd")
 (require "contract.pmd")
 
-; Temporary hacks
+(define (scalar x)
+  (let ([ p (word (unbox x)) ]
+        [ saved-ptr-read (&ptr-read) ]
+        [ saved-ptr-write (&ptr-write) ])
+    (reference (λ   (saved-ptr-read   p 0))
+               (λ x (saved-ptr-write! p 0 x))
