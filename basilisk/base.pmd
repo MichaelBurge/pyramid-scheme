@@ -200,6 +200,8 @@
       1
       (* 1000 (step-size (- n 1)))))
 
+(define (error x) (%-throw))
+
 (define wei  aeth) ; 0 
 (define kwei feth) ; 1
 (define Mwei peth) ; 2
