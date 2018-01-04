@@ -50,7 +50,7 @@
 
 (define (on-deposit sender amount)
   (modify! (at deposits sender)
-           (+ amount)))
+           (λ x (+ x amount))))
 
 (define (on-withdraw sender) (withdraw-balance! sender))
 
@@ -189,7 +189,7 @@
   (log1 (l bid) EVENT-BID-ACCEPTED) ;; TODO: Log the entire bid
   (log1 (l ask) EVENT-ASK-ACCEPTED) ;; TODO: Log the entire ask
   (transfer-priority! priority (l ask) (l bid))
-  (modify-balance! (l ask) (+ (r ask)))
+  (modify-balance! (l ask) (λ x (+ x (r ask))))
   )
 (define (make-book) (pair (association-list) (association-list)))
 
