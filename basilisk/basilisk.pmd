@@ -62,23 +62,29 @@
 (define (withdraw-owner! address) (withdraw! address (balance **contract**)))
 (define (withdraw-balance! address) (withdraw! address (user-balance address)))
 (define (on-cancel address)
-  (withdraw-bid-priority address PRIORITY-KING)
-  (withdraw-bid-priority address PRIORITY-DUKE)
-  (withdraw-bid-priority address PRIORITY-LORD)
-  (withdraw-bid-priority address PRIORITY-BARON)
-  (withdraw-bid-priority address PRIORITY-KNIGHT)
+  (cancel-bid-priority! address PRIORITY-KING)
+  (cancel-bid-priority! address PRIORITY-DUKE)
+  (cancel-bid-priority! address PRIORITY-LORD)
+  (cancel-bid-priority! address PRIORITY-BARON)
+  (cancel-bid-priority! address PRIORITY-KNIGHT)
 
-  (withdraw-ask-priority address PRIORITY-KING)
-  (withdraw-ask-priority address PRIORITY-DUKE)
-  (withdraw-ask-priority address PRIORITY-LORD)
-  (withdraw-ask-priority address PRIORITY-BARON)
-  (withdraw-ask-priority address PRIORITY-KNIGHT)
+  (cancel-ask-priority! address PRIORITY-KING)
+  (cancel-ask-priority! address PRIORITY-DUKE)
+  (cancel-ask-priority! address PRIORITY-LORD)
+  (cancel-ask-priority! address PRIORITY-BARON)
+  (cancel-ask-priority! address PRIORITY-KNIGHT)
   )
 
-(define (withdraw-bid-priority address priority)
-  (delete-at! (book-bids (priority-book priority))
+(define (cancel-bid-priority! address priority)
+  (let ([ bids (book-bids (priority-book priority)) ])
+    (withdraw! address (read (at bids address)))
+    (delete-at! bids address)))
+
+
+(define (cancel-ask-priority! address priority)
+  (delete-at! (book-asks (priority-book priority))
               address))
-             
+
 ; Transaction must deposit the difference between user's previous bid and this one.
 (define (on-bid bidder priority amount)
   (let* ((book        (priority-book priority))
