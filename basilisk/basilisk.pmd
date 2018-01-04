@@ -35,8 +35,8 @@
 
 ; Return  Name & Args           Body
 (exports
- (address get_creator           (get owner))
- (uint256 get_balance           (get (at balances (origin))))
+ (address get_creator           (read owner))
+ (uint256 get_balance           (read (at balances (origin))))
  (uint256 get_priority          (user-priority (origin)))
  (void    deposit               (on-deposit (origin) (txn-amount)))
  (void    withdraw              (on-withdraw (origin))
@@ -45,7 +45,7 @@
  (void    (cancel_orders)       (on-cancel (origin)))
  (void    (bless target)        (on-bless (origin) target))
  (void    extract               (on-extract))
- (void    suicide               (suicide! (get owner)))
+ (void    suicide               (suicide! (read owner)))
  (void    '()                   (on-deposit (origin) (txn-amount))))
 
 (define (on-deposit sender amount)
@@ -103,7 +103,7 @@
 (define (balance? address) (assoc-member? balances address))
 (define (priority-bid? priority address) (book-bid? (priority-book priority) address))
 
-(define (priority-book priority) (get (at books priority)))
+(define (priority-book priority) (read (at books priority)))
 
 (define (set-king! target)
   (log1 target EVENT-SET-KING)
@@ -166,8 +166,8 @@
 (define transfer-priority-knight! transfer-deposits!)
 
 (define (transfer-deposits! from to)
-  (let ((from-amount (get (at deposits from)))
-        (to-amount   (get (at deposits to))))
+  (let ((from-amount (read (at deposits from)))
+        (to-amount   (read (at deposits to))))
     (write! (at deposits from) 0)
     (write! (at deposits to) (+ from-amount to-amount))))
 
