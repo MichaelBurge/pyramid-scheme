@@ -148,7 +148,7 @@
 (define (baron? user) (member? barons user))
 (define (knight? user) (> (user-deposit user)
                           (eth 10)))
-(define (peasant? user) (> (user-deposit user) 0))
+(define (peasant? user) (> (user-deposit user) 1))
 
 (define (transfer-priority-king! from to)
   (set-king! to))
