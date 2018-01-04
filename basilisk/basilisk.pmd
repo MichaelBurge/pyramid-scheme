@@ -1,5 +1,7 @@
 (include "psl.pmd")
 
+(block-reentrancy-attacks)
+
 (define PRIORITY-KING 0)
 (define PRIORITY-DUKE 1)
 (define PRIORITY-LORD 2)
@@ -24,8 +26,10 @@
   (define owner    (scalar (origin)))
   (define king     (scalar (origin)))
   (define dukes    (linked-list))
+  (define barons   (linked-list))
   (define deposits (linked-list))
   (define balances (linked-list))
+  (define cooldowns (linked-list))
   (define books    (vector-f NUM-SELLABLE-PRIORITIES (λ i (make-book))))
   )
 
@@ -90,6 +94,7 @@
 
 (define (on-bless source target)
   (assert-cooldown! source)
+  (reset-cooldown! source)
   (cond ((king? source) (add-duke! target))
         ((lord? source) (add-baron! target))
         (else (error "on-bless: Unexpected source priority"))))
@@ -137,10 +142,11 @@
         (else PRIORITY-PEASANT)))
 
 (define (king? user) (eq? user (read king)))
-(define (duke? user) (undefined))
-(define (lord? user) (undefined))
-(define (baron? user) (undefined))
-(define (knight? user) (undefined))
+(define (duke? user) (member? dukes user))
+(define (lord? user) (l (maxby r deposits)))
+(define (baron? user) (member? barons user))
+(define (knight? user) (> (user-deposit user)
+                          (eth 10)))
 
 (define (transfer-priority-king! from to)
   (set-king! to))
@@ -165,6 +171,16 @@
 
 (define (modify-balance! address f)
   (modify! (lookup balances address) f))
+
+(define (reset-cooldown! address)
+  (write! (at cooldowns address) (timestamp)))
+
+(define (assert-cooldown! address)
+  let ([ last-use (read (at cooldowns address)) ])
+  (assert (>= (time-since last-use)
+              (hours 24))))
+
+(define (user-deposit user) (read (at deposits user)))
 
 ; Order book data structure
 (define (on-match priority this bid ask)

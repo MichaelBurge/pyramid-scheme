@@ -32,8 +32,6 @@ Functions defined here are available to Pyramid programs within macros.
                             (write? i)))
   (contains-instruction? exp inst-pred))
 
-#|
-
 (define (%-sig-str sig)
   (let ([ name (second sig) ]
         [ types (fourth sig) ])
@@ -60,5 +58,5 @@ Functions defined here are available to Pyramid programs within macros.
     
     (map parse-ty tys)))
 
-(define (%-register-export sig) (undefined))
-|#
+(define (%-register-export sig)
+  (set! **exports** (cons sig **exports**)))

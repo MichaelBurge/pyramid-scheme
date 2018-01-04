@@ -1,26 +1,100 @@
-(defmacro (undefined) (error "Unimplemented function"))
+; The (asm) language primitive executes ordinary Racket code within the codegen.rkt module, where
+; the cg-* helpers are defined.
 
+; Helpers
+
+(defmacro (%-nullop xs)
+  (asm
+   xs                       ; [ result; return ]
+   (cg-make-fixnum stack)   ; [ result'; return ]
+   (cg-swap 1 )             ; [ return; result' ]
+   (cg-goto stack)          ; [ result' ]
+   ))
+
+(defmacro (%-unop xs)
+  (asm
+   (cg-unroll-args1 stack)  ; [ x1; return ]
+   xs                       ; [ result; return ]
+   (cg-make-fixnum stack)   ; [ result'; return ]
+   (cg-swap 1)              ; [ return; result' ]
+   (cg-goto stack)          ; [ result' ]
+   ))
+
+(defmacro (%-binop xs)
+  (asm
+   (cg-unroll-args2 stack)   ; [ x1; x2; return ]
+   xs                        ; [ result; return ]
+   (cg-make-fixnum stack)    ; [ result'; return ]
+   (cg-swap 1)               ; [ return; result' ]
+   (cg-goto stack)           ; [ result' ]
+   ))
+
+(defmacro (%-triop xs)
+  (cg-unroll-args3 stack)    ; [ x1; x2; x3; return ]
+  xs                         ; [ result; return ]
+  (cg-make-fixnum stack)     ; [ result'; return ]
+  (cg-swap 1)                ; [ return; result' ]
+  (cg-goto stack)            ; [ result' ]
+  )
+
+; primitives are ordinary functions, but separate them syntactically since the arguments are manually handled by the assembly.
+(defmacro (primitive name body)
+  `(define (,name) ,body))
+  
 ; "True" Primitives
-(define (%-+ a b) (undefined))
-(define (%-* a b) (undefined))
-(define (%-- a b) (undefined))
-(define (%-/ a b) (undefined))
-(define (%-suicide) (undefined))
-(define (%-eq? a b) (undefined))
-(define (%-address) (undefined))
-(define (%-balance address) (undefined))
-(define (%-log1 bs t1) (undefined))
-(define (%-calldataload x) (undefined))
+;; These don't take any arguments because the assembly manually handles them.
+(primitive %-+       (%-binop  (asm 'ADD)))
+(primitive %-*       (%-binop  (asm 'MUL)))
+(primitive %--       (%-binop  (asm 'SUB)))
+(primitive %-/       (%-binop  (asm 'DIV)))
+(primitive %-mod     (%-binop  (asm 'MOD)))
+(primitive %-=       (%-binop  (asm 'EQ)))
+(primitive %->       (%-binop  (asm 'GT)))
+(primitive %-<       (%-binop  (asm 'LT)))
+(primitive %-ptr-= (asm
+                    (cg-unroll-args2 stack) ; [ x1; x2; return ]
+                    (asm 'EQ)               ; [ result; return ]
+                    (cg-make-fixnum)        ; [ result'; return ]
+                    (cg-swap 1)             ; [ return; result' ]
+                    (cg-goto stack)         ; [ result' ]
+                    ))
+(primitive %-suicide (%-unop   (asm 'SUICIDE)))
+(primitive %-address (%-nullop (asm 'ADDRESS)))
+(primitive %-balance (%-unop   (asm 'BALANCE)))
+(primitive %-log1
+           (asm
+            (cg-unroll-args2 stack) ; [ bs; t; return  ]
+            (asm 'DUP1)             ; [ bs; bs; t; return ]
+            (cg-vector-len stack)   ; [ len; bs; t; return ]
+            (cg-swap 1)             ; [ bs; len; t; return ]
+            (cg-vector-data stack)  ; [ data; len; t; return ]
+            (asm 'LOG1)             ; [ return ]
+            (cg-goto stack)))       ; [ ]
 
-(define (%-mem-alloc sz) (undefined))
-(define (%-mem-ptr-read ptr os) (undefined))
-(define (%-mem-ptr-write! ptr os x) (undefined))
-(define (%-store-ptr-read ptr os) (undefined))
-(define (%-store-ptr-write! ptr os x) (undefined))
-(define (%-box) (undefined))
-(define (%-unbox x) (undefined))
+(primitive %-origin (%-nullop (asm 'ORIGIN)))
+(primitive %-caller (%-nullop (asm 'CALLER)))
+(primitive %-callvalue (%-nullop (asm 'CALLVALUE)))
+(primitive %-calldataload (%-unop (asm 'CALLDATALOAD)))
+(primitive %-timestamp (%-nullop (asm 'TIMESTAMP)))
 
-(define (%-throw) (undefined))
+(primitive %-tag (%-unop (cg-tag stack)))
+(primitive %-mem-alloc (%-unop (cg-allocate stack)))
+(primitive %-mem-ptr-read (%-binop (cg-read-address-offset stack stack)))
+(primitive %-mem-ptr-write! (%-triop (cg-write-address-offset stack stack stack)))
+(primitive %-store-ptr-read
+           (%-binop
+            (append
+             (cg-add stack stack)
+             (asm 'SLOAD))))
+(primitive %-store-ptr-write!
+           (%-triop
+            (append
+             (cg-add stack stack)
+             (asm 'SSTORE))))
+(primitive %-box (%-unop (cg-make-fixnum stack)))
+(primitive %-unbox (%-unop (cg-unbox-integer stack)))
+
+(define (%-throw) (nullop (asm 'REVERT)))
 
 (define %-TAG-FIXNUM 0)
 (define %-TAG-SYMBOL 1)

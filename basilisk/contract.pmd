@@ -19,7 +19,7 @@ After:
 |#
 (define txn-selector (fixnum-bytes 4 (%-calldataload 0)))
 
-(define (parse-fixnum os) (undefined))
+(define (parse-fixnum os) (%-calldataload os))
 
 (defmacro (exports rows)
   ; (return-type name arg-names arg-types)
@@ -53,4 +53,7 @@ After:
 (define suicide! %-suicide!)
 (define **contract** (%-address))
 (define balance %-balance)
-(define (assert-deposit amount) (undefined))
+(define (assert-deposit amount)
+  (assert (>= (%-callvalue) amount)))
+
+(define (block-reentrancy-attacks) (assert (ptr-= (%-caller) (%-origin))))

@@ -585,7 +585,9 @@ These optimizations are currently unimplemented:
 (: cg-set-car!     (Generator2 MExpr MExpr))
 (: cg-set-cdr!     (Generator2 MExpr Mexpr))
 (: cg-list-length  (Generator  MExpr))
-
+(: cg-unroll-args1 (Generator  MExpr))
+(: cg-unroll-args2 (Generator  MExpr))
+(: cg-unroll-args3 (Generator  MExpr))
 
 (define (cg-null? exp)
   (append
@@ -704,6 +706,40 @@ These optimizations are currently unimplemented:
      `(,terminate)
      (cg-pop 1))))            ; [ len ]
 
+(define (cg-unroll-args1 exp)
+  (append
+   (debug-label 'cg-unroll-args1)
+   (cg-unroll-list 1 exp)   ; [ x1; nil ]
+   (cg-swap 1)              ; [ nil; x1 ]
+   (cg-pop 1)               ; [ x1 ]
+   (cg-unbox-integer stack) ; [ x1' ]
+   ))
+
+(define (cg-unroll-args2 exp)
+  (append
+   (debug-label 'cg-unroll-args2)
+   (cg-unroll-list 2 exp)   ; [ x1; x2; nil ]
+   (cg-unbox-integer stack) ; [ x1'; x2; nil ]
+   (cg-swap 2)              ; [ nil; x2; x1' ]
+   (cg-pop 1)               ; [ x2; x1']
+   (cg-unbox-integer stack) ; [ x2'; x1' ]
+   (cg-swap 1)              ; [ x1'; x2' ]
+   ))
+
+(define (cg-unroll-args3 exp)
+  (append
+   (debug-label 'cg-unroll-args3)
+   (cg-unroll-list 3 exp)   ; [ x1; x2; x3; nil ]
+   (cg-unbox-integer stack) ; [ x1'; x2; x3; nil ]
+   (cg-swap 3)              ; [ nil; x2; x3; x1' ]
+   (cg-pop 1)               ; [ x2; x3; x1' ]
+   (cg-unbox-integer stack) ; [ x2'; x3; x1' ]
+   (cg-swap 1)              ; [ x3; x2'; x1' ]
+   (cg-unbox-integer stack) ; [ x3'; x2'; x1' ]
+   (cg-swap 2)              ; [ x1'; x2'; x3' ]
+   ))
+
+
 ;;; Vectors
 
 (: cg-vector->stack (Generator MExpr))
@@ -746,6 +782,9 @@ These optimizations are currently unimplemented:
      (cg-goto loop)               ; [ i; vec; x ]
      `(,term)
      (cg-pop 2))))                ; [ xs ]
+
+(define (cg-vector-data vec)
+  (cg-add vec (* 3 WORD)))
 
 (define (cg-vector-len vec)
   (append

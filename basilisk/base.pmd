@@ -45,6 +45,9 @@
 (define (ptr-read ptr os)     ((&ptr-read)  ptr os))
 (define (ptr-write! ptr os x) ((&ptr-write) ptr os x))
 
+(define timestamp %-timestamp)
+(define (time-since a) (- (%-timestamp) a))
+
 ; Primitives
 (define null %-MEM-NIL)
 
@@ -55,7 +58,7 @@
       (ptr-write! ptr #20 x)
       ptr)))
 
-(define (fixnum-bytes x n) (undefined))
+(define (fixnum-bytes x n) (mod x (* n 8)))
 
 (define (symbol x)
   (let ([ ptr (alloc 2) ])
@@ -104,7 +107,7 @@
         (copy-list->vector! vec (+ i 1) (r xs)))))
 
 (define (vector-initialize! vec i sz f)
-  (if (eq? sz 0)
+  (if (equal? sz 0)
       (void)
       (begin
         (vector-write! vec i (f))
@@ -120,23 +123,46 @@
 (defmacro λ lambda)
 
 ; Utility
-(define (curry2 f)
-  (lambda (x)
-    (lambda (y)
-      (f x y))))
+(define + %-+)
+(define - %--)
+(define * %-*)
+(define / %-/)
+(define % %-mod)
+(define = %-=)
+(define > %->)
+(define < %-<)
+(define ptr-= %-ptr-=)
 
-(define + (curry2 %-+))
-(define - (curry2 %--))
-(define * (curry2 %-*))
-(define / (curry2 %-/))
-(define % (curry2 %-%))
+(defmacro (and  xs)
+  (cond ((null? xs) 'true)
+        ((null? (cdr xs)) (car xs))
+        (else `(if ,(car xs)
+                   (and ,(cdr xs))
+                   false))))
+
+(defmacro (or xs)
+  (cond ((null? xs) 'false)
+        ((null? (cdr xs)) (car xs))
+        (else `(if ,(car xs)
+                   true
+                   (or ,(cdr xs))))))
 
 (define (pred i) (- i 1))
+(define (void) (begin))
+
+(define (equal? a b)
+  (or (ptr-= a b)
+      (and (eq? (%-tag a) (%-tag b))
+           (cond ((fixnum? x) (equal-fixnum? x))
+                 ((symbol? x) (equal-fixnum? x))
+                 (else (%-throw))))))
+
 (define (assert x)
   (if x
       (void)
       (%-throw)))
-(define (void) (begin))
+(define (assert-equal a b) (assert (equal? a b)))
+(define (assert-length xs n) (assert (>= (length xs) n)))
 
 (define (circular f)
   (let ((this null))
@@ -168,3 +194,32 @@
                                       (wrap-args (tail args) body))))]
           )
       (wrap-args args body))))
+
+(define (step-size n)
+  (if (= n 0)
+      1
+      (* 1000 (step-size (- n 1)))))
+
+(define wei  aeth) ; 0 
+(define kwei feth) ; 1
+(define Mwei peth) ; 2
+(define Gwei neth) ; 3
+(define Twei µeth) ; 4
+(define Pwei meth) ; 5
+(define Ewei eth)  ; 6
+(define (aeth n) (* n (step-size 0)))
+(define (feth n) (* n (step-size 1)))
+(define (peth n) (* n (step-size 2)))
+(define (neth n) (* n (step-size 3)))
+(define (µeth n) (* n (step-size 4)))
+(define (meth n) (* n (step-size 5)))
+(define (eth n)  (* n (step-size 6)))
+(define (keth n) (* n (step-size 7)))
+
+(define (seconds n)    n)
+(define (minutes n) (* n 60))
+(define (hours n)   (* n 3600))
+(define (days n)    (* n (hours 24)))
+(define (weeks n)   (* n (days 7)))
+(define (months n)  (* n (days 30)))
+(define (years n)   (* n (days 365)))
