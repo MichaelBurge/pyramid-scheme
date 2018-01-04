@@ -139,7 +139,8 @@
         ((lord? user) PRIORITY-LORD)
         ((baron? user) PRIORITY-BARON)
         ((knight? user) PRIORITY-KNIGHT)
-        (else PRIORITY-PEASANT)))
+        ((peasant? user) PRIORITY-PEASANT)
+        (else PRIORITY-ENEMY)))
 
 (define (king? user) (eq? user (read king)))
 (define (duke? user) (member? dukes user))
@@ -147,6 +148,7 @@
 (define (baron? user) (member? barons user))
 (define (knight? user) (> (user-deposit user)
                           (eth 10)))
+(define (peasant? user) (> (user-deposit user) 0))
 
 (define (transfer-priority-king! from to)
   (set-king! to))
