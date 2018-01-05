@@ -1,11 +1,13 @@
 #lang errortrace typed/racket/no-check
 
 (require "types.rkt")
+(require "disassembler.rkt")
 (require "serializer.rkt")
+(require binaryio/integer)
 
-(define-type EthWord Integer)
+(provide (all-defined-out))
 
-(struct evm ([ step : Fixnum ] [ pc : Fixnum ] [ stack : (Listof EthWord) ] [ memory : (Dict EthWord) ] [ gas : Fixnum ]))
+(define MEMORY-SIZE 1000000)
 
 ; Appendix G in Ethereum Yellow Paper: http://gavwood.com/paper.pdf
 (define G_zero          0)
@@ -55,145 +57,201 @@
 (define W_high '(JUMPI))
 (define W_extcode '(EXTCODESIZE))
 
-(: simulate-instructions (-> evm EthInstructions Fixnum (Listof evm)))
-(define (simulate-instructions vm is max-iterations)
-  (simulate vm (make-instruction-dict is) max-iterations))
+(: make-vm (-> Bytes Procedure Procedure evm))
+(define (make-vm bytes on-simulate on-return on-error)
+  (evm 0     ; step
+       bytes ; bytecode
+       0     ; pc
+       null  ; stack
+       (make-bytes MEMORY-SIZE) ; memory
+       0     ; gas
+       #f    ; halted?
+       on-simulate
+       on-return
+       on-error
+       ))
 
-(: simulate (-> evm (Dict EthInstruction) Fixnum (Listof evm)))
-(define (simulate vm is max-iterations)
-  (if (<= max-iterations 0)
+(: simulate! (-> evm Fixnum Void))
+(define (simulate! vm max-iterations)
+  (if (or (<= max-iterations 0)
+          (evm-halted? vm))
       '()
-      (cons (simulate-one vm (dict-ref is (evm-pc vm)))
-            (simulate     vm is (- max-iterations 1)))))
+      (begin
+        (simulate-one! vm (next-instruction vm))
+        (simulate! vm (- max-iterations 1)))))
 
-(: simulate-one (-> evm EthInstruction))
-(define (simulate-one vm i)
-  (let ((vm1 (cond ((label? i)    (simulate-nop  vm))
-                   ((eth-push? i) (simulate-push vm (eth-push-size i) (eth-push-value i)))
-                   ((eth-asm? i)  (simulate-asm  vm (eth-asm-name i)))
-                   (else
-                    (error "Unknown opcode found - simulate-one:" i)))))
-    (struct-copy evm vm1
-                 [ pc (+ (evm-pc vm) (instruction-size i))]
-                 [ gas (+ (evm-gas vm) (instruction-gas vm i)) ]
-                 [ step (+ (evm-step vm) 1) ])))
-                          
+(: next-instruction (-> evm EthInstruction))
+(define (next-instruction vm) (cdr (disassemble-one (evm-bytecode vm) (evm-pc vm))))
+  
+(: simulate-one! (-> evm EthInstruction evm))
+(define (simulate-one! vm i)
+  (let* ([ used-gas (instruction-gas vm i) ]
+         [ op       (eth-to-opcode i) ]
+         [ reads (take (evm-stack vm) (opcode-num-reads op)) ]
+         )
+    ((evm-on-simulate vm) vm i reads)
+    (cond ((label? i)    (simulate-nop!  vm))
+          ((eth-push? i) (simulate-push! vm (eth-push-size i) (eth-push-value i)))
+          ((eth-asm? i)  (simulate-asm!  vm (eth-asm-name i)))
+          (else
+           (error "Unknown opcode found - simulate-one:" i)))
+    (set-evm-pc!   vm (+ (evm-pc   vm) (instruction-size i)))
+    (set-evm-gas!  vm (+ (evm-gas  vm) used-gas))
+    (set-evm-step! vm (+ (evm-step vm) 1))
+  ))
 
-(: simulate-nop (-> evm evm))
-(define (simulate-nop vm) vm)
+(: simulate-nop! (-> evm Void))
+(define (simulate-nop! vm) (void))
 
-(: simulate-push (-> evm Fixnum Integer))
-(define (simulate-push vm size n) (push-stack vm n))
+(: simulate-push! (-> evm Fixnum Integer))
+(define (simulate-push! vm size n) (push-stack! vm n))
 
-(: simulate-asm (-> evm Symbol evm))
-(define (simulate-asm vm sym)
-  (cond ((eq? sym 'ISZERO) (simulate-unop  vm (lambda (a) (if (= a 0) 1 0))))
-        ((eq? sym 'ADD)    (simulate-binop vm (lambda (a b) (+ a b))))
-        ((eq? sym 'SUB)    (simulate-binop vm (lambda (a b) (- a b))))
-        ((eq? sym 'MUL)    (simulate-binop vm (lambda (a b) (* a b))))
-        ((eq? sym 'DIV)    (simulate-binop vm (lambda (a b) (/ a b))))
-        ((eq? sym 'EQ)     (simulate-binop vm (lambda (a b) (if (= a b) 1 0))))
-        ((eq? sym 'LT)     (simulate-binop vm (lambda (a b) (if (< a b) 1 0))))
-        ((eq? sym 'GT)     (simulate-binop vm (lambda (a b) (if (> a b) 1 0))))
-        ((eq? sym 'POP)    (simulate-pop   vm))
-        ((eq? sym 'DUP1)   (simulate-dup   vm 1))
-        ((eq? sym 'DUP2)   (simulate-dup   vm 2))
-        ((eq? sym 'DUP3)   (simulate-dup   vm 3))
-        ((eq? sym 'DUP4)   (simulate-dup   vm 4))
-        ((eq? sym 'DUP5)   (simulate-dup   vm 5))
-        ((eq? sym 'DUP6)   (simulate-dup   vm 6))
-        ((eq? sym 'DUP7)   (simulate-dup   vm 7))
-        ((eq? sym 'DUP8)   (simulate-dup   vm 8))
-        ((eq? sym 'DUP9)   (simulate-dup   vm 9))
-        ((eq? sym 'SWAP1)  (simulate-swap  vm 1))
-        ((eq? sym 'SWAP2)  (simulate-swap  vm 2))
-        ((eq? sym 'SWAP3)  (simulate-swap  vm 3))
-        ((eq? sym 'SWAP4)  (simulate-swap  vm 4))
-        ((eq? sym 'SWAP5)  (simulate-swap  vm 5))
-        ((eq? sym 'SWAP6)  (simulate-swap  vm 6))
-        ((eq? sym 'SWAP7)  (simulate-swap  vm 7))
-        ((eq? sym 'MSTORE) (simulate-mstore vm))
-        ((eq? sym 'MLOAD)  (simulate-mload vm))
-        ((eq? sym 'JUMP)   (simulate-jump vm))
-        ((eq? sym 'JUMPI)  (simulate-jumpi vm))
-        ((eq? sym 'JUMPDEST) (simulate-nop))
+(: simulate-asm! (-> evm Symbol evm))
+(define (simulate-asm! vm sym)
+  (cond ((eq? sym 'ISZERO) (simulate-unop!  vm (λ (a) (if (= a 0) 1 0))))
+        ((eq? sym 'ADD)    (simulate-binop! vm (λ (a b) (+ a b))))
+        ((eq? sym 'SUB)    (simulate-binop! vm (λ (a b) (- a b))))
+        ((eq? sym 'MUL)    (simulate-binop! vm (λ (a b) (* a b))))
+        ((eq? sym 'DIV)    (simulate-binop! vm (λ (a b) (/ a b))))
+        ((eq? sym 'EQ)     (simulate-binop! vm (λ (a b) (if (= a b) 1 0))))
+        ((eq? sym 'LT)     (simulate-binop! vm (λ (a b) (if (< a b) 1 0))))
+        ((eq? sym 'GT)     (simulate-binop! vm (λ (a b) (if (> a b) 1 0))))
+        ((eq? sym 'POP)    (simulate-pop!   vm))
+        ((eq? sym 'DUP1)   (simulate-dup!   vm 1))
+        ((eq? sym 'DUP2)   (simulate-dup!   vm 2))
+        ((eq? sym 'DUP3)   (simulate-dup!   vm 3))
+        ((eq? sym 'DUP4)   (simulate-dup!   vm 4))
+        ((eq? sym 'DUP5)   (simulate-dup!   vm 5))
+        ((eq? sym 'DUP6)   (simulate-dup!   vm 6))
+        ((eq? sym 'DUP7)   (simulate-dup!   vm 7))
+        ((eq? sym 'DUP8)   (simulate-dup!   vm 8))
+        ((eq? sym 'DUP9)   (simulate-dup!   vm 9))
+        ((eq? sym 'SWAP1)  (simulate-swap!  vm 1))
+        ((eq? sym 'SWAP2)  (simulate-swap!  vm 2))
+        ((eq? sym 'SWAP3)  (simulate-swap!  vm 3))
+        ((eq? sym 'SWAP4)  (simulate-swap!  vm 4))
+        ((eq? sym 'SWAP5)  (simulate-swap!  vm 5))
+        ((eq? sym 'SWAP6)  (simulate-swap!  vm 6))
+        ((eq? sym 'SWAP7)  (simulate-swap!  vm 7))
+        ((eq? sym 'MSTORE) (simulate-mstore! vm))
+        ((eq? sym 'MLOAD)  (simulate-mload! vm))
+        ((eq? sym 'JUMP)   (simulate-jump! vm))
+        ((eq? sym 'JUMPI)  (simulate-jumpi! vm))
+        ((eq? sym 'JUMPDEST) (simulate-nop! vm))
+        ((eq? sym 'CODECOPY) (simulate-codecopy! vm))
+        ((eq? sym 'RETURN) (simulate-return! vm))
+        ((eq? sym 'REVERT) (simulate-revert! vm))
+        ((eq? sym 'STOP)   (simulate-stop! vm))
         (else
          (error "Unimplemented evm instruction found - simulate-asm:" sym))))
 
-(: simulate-unop (-> evm (-> Integer Integer) evm))
-(define (simulate-unop vm f)
-  (let ((x1 (pop-stack vm)))
-    (push-stack (cdr x1) (f (car x1)))))
+(: simulate-unop! (-> evm (-> Integer Integer) Void))
+(define (simulate-unop! vm f)
+  (let ((x1 (pop-stack! vm)))
+    (push-stack! vm (f x1))))
 
-(: simulate-binop (-> evm (-> Integer Integer Integer) evm))
-(define (simulate-binop vm f)
-  (let* ((x1 (pop-stack vm))
-         (x2 (pop-stack (cdr x1))))
-    (push-stack (cdr x2) (f (car x1) (car x2)))))
+(: simulate-binop! (-> evm (-> Integer Integer Integer) Void))
+(define (simulate-binop! vm f)
+  (let* ([x1 (pop-stack! vm)]
+         [x2 (pop-stack! vm)])
+    (push-stack! vm (f x1 x2))))
 
-(: simulate-pop (-> evm evm))
-(define (simulate-pop vm) (cdr (pop-stack vm)))
+(: simulate-pop! (-> evm Void))
+(define (simulate-pop! vm) (pop-stack! vm))
 
-(: simulate-dup (-> evm Fixnum evm))
-(define (simulate-dup vm amount)
-  (let ((x (get-stack (vm (- amount 1)))))
-    (push-stack vm x)))
+(: simulate-dup! (-> evm Fixnum Void))
+(define (simulate-dup! vm amount)
+  (let ([ x (get-stack vm (- amount 1)) ])
+    (push-stack! vm x)))
 
-(: simulate-swap (-> evm Fixnum evm))
-(define (simulate-swap vm amount)
-  (let* ((x1 (get-stack vm 0))
-         (x2 (get-stack vm amount))
-         (new-stack (list-set (list-set (evm-stack vm) 0 x2) amount x1)))
-    (struct-copy evm (cdr x2) [ stack new-stack ])))
+(: simulate-swap! (-> evm Fixnum Void))
+(define (simulate-swap! vm amount)
+  (let* ([x1 (get-stack vm 0)]
+         [x2 (get-stack vm amount)]
+         [new-stack (list-set (list-set (evm-stack vm) 0 x2) amount x1)])
+    (set-evm-stack! vm new-stack)))
 
-(: simulate-mstore (-> evm evm))
-(define (simulate-mstore vm)
-  (let* ((addr (pop-stack vm))
-         (val  (pop-stack (cdr addr)))
-         (new-memory (dict-set (evm-memory vm) (car addr) (car val))))
-    (struct-copy evm (cdr val) [ memory new-memory ])))
+(: simulate-mstore! (-> evm Void))
+(define (simulate-mstore! vm)
+  (let* ([addr (pop-stack! vm)]
+         [val  (pop-stack! vm)])
+    (write-memory-word! vm addr 32 val)))
 
-(: simulate-mload (-> evm evm))
-(define (simulate-mload vm)
-  (let ((addr (pop-stack vm)))
-    (push-stack vm (read-memory vm addr))))
+(: simulate-mload! (-> evm Void))
+(define (simulate-mload! vm)
+  (let ((addr (pop-stack! vm)))
+    (push-stack! vm (read-memory-word vm addr 32))))
 
-(: simulate-jump (-> evm evm))
-(define (simulate-jump vm)
-  (let ((addr (pop-stack vm)))
-    (struct-copy evm (cdr addr) [ pc (car addr)])))
+(: simulate-jump! (-> evm Void))
+(define (simulate-jump! vm)
+  (let ((addr (pop-stack! vm)))
+    (set-evm-pc! vm addr)))
 
-(: simulate-jumpi (-> evm evm))
-(define (simulate-jumpi vm)
-  (let* ((addr (pop-stack vm))
-         (pred (pop-stack (cdr addr))))
-    (if (eq? 0 pred)
-        (cdr pred)
-        (set-pc (cdr pred) (car addr)))))
+(: simulate-jumpi! (-> evm Void))
+(define (simulate-jumpi! vm)
+  (let* ((addr (pop-stack! vm))
+         (pred (pop-stack! vm)))
+    (unless (eq? 0 pred)
+      (set-evm-pc! vm addr))))
 
-(: read-memory (-> evm Fixnum Integer))
-(define (read-memory vm addr)
-  (dict-ref (evm-memory vm) addr))
+(: simulate-codecopy! (-> evm void))
+(define (simulate-codecopy! vm)
+  (let* ([ dest-addr (pop-stack! vm) ]
+         [ src-addr  (pop-stack! vm) ]
+         [ len       (pop-stack! vm) ])
+    (bytes-copy! (evm-memory vm) dest-addr
+                 (evm-bytecode vm) src-addr
+                 (+ src-addr len))))
 
-(: write-memory (-> evm Fixnum Integer evm))
-(define (write-memory vm addr val)
-  (let ((new-memory (dict-set (evm-memory vm) addr val)))
-    (struct-copy evm vm [ memory new-memory ])))
+(: simulate-return! (-> evm Void))
+(define (simulate-return! vm)
+  (let* ([ addr (pop-stack! vm) ]
+         [ len  (pop-stack! vm) ]
+         [ bs (read-memory vm addr len) ])
+    ((evm-on-return vm) vm bs)
+    (halt! vm)))
 
-(: set-pc (-> evm Fixnum evm))
-(define (set-pc vm pc)
-  (struct-copy evm vm [ pc pc ]))
+(: simulate-stop! (-> evm Void))
+(define (simulate-stop! vm)
+  ((evm-on-return vm) vm (bytes))
+  (halt! vm))
 
-(: push-stack (-> evm Integer evm))
-(define (push-stack vm val)
-  (struct-copy evm vm [ stack (cons (evm-stack vm)) ]))
+(: simulate-revert! (-> evm Void))
+(define (simulate-revert! vm)
+  ((evm-on-error vm) vm)
+  (halt! vm))
 
-(: pop-stack (-> evm (Pairof Integer evm)))
-(define (pop-stack vm)
+(: read-memory-word (-> evm Fixnum Fixnum Integer))
+(define (read-memory-word vm addr len)
+  (bytes->integer (read-memory vm addr len)
+                  #f))
+
+(: read-memory (-> evm Fixnum Fixnum Bytes))
+(define (read-memory vm addr len)
+  (subbytes (evm-memory vm) addr (+ addr len)))
+
+(: write-memory-word! (-> evm Fixnum Fixnum Integer Void))
+(define (write-memory-word! vm addr len val)
+  (write-memory! vm addr (integer->bytes val len #f)))
+
+(: write-memory! (-> evm Fixnum Bytes Void))
+(define (write-memory! vm addr val)
+  (bytes-copy! (evm-memory vm) addr val))
+
+(: push-stack! (-> evm Integer Void))
+(define (push-stack! vm val)
+  (set-evm-stack! vm (cons val (evm-stack vm))))
+
+(: pop-stack! (-> evm EthWord))
+(define (pop-stack! vm)
   (let ((val (car (evm-stack vm))))
-    (cons val (struct-copy evm vm [ stack (cdr (evm-stack vm)) ]))))
+    (set-evm-stack! vm (cdr (evm-stack vm)))
+    val))
 
-(: get-stack (-> evm Fixnum Integer))
+(: halt! (-> evm Void))
+(define (halt! vm) (set-evm-halted?! vm true))
+
+(: get-stack (-> evm Fixnum EthWord))
 (define (get-stack vm amount)
   (list-ref (evm-stack vm) amount))
 
@@ -210,7 +268,7 @@
   (define (C_sstore)  (error "C_sstore unimplemented"))
   (define (C_call)    (error "C_call unimplemented"))
   (define (C_suicide) (error "C_suicide unimplemented"))
-  (define (is-asm sym) (equal? i eth-asm sym))
+  (define (is-asm sym) (equal? i (eth-asm sym)))
   (define (is-asms syms) (ormap is-asm syms))
   (cond ((is-asm 'SSTORE) (C_sstore))
         ((is-asm 'EXP)
@@ -242,6 +300,7 @@
         ((is-asms W_extcode) G_extcode)
         ((is-asm 'BALANCE)   G_balance)
         ((is-asm 'BLOCKHASH) G_blockhash)
+        ((is-asm 'REVERT)    0)
         (else
          (error "Unknown instruction - instruction-gas:" i))))
 

@@ -22,6 +22,7 @@
 
 (: compile-pyramid (-> Pyramid Target Linkage inst-seq))
 (define (compile-pyramid exp target linkage)
+  (display-exp-type exp)
   (cond ((self-evaluating? exp)
          (compile-self-evaluating exp target linkage))
         ((quoted? exp) (compile-quoted exp target linkage))
@@ -44,6 +45,27 @@
          (compile-application exp target linkage))
         (else
          (error "Unknown expression type -- COMPILE" exp))))
+
+(: display-exp-type (-> Pyramid Void))
+(define (display-exp-type exp)
+  (display exp)
+  (newline)
+  (cond ((self-evaluating? exp)   (display 'self-evaluating))
+        ((quoted? exp)            (display 'quoted))
+        ((macro? exp)             (display 'macro))
+        ((variable? exp)          (display 'variable))
+        ((assignment? exp)        (display 'assignment))
+        ((definition? exp)        (display 'definition))
+        ((if? exp)                (display 'if))
+        ((lambda? exp)            (display 'lambda))
+        ((begin? exp)             (display 'begin))
+        ((cond? exp)              (display 'cond))
+        ((macro-application? exp) (display 'macro-application))
+        ((application? exp)       (display 'application))
+        (else
+         (error "Unknown expression type -- display-exp-type" exp)))
+  (newline))
+
 
 (: empty-instruction-sequence (-> inst-seq))
 (define (empty-instruction-sequence)
@@ -78,6 +100,12 @@
                     (inst-seq '() (list target)
                               (list (assign target (const (text-of-quotation exp)))))))
 
+(: install-macro! (-> Symbol Procedure Void))
+(define (install-macro! name func)
+  (display "install-macro!")
+  (namespace-set-variable-value! name func #t (*available-macros*))
+  )
+
 (: compile-macro (-> Pyramid Target Linkage inst-seq))
 (define (compile-macro exp target linkage)
   (let* ((mac-name (macro-variable exp))
@@ -86,7 +114,7 @@
          (macro-exp `(lambda ,arg-names ,mac-body))
          (macro (eval macro-exp (*macro-namespace*)))
          )
-    (namespace-set-variable-value! mac-name macro)
+    (install-macro! mac-name macro)
     (inst-seq '() '() '())
     ))
 
@@ -165,11 +193,11 @@
 
 (: compile-sequence (-> Sequence Target Linkage inst-seq))
 (define (compile-sequence seq target linkage)
-  (if (last-exp? seq)
-      (compile-pyramid (first-exp seq) target linkage)
-      (preserving '(env continue)
-                  (compile-pyramid (first-exp seq) target 'next)
-                  (compile-sequence (rest-exps seq) target linkage))))
+  (cond ((null? seq)     (inst-seq '() '() '()))
+        ((last-exp? seq) (compile-pyramid (first-exp seq) target linkage))
+        (else            (preserving '(env continue)
+                                     (compile-pyramid (first-exp seq) target 'next)
+                                     (compile-sequence (rest-exps seq) target linkage)))))
 
 (: compile-lambda (-> PyrLambda Target Linkage inst-seq))
 (define (compile-lambda [exp : PyrLambda] [target : Target] linkage)
@@ -217,7 +245,7 @@
 (: compile-macro-application (-> PyrApplication Target Linkage inst-seq))
 (define (compile-macro-application exp target linkage)
   (let* ((name (operator exp))
-         (macro (namespace-variable-value name))
+         (macro (namespace-variable-value name #t #f (*available-macros*)))
          (result (parameterize ([ current-namespace (*macro-namespace*) ])
                    (apply macro (operands exp))))
          )
@@ -412,18 +440,19 @@
                (registers-modified seq2))
    (append (statements seq1) (statements seq2))))
 
+
+(define (display-macros)
+  (display `(,"Mapped symbols:" ,(namespace-mapped-symbols (*available-macros*)))))
+
 (: macro-application? (-> Pyramid Boolean))
 (define (macro-application? exp)
   (if (application? exp)
       (let ((name (operator exp)))
         (if (symbol? name)
-            (namespace-contains *available-macros* name)
+            (namespace-contains? (*available-macros*) name)
             #f))
       #f))
 
-(define (namespace-contains namespace name)
-  (let ((result (make-parameter #t)))
-    (begin
-      (namespace-variable-value name #t (lambda () (result #f)))
-      (result))))
-
+(define (namespace-contains? namespace name)
+  (namespace-variable-value name #f (λ () #f) namespace)
+  )

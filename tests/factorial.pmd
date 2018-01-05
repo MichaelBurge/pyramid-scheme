@@ -1,0 +1,9 @@
+(%-test-set-expected-result 120)
+
+(begin
+  (define (factorial n)
+    (if (= n 1)
+        1
+        (* (factorial (- n 1)) n)))
+  (return (factorial 5)))
+ 

@@ -13,6 +13,18 @@ This module is required into the namespace used to evaluate Pyramid macros.
 Functions defined here are available to Pyramid programs within macros.
 |#
 
+
+; Globals
+(define **test-expected-result** null)
+(define **exports** null)
+
+(define (%-install-macro-library)
+  (parameterize ([ current-namespace (*macro-namespace*) ])
+    (namespace-require "macro.rkt")
+    )
+  (install-macro! '%-test-set-expected-result %-test-set-expected-result)
+  )
+
 ; Compiles a fragment of code rather than a whole program.
 ; The fragment doesn't have standard library or environment initialization code.
 (: minicompile (-> Pyramid EthInstructions))
@@ -47,16 +59,19 @@ Functions defined here are available to Pyramid programs within macros.
     (lambda ()
       (with-output-to-string
         (lambda ()
-          (system "keccak-256sum")))))))
+          (system "keccak-256sum"))))))
 
 (define (%-parse-types tys)
-  (let ([ os 4 ]
-        [ parse-ty (lambda ()
-                     (let ([ ret `(parse-fixnum ,os) ])
-                       (set! os (+ os 32))
-                       ret))])
-    
+  (let* ([ os 4 ]
+         [ parse-ty (lambda ()
+                      (let ([ ret `(parse-fixnum ,os) ])
+                        (set! os (+ os 32))
+                        ret))])
     (map parse-ty tys)))
 
 (define (%-register-export sig)
   (set! **exports** (cons sig **exports**)))
+
+(define (%-test-set-expected-result exp)
+  (set! **test-expected-result** exp)
+  '(begin))

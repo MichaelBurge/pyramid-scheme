@@ -6,8 +6,28 @@
 (require binaryio/integer)
 (provide (all-defined-out))
 
-; Outputs 3 column TSV suitable for pasting into Google sheets
+(: disassemble-one (-> bytes Fixnum (Pairof opcode EthInstruction)))
+(define (disassemble-one bs i)
+  (let* ([ byte (bytes-ref bs i) ]
+         [ op (dict-ref opcodes-by-byte byte (eth-unknown byte)) ]
+         [ ethi (cond ((push-op? op) (disassemble-push bs i))
+                      ((eth-unknown? op) op)
+                      (else (eth-asm (opcode-name op)))
+                      )])
+    (cons op ethi)))
 
+(: disassemble-push (-> bytes Fixnum EthInstruction))
+(define (disassemble-push bs i)
+  (let ([ op (dict-ref opcodes-by-byte (bytes-ref bs i)) ])
+    (eth-push (op-extra-size op)
+              (bytes->integer bs
+                              #f      ; signed?
+                              #t      ; big-endian
+                              (+ i 1) ; start position
+                              (+ i 1 (op-extra-size op))))) ; end
+  )
+
+; Outputs 3 column TSV suitable for pasting into Google sheets
 (: print-disassembly (-> bytes Void))
 (define (print-disassembly bs)
   (let ((reverse-symbol-table (invert-dict *symbol-table*)))
@@ -19,16 +39,14 @@
       ;;          ,(push-op? (dict-ref opcodes-by-byte (bytes-ref bs n)))
       ;;          ,(op-extra-size (dict-ref opcodes-by-byte (bytes-ref bs n)))))
       (write-char #\tab)
-      (let ((op (dict-ref opcodes-by-byte (bytes-ref bs n))))
+      (let* ([ op-ethi (disassemble-one bs n) ]
+             [ op (car op-ethi) ]
+             [ ethi (cdr op-ethi) ])        
         (if (push-op? op)
             (fprintf (current-output-port)
                      "Push~a 0x~x"
                      (op-extra-size op)
-                     (bytes->integer bs 
-                                     #f      ; signed?
-                                     #t      ; big-endian
-                                     (+ n 1) ; start position
-                                     (+ n 1 (op-extra-size op)))) ; end
+                     (eth-push-value ethi))
             (write-string (symbol->string (opcode-name op))))
         (set! n (+ n (op-extra-size op))))
       (newline)

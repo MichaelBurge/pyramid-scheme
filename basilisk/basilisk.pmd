@@ -1,4 +1,4 @@
-(include "psl.pmd")
+(require "psl.pmd")
 
 (block-reentrancy-attacks)
 
