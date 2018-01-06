@@ -22,7 +22,6 @@
 
 (: compile-pyramid (-> Pyramid Target Linkage inst-seq))
 (define (compile-pyramid exp target linkage)
-  (display-exp-type exp)
   (cond ((self-evaluating? exp)
          (compile-self-evaluating exp target linkage))
         ((quoted? exp) (compile-quoted exp target linkage))
@@ -48,8 +47,6 @@
 
 (: display-exp-type (-> Pyramid Void))
 (define (display-exp-type exp)
-  (display exp)
-  (newline)
   (cond ((self-evaluating? exp)   (display 'self-evaluating))
         ((quoted? exp)            (display 'quoted))
         ((macro? exp)             (display 'macro))

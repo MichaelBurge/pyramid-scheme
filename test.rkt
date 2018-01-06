@@ -2,6 +2,7 @@
 
 ; (require test-engine/racket-tests)
 (require racket/cmdline)
+(require json)
 
 (require "types.rkt")
 (require "ast.rkt")
@@ -30,8 +31,18 @@
 
 (define (on-simulate-nop vm i reads) (void))
 
-(define (on-simulate-debug vm i reads)
-  (display `(,vm ,i ,reads))
+(define (on-simulate-debug reverse-symbol-table vm i reads)
+  (fprintf (current-output-port) "~a" (evm-step vm))
+  (write-char #\tab)
+  (display (label-name (dict-ref reverse-symbol-table (evm-pc vm) (label ""))))
+  (write-char #\tab)
+  (display (integer->hex (evm-pc vm)))
+  (write-char #\tab)
+  (write-json (evm-stack vm))
+  (write-char #\tab)
+  (write-json (memory-dict vm))
+  (write-char #\tab)
+  (display i)
   (newline)
   )
 
@@ -41,8 +52,9 @@
 (: run-until-return (-> Bytes Bytes))
 (define (run-until-return bs)
   (let* ([ result null ]
+         [ reverse-symbol-table (invert-dict *symbol-table*) ]
          [ vm (make-vm bs
-                       on-simulate-debug
+                       (λ (vm i reads) (on-simulate-debug reverse-symbol-table vm i reads))
                        (λ (vm bs) (set! result bs))
                        on-error-throw) ])
     (simulate! vm MAX-ITERATIONS)

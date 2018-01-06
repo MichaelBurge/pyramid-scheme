@@ -125,4 +125,21 @@
 (define-type (Generator2 A B)   (-> A B   EthInstructions))
 (define-type (Generator3 A B C) (-> A B C EthInstructions))
 
-(struct opcode ([ byte : Fixnum ] [ name : Symbol ]) #:transparent)
+(struct opcode ([ byte : Fixnum ] [ name : Symbol ] [ num-reads : Fixnum ] [ num-writes : Fixnum ]) #:transparent)
+
+(define-type EthWord Integer)
+
+(struct evm ([ step : Fixnum ]
+             [ bytecode : Bytes ]
+             [ pc : Fixnum ]
+             [ stack : (Listof EthWord) ]
+             [ memory : Bytes ]
+             [ gas : Fixnum ]
+             [ halted? : Boolean ]
+             [ largest-accessed-memory : Fixnum ]
+             [ on-simulate : (-> evm opcode (Listof EthWord) Void) ]
+             [ on-return : (-> evm Bytes Void) ]
+             [ on-error : (-> evm Void) ]
+             )
+  #:mutable
+  )

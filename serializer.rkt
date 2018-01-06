@@ -351,5 +351,11 @@ Either a label or integer can be pushed onto the stack.
       (+ 1 (eth-push-size i))
       1))
 
+(: reset-serializer-globals! (-> Void))
+(define (reset-serializer-globals!)
+  (set! *byte-offset* 0)
+  (set! *symbol-table* (make-hash '()))
+  (set! *relocation-table* (set)))
+
 ;; (remember-label (label 'derp))
 ;; (push-true-value (eth-push 5 'derp))

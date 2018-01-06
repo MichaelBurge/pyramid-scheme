@@ -66,6 +66,7 @@
        (make-bytes MEMORY-SIZE) ; memory
        0     ; gas
        #f    ; halted?
+       0     ; largest memory access
        on-simulate
        on-return
        on-error
@@ -236,6 +237,7 @@
 
 (: write-memory! (-> evm Fixnum Bytes Void))
 (define (write-memory! vm addr val)
+  (touch-memory! vm (+ addr (bytes-length val)))
   (bytes-copy! (evm-memory vm) addr val))
 
 (: push-stack! (-> evm Integer Void))
@@ -247,6 +249,11 @@
   (let ((val (car (evm-stack vm))))
     (set-evm-stack! vm (cdr (evm-stack vm)))
     val))
+
+(: touch-memory! (-> evm Fixnum Void))
+(define (touch-memory! vm addr)
+  (let ([ old (evm-largest-accessed-memory vm) ])
+    (set-evm-largest-accessed-memory! vm (max old addr))))
 
 (: halt! (-> evm Void))
 (define (halt! vm) (set-evm-halted?! vm true))
@@ -306,3 +313,12 @@
 
         
                      
+(: memory-dict (-> evm (HashRef Symbol EthWord)))
+(define (memory-dict vm)
+  (let ([ ret (make-hash) ])
+    (for ([ i (in-range 0 (evm-largest-accessed-memory vm) 32) ])
+      (hash-set! ret
+                 (string->symbol (number->string i))
+                 (read-memory-word vm i 32)))
+    ret))
+    
