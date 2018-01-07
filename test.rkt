@@ -76,12 +76,13 @@
 ; A test is a regular Pyramid program that uses special test macros to communicate with the compiler.
 (: run-test (-> String Pyramid Void))
 (define (run-test name prog)
+  (*include-directory* "tests")
   (let* ([ params (full-compile prog) ]
          [ initializer-bs (third params) ]
          [ program-bs (run-until-return initializer-bs) ]
          [ actual-result (run-until-return program-bs) ]
          )
-    (assert-equal name **test-expected-result** actual-result)))
+    (assert-equal name (*test-expected-result*) actual-result)))
 
 ; TODO: Turn these into unit tests.
 ; TEST 1: (cg-intros (list (const 1234) (const 4321)))

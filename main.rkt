@@ -13,6 +13,7 @@
 (require "test.rkt")
 (require "analysis.rkt")
 (require "globals.rkt")
+(require "parser.rkt")
 
 (define file-to-compile
   (command-line
@@ -48,19 +49,6 @@
       ; (print-symbol-table *symbol-table*)
       (print-relocations *relocation-table*)
       (print-disassembly bs))))
-
-(define (read-statements filename)
-  (let loop ([fh (open-input-file filename) ])
-    (let ([ x (read fh) ])
-      (if (eof-object? x)
-          null
-          (cons x
-                (loop fh))))))
-
-(: read-file (-> String Pyramid))
-(define (read-file filename)
-  (cons 'begin
-        (reverse (read-statements filename))))
   
 (: standard-output (-> Pyramid Void))
 (define (standard-output prog)

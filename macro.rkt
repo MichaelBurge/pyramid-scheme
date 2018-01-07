@@ -5,6 +5,8 @@
 (require "compiler.rkt")
 (require "codegen.rkt")
 (require "io.rkt")
+(require "parser.rkt")
+(require "globals.rkt")
 
 (provide (all-defined-out))
 #|
@@ -13,16 +15,12 @@ This module is required into the namespace used to evaluate Pyramid macros.
 Functions defined here are available to Pyramid programs within macros.
 |#
 
-
-; Globals
-(define **test-expected-result** null)
-(define **exports** null)
-
 (define (%-install-macro-library)
   (parameterize ([ current-namespace (*macro-namespace*) ])
     (namespace-require "macro.rkt")
     )
   (install-macro! '%-test-set-expected-result %-test-set-expected-result)
+  (install-macro! 'include %-include)
   )
 
 ; Compiles a fragment of code rather than a whole program.
@@ -70,8 +68,13 @@ Functions defined here are available to Pyramid programs within macros.
     (map parse-ty tys)))
 
 (define (%-register-export sig)
-  (set! **exports** (cons sig **exports**)))
+  (*exports* (cons sig (*exports*))))
 
 (define (%-test-set-expected-result exp)
-  (set! **test-expected-result** exp)
+  (*test-expected-result* exp)
   '(begin))
+
+(define (%-include exp)
+  (parameterize ([ current-directory (*include-directory*) ])
+    (read-file exp)))
+  
