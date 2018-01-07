@@ -1,0 +1,6 @@
+(%-test-set-expected-result 15)
+
+(define x 5)
+(define (y z) (if z 15 20))
+(set! x (y x))
+x

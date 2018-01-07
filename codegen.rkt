@@ -315,7 +315,78 @@ These optimizations are currently unimplemented:
      (asm 'REVERT)
      `(,term))))
 
-  
+#|
+(define (set-variable-value! var val env)
+  (define (env-loop env)
+    (define (scan vars vals)
+      (if (null? vals)
+          (env-loop (cdr env))
+          (if (eq? var (car vars))
+              (set-car! vals val)
+              (scan (cdr vars) (cdr vals)))))
+    (if (null? env)
+        (error "Nonexistent variable:" var)
+        (let ((frame (car env)))
+          (scan (car frame)
+                (cdr frame)))))
+  (env-loop env))
+|#
+(define (cg-op-set-variable-value! name value env)
+  (let ([env-loop    (make-label 'set-variable-value-env-loop)]
+        [scan        (make-label 'set-variable-value-scan)]
+        [scan-else-1 (make-label 'set-variable-value-scan-else-1)]
+        [scan-else-2 (make-label 'set-variable-value-scan-else-2)]
+        [term        (make-label 'set-variable-value-term)]
+        [not-found   (make-label 'set-variable-value-not-found)]
+        )
+    (append
+     (debug-label 'cg-op-set-variable-value)
+     (cg-intros (list name value env))
+     ; Stack: [ var, value, env ]
+     `(,env-loop)
+     (asm 'DUP3)      ; [ env; name; value; env ]
+     (cg-null? stack) ; [ null?; name; value; env ]
+     (cg-branch not-found stack) ; [ name; value; env ]
+     (asm 'DUP3)      ; [ env; name; value; env ]
+     (cg-car stack)   ; [ frame; name; value; env ]
+     (asm 'DUP1)      ; [ frame; frame; name; value; env ]
+     (cg-car stack)   ; [ fvars; frame; name; value; env ]
+     (asm 'SWAP1)     ; [ frame; fvars; name; value; env ]
+     (cg-cdr stack)   ; [ fvals; fvars; name; value; env ]
+     ; Stack: [ fvals, fvars, name, value, env ]
+     `(,scan)
+     (asm 'DUP1)      ; [ fvals; fvals; fvars; name; value; env ]
+     (cg-null? stack) ; [ null?; fvals; fvars; name; value; env ]
+     (asm 'ISZERO)    ; [ !null?; fvals; fvars; name; value; env ]
+     (cg-branch scan-else-1 stack) ; [ fvals; fvars; name; value; env ]
+     (cg-pop 2)       ; [ name; value; env ]
+     (asm 'SWAP2)     ; [ env; value; name ]
+     (cg-cdr stack)   ; [ env'; value; name ]
+     (asm 'SWAP2)     ; [ name; value; env' ]
+     (cg-goto env-loop) ; [ name; value; env' ]
+     ; Stack: [ fvals, fvars, var, value, env ]
+     `(,scan-else-1)
+     (asm 'DUP2)      ; [ fvars; fvals; fvars; name; value; env ]
+     (cg-car stack)   ; [ name'; fvals; fvars; name; value; env ]
+     (asm 'DUP4)      ; [ name; name'; fvals; fvars; name; value; env ]
+     (cg-eq? stack stack) ; [ eq?; fvals; fvars; name; value; env ]
+     (asm 'ISZERO)    ; [ neq?; fvals; fvars; name; value; env ]
+     (cg-branch scan-else-2 stack) ; [ fvals; fvars; name; value; env ]
+     (asm 'DUP4)      ; [ value; fvals; fvars; name; value; env ]
+     (cg-swap 1)      ; [ fvals; value; fvars; name; fvars; env ]
+     (cg-set-car! stack stack) ; [ name; fvars; env ]
+     (cg-pop 3)       ; [ ]
+     (cg-goto term)   ; [ ]
+     ; Stack: [ fvals, fvars, name, value, env ]
+     `(,scan-else-2)
+     (cg-cdr stack)    ; [ fvals; fvars; name; value; env ]
+     (asm 'SWAP1)      ; [ fvars; fvals'; name; value; env ]
+     (cg-cdr stack)    ; [ fvars'; fvals'; name; value; env ]
+     (asm 'SWAP1)      ; [ fvals'; fvars'; name; value; env ]
+     (cg-goto scan)    ; [ fvals'; fvars'; name; value; env ]
+     `(,not-found)
+     (asm 'REVERT)
+     `(,term))))
 
 ; PSEUDOCODE:
 ;; (define (cg-op-define-variable! var val env)
@@ -458,6 +529,7 @@ These optimizations are currently unimplemented:
       ((eq? name 'primitive-procedure?)      (cg-op-primitive-procedure?      (car args)))
       ((eq? name 'apply-primitive-procedure) (cg-op-apply-primitive-procedure (car args) (cadr args)))
       ((eq? name 'lookup-variable-value)     (cg-op-lookup-variable-value     (car args) (cadr args)))
+      ((eq? name 'set-variable-value!)       (cg-op-set-variable-value!       (car args) (cadr args) (caddr args)))
       ((eq? name 'false?)                    (cg-op-false?                    (car args)))
       ((eq? name 'list)                      (cg-op-list                      (car args)))
       ((eq? name 'cons)                      (cg-op-cons                      (car args) (cadr args)))
