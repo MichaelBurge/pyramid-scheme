@@ -59,7 +59,7 @@
 
 (: make-vm (-> Bytes Procedure Procedure evm))
 (define (make-vm bytes on-simulate on-return on-error)
-  (evm 0     ; step
+  (evm 1     ; step
        bytes ; bytecode
        0     ; pc
        null  ; stack
@@ -183,17 +183,18 @@
   (let ((addr (pop-stack! vm)))
     (push-stack! vm (read-memory-word vm addr 32))))
 
+; JUMP and JUMPI subtract 1 to ensure they balance the plus 1 every instruction gets.
 (: simulate-jump! (-> evm Void))
 (define (simulate-jump! vm)
   (let ((addr (pop-stack! vm)))
-    (set-evm-pc! vm addr)))
+    (set-evm-pc! vm (- addr 1))))
 
 (: simulate-jumpi! (-> evm Void))
 (define (simulate-jumpi! vm)
   (let* ((addr (pop-stack! vm))
          (pred (pop-stack! vm)))
     (unless (eq? 0 pred)
-      (set-evm-pc! vm addr))))
+      (set-evm-pc! vm (- addr 1)))))
 
 (: simulate-codecopy! (-> evm void))
 (define (simulate-codecopy! vm)
@@ -315,10 +316,9 @@
                      
 (: memory-dict (-> evm (HashRef Symbol EthWord)))
 (define (memory-dict vm)
-  (let ([ ret (make-hash) ])
+  (let ([ ret null ])
     (for ([ i (in-range 0 (evm-largest-accessed-memory vm) 32) ])
-      (hash-set! ret
-                 (string->symbol (number->string i))
-                 (read-memory-word vm i 32)))
-    ret))
+      (let ([ row (list i (read-memory-word vm i 32)) ])
+        (set! ret (cons row ret))))
+    (reverse ret)))
     

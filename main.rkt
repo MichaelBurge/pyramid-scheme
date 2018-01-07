@@ -12,11 +12,8 @@
 (require "disassembler.rkt")
 (require "test.rkt")
 (require "analysis.rkt")
+(require "globals.rkt")
 
-(define *verbose?* (make-parameter #f))
-(define *test?* (make-parameter #f))
-; (define optimize-level (make-parameter 0))
- 
 (define file-to-compile
   (command-line
    #:program "pyramid"
@@ -37,9 +34,11 @@
 (: verbose-output (-> Pyramid Void))
 (define (verbose-output prog)
   (let* (;(the-global-environment (setup-environment))
-         (instructions           (compile-pyramid prog 'val 'next))
-         (eth-instructions       (codegen (inst-seq-statements instructions)))
-         (bs                     (maybe-link (serialize-with-relocations eth-instructions))))
+         [ result           (full-compile prog) ]
+         [ instructions     (first result) ]
+         [ eth-instructions (second result) ]
+         [ bs               (third result) ]
+         )
     (begin
       (newline) (display "Abstract Instructions:") (newline)
       (display-all (inst-seq-statements instructions))

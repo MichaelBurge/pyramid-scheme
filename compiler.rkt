@@ -99,7 +99,6 @@
 
 (: install-macro! (-> Symbol Procedure Void))
 (define (install-macro! name func)
-  (display "install-macro!")
   (namespace-set-variable-value! name func #t (*available-macros*))
   )
 
