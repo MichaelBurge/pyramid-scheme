@@ -81,10 +81,6 @@
          [ program-bs (run-until-return initializer-bs) ]
          [ actual-result (run-until-return program-bs) ]
          )
-    (when (*verbose?*)
-      (display "Disassembly")
-      (print-disassembly program-bs))
-
     (assert-equal name **test-expected-result** actual-result)))
 
 ; TODO: Turn these into unit tests.

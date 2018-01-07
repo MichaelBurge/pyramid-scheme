@@ -40,6 +40,7 @@
          [ bs               (third result) ]
          )
     (begin
+      (newline) (display prog)
       (newline) (display "Abstract Instructions:") (newline)
       (display-all (inst-seq-statements instructions))
   
@@ -48,6 +49,19 @@
       (print-relocations *relocation-table*)
       (print-disassembly bs))))
 
+(define (read-statements filename)
+  (let loop ([fh (open-input-file filename) ])
+    (let ([ x (read fh) ])
+      (if (eof-object? x)
+          null
+          (cons x
+                (loop fh))))))
+
+(: read-file (-> String Pyramid))
+(define (read-file filename)
+  (cons 'begin
+        (reverse (read-statements filename))))
+  
 (: standard-output (-> Pyramid Void))
 (define (standard-output prog)
   (let ([bs (third (full-compile prog))])
@@ -55,8 +69,7 @@
     (newline)))
 
 (define (main)
-  (let* ((fh (open-input-file file-to-compile))
-         (prog (read fh)))
+  (let ([ prog (read-file file-to-compile) ])
     (cond ((*test?*)    (run-test file-to-compile prog))
           ((*verbose?*) (verbose-output prog))
           (else         (standard-output prog)))
