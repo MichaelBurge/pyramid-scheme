@@ -2,6 +2,7 @@
 
 (require "types.rkt")
 (require "utils.rkt")
+(require "globals.rkt")
 (require file/sha1)
 (require binaryio/integer)
 (require errortrace)
@@ -326,6 +327,7 @@ Either a label or integer can be pushed onto the stack.
                        (eth-push 'shrink len)         ; 1 + (integer-bytes len)
                        (eth-push 1       0)           ; 2
                        (eth-asm 'RETURN))))           ; 1
+    (*loader-size* afterLoader)
     (bytes-append (serialize loader)
                   bs)))
 

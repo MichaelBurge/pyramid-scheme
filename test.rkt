@@ -1,4 +1,4 @@
-#lang typed/racket/no-check
+#lang errortrace typed/racket/no-check
 
 ; (require test-engine/racket-tests)
 (require racket/cmdline)
@@ -24,17 +24,13 @@
 (define MAX-ITERATIONS 1000000)
 
 (define (assert-equal name expected actual-bs)
-  (let ([ actual (parse-pyramid-result expected actual-bs) ])
+  (let ([ actual (parse-type (infer-type expected) actual-bs) ])
     (if (equal? expected actual)
         (begin
           (display `("Test Passed: " ,name ,expected ,actual))
           (newline))
         (error "Test failed: " name expected actual))
     ))
-
-(define (parse-pyramid-result reference bs)
-  (cond ((fixnum? reference) (bytes->integer bs #f #t))
-        (else (error "Unsupported value - parse-pyramid-result:" reference))))
 
 (define (on-simulate-nop vm i reads) (void))
 
@@ -70,6 +66,8 @@
                        (λ (vm bs) (set! result bs))
                        on-error-throw) ])
     (simulate! vm MAX-ITERATIONS)
+    (unless (evm-halted? vm)
+      (error "Did not halt after iterations:" MAX-ITERATIONS))
     result))
     
 

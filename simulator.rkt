@@ -7,7 +7,7 @@
 
 (provide (all-defined-out))
 
-(define MEMORY-SIZE 1000000)
+(define MEMORY-SIZE 20000)
 
 ; Appendix G in Ethereum Yellow Paper: http://gavwood.com/paper.pdf
 (define G_zero          0)
@@ -200,9 +200,15 @@
 (define (simulate-codecopy! vm)
   (let* ([ dest-addr (pop-stack! vm) ]
          [ src-addr  (pop-stack! vm) ]
-         [ len       (pop-stack! vm) ])
-    (bytes-copy! (evm-memory vm) dest-addr
-                 (evm-bytecode vm) src-addr
+         [ len       (pop-stack! vm) ]
+         [ dest      (evm-memory vm) ]
+         [ src       (evm-bytecode vm) ]
+         )
+    (when (>= (+ len dest-addr) (bytes-length dest))
+      (error "simulate-codecopy!: Exceeded available memory" `(,dest-addr ,len) '>= (bytes-length dest)))
+             
+    (bytes-copy! dest dest-addr
+                 src src-addr
                  (+ src-addr len))))
 
 (: simulate-return! (-> evm Void))
@@ -225,21 +231,30 @@
 
 (: read-memory-word (-> evm Fixnum Fixnum Integer))
 (define (read-memory-word vm addr len)
+  (check-addr addr)
   (bytes->integer (read-memory vm addr len)
                   #f))
 
 (: read-memory (-> evm Fixnum Fixnum Bytes))
 (define (read-memory vm addr len)
-  (subbytes (evm-memory vm) addr (+ addr len)))
+  (subbytes (evm-memory vm) addr (+ addr len))
+  )
 
 (: write-memory-word! (-> evm Fixnum Fixnum Integer Void))
 (define (write-memory-word! vm addr len val)
+  (check-addr addr)
   (write-memory! vm addr (integer->bytes val len #f)))
 
 (: write-memory! (-> evm Fixnum Bytes Void))
 (define (write-memory! vm addr val)
   (touch-memory! vm (+ addr (bytes-length val)))
   (bytes-copy! (evm-memory vm) addr val))
+
+(: check-addr (-> Fixnum Fixnum))
+(define (check-addr addr)
+  (if (equal? (modulo addr 32) 0)
+      addr
+      (error "resolve-addr: Unaligned memory access")))
 
 (: push-stack! (-> evm Integer Void))
 (define (push-stack! vm val)
@@ -321,4 +336,27 @@
       (let ([ row (list i (read-memory-word vm i 32)) ])
         (set! ret (cons row ret))))
     (reverse ret)))
-    
+
+(define (parse-type type bs)
+  (cond ((null? bs) (error "parse-pyramid-result: Uninitialized value"))
+        ((equal? type "uint256")   (parse-uint256 bs))
+        ((equal? type "uint256[]") (parse-array "uint256" bs))
+        (else (error "parse-pyramid-result: Unsupported type:" type))))
+
+(define (type-size type)
+  (cond ((eq? type "uint256") 32)
+        (else (error "type-size: Unsupported type" type))))
+
+(define (parse-uint256 bs) (bytes->integer bs #f #t))
+(define (parse-array type bs)
+  (let ([ ret null ])
+    (for ([ i (in-range 0 (bytes-length bs) 32) ])
+      (let ([ bs2 (subbytes bs i (+ i 32)) ])
+        (set! ret (cons (parse-uint256 bs2) ret))))
+    ret))
+
+(define (infer-type x)
+  (cond ((fixnum? x) "uint256")
+        ((list? x) (string-append (infer-type (car x))
+                                  "[]"))
+        (else (error "infer-type: Unknown type" x))))

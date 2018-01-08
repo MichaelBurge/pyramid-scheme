@@ -12,3 +12,4 @@
 
 (define *test-expected-result* (make-parameter null))
 (define *exports* (make-parameter null)) ; Used to generate the standard ABI for the current Pyramid contract
+(define *loader-size* (make-parameter 0)) ; Size of the most recently generated loader

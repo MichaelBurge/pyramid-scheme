@@ -3,6 +3,7 @@
 (require "types.rkt")
 (require "serializer.rkt")
 (require "utils.rkt")
+(require "globals.rkt")
 (require binaryio/integer)
 (provide (all-defined-out))
 

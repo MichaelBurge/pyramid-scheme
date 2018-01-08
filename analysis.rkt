@@ -51,7 +51,8 @@
     (let ([ eth-instructions (codegen (inst-seq-statements instructions)) ])
       (verbose-section "EVM Instructions"
                        (λ () (display-all eth-instructions)))
-      (let ([ bs (maybe-link (serialize-with-relocations eth-instructions)) ])
+      (let* ([ bs-unlinked (serialize-with-relocations eth-instructions) ]
+             [ bs (maybe-link bs-unlinked) ])
         (verbose-section "EVM Disassembly"
-                         (λ () (print-disassembly bs)))
+                         (λ () (print-disassembly bs-unlinked)))
         (list instructions eth-instructions bs)))))

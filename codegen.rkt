@@ -705,13 +705,18 @@ These optimizations are currently unimplemented:
         (term (make-label 'term)))
     (append
      (debug-label 'cg-list->vector)
-     (cg-mexpr exp)                      ; [ +list ]
+     (cg-mexpr exp)                      ; [ list ]
      ; 1. Calculate the length of the list
-     (asm 'DUP1)                         ; [ +list ]
-     (cg-list-length stack)              ; [ -list; +len ]
+     (asm 'DUP1)                         ; [ list; list ]
+     (cg-list-length stack)              ; [ len; list ]
+     (asm 'DUP1)                         ; [ len; len; list ]
      ; 2. Allocate a vector of that size
-     (cg-make-vector stack '())          ; [ -len; +vector ]
+     (cg-make-vector stack '())          ; [ vector; len; list ]
+     (cg-swap 1)                         ; [ len; vector; list ]
+     (asm 'DUP2)                         ; [ vector; len; vector; list ]
+     (cg-vector-set-length! stack stack) ; [ vector; list ]
      ; 3. Loop through the list, setting vector elements.
+     `(,(eth-push 1 0))                  ; [ i; vector; list ]
      ; STACK:                            [ i; vector; list ]
      `(,loop)
      ; 4. Check if loop should be terminated
@@ -721,13 +726,12 @@ These optimizations are currently unimplemented:
      (cg-branch term stack)              ; [ list; vector; i ]
      (asm 'SWAP2)                        ; [ i; vector; list ]
      ; 5. Set vector element, and repeat loop.
-     ; STACK:                              [ i; vector; list ]
      (asm 'DUP1)                         ; [ i; i; vector; list ]
      (asm 'DUP4)                         ; [ list; i; i; vector; list ]
      (cg-car stack)                      ; [ x; i; i; vector; list ]
      (asm 'SWAP1)                        ; [ i; x; i; vector; list ]
      (asm 'DUP4)                         ; [ vector; i; x; i; vector; list ]
-     (cg-vector-write stack stack stack) ; [ -vector; -i; -x ]
+     (cg-vector-write stack stack stack) ; [ i; vector; list ]
      (cg-add stack (const 1))            ; [ i'; vector; list ]
      (asm 'SWAP2)                        ; [ list; vector; i' ]
      (cg-cdr stack)                      ; [ list'; vector; i' ]
@@ -735,7 +739,9 @@ These optimizations are currently unimplemented:
      (cg-goto loop)
      ; STACK:                              [ list; vector; i ]
      `(,term)
-     (cg-pop 3))))                       ; [ ]
+     (cg-swap 1)                         ; [ vector; list; i ]
+     (cg-swap 2)                         ; [ i; list; vector ]
+     (cg-pop 2))))                       ; [ vector ]
 
 (define (cg-set-car! addr val)
   (append
@@ -760,20 +766,20 @@ These optimizations are currently unimplemented:
   (let ((loop      (make-label 'loop))
         (terminate (make-label 'terminate)))
     (append
-     (debug-label 'cg-list-length)
-     (list (eth-push 1 0))    ; [ +len ]
-     (cg-mexpr exp)           ; [ +list ]
-     ; STACK                    [ list ; len ]
+     (debug-label 'cg-list-length) ; [ list ]
+     (cg-mexpr exp)           ; [ list ]
+     `(,(eth-push 1 0))       ; [ len; list ]
+     (cg-swap 1)              ; [ list; len ]
      `(,loop)
-     (asm 'DUP1)              ; [ +list ]
-     (cg-pair? exp)           ; [ -list; + pair? ]
-     (asm 'ISZERO)            ; [ -pair?; + ! pair? ]
-     (cg-branch terminate stack) ; [ - ! pair? ]
-     (asm 'SWAP1)             ; [ len <-> list ]
-     (cg-add stack (const 1)) ; [ -len; +len' ]
-     (asm 'SWAP1)             ; [ list <-> len' ]
-     (cg-cdr stack)           ; [ -list; +list' ]
-     (cg-goto loop)  ; [ list'; len' ]
+     (asm 'DUP1)              ; [ list; list; len ]
+     (cg-pair? exp)           ; [ pair?; list; len ]
+     (asm 'ISZERO)            ; [ !pair?; list; len ]
+     (cg-branch terminate stack) ; [ list; len ]
+     (asm 'SWAP1)             ; [ len; list ]
+     (cg-add stack (const 1)) ; [ len'; ]
+     (asm 'SWAP1)             ; [ list; len' ]
+     (cg-cdr stack)           ; [ list'; len' ]
+     (cg-goto loop)           ; [ list'; len' ]
      ; STACK                    [ list; len ]
      `(,terminate)
      (cg-pop 1))))            ; [ len ]
@@ -818,6 +824,8 @@ These optimizations are currently unimplemented:
 (: cg-vector-len (Generator MExpr))
 (: cg-vector-write (Generator3 MExpr MExpr MExpr)) ; vector -> offset -> value
 (: cg-vector-read (Generator2 MExpr MExpr)) ; vector -> offset
+(: cg-vector-unbox! (Generator MExpr))
+(: cg-vector-set-length! (Generator2 MExpr MExpr)) ; vector -> value
 
 ; PSEUDOCODE
 
@@ -856,7 +864,7 @@ These optimizations are currently unimplemented:
      (cg-pop 2))))                ; [ xs ]
 
 (define (cg-vector-data vec)
-  (cg-add vec (* 3 WORD)))
+  (cg-add vec (const (* 3 WORD))))
 
 (define (cg-vector-len vec)
   (append
@@ -881,7 +889,48 @@ These optimizations are currently unimplemented:
    (asm 'SWAP1)                  ; [ vec; os' ]
    (cg-read-address-offset stack stack))) ; [ x ]
 
+(define (cg-vector-set-length! vec len)
+  (append
+   (debug-label 'cg-vector-set-length!)
+   (cg-intros (list vec (const 2) len))        ; [ vec; 1; len ]
+   (cg-write-address-offset stack stack stack) ; [ ]
+   ))
 
+; PSEUDOCODE
+#|
+(define (vector-unbox vec)
+  (let loop (len (vector-size vec))
+    (unless (= len 0)
+      (let (i (- len 1))
+        (write-vector vec i (unbox-integer (read-vector vec i)))
+        (loop i)))))
+|# 
+(define (cg-vector-unbox! vec)
+  (let ([ loop (make-label 'cg-vector-unbox-loop) ]
+        [ term (make-label 'cg-vector-unbox-term) ]
+        )
+  (append
+   (debug-label 'cg-vector-unbox)
+   (cg-intros (list vec))        ; [ vec ]
+   (asm 'DUP1)                   ; [ vec; vec ]
+   (cg-vector-len stack)         ; [ len; vec ]
+   `(,loop)                      
+   (asm 'DUP1)                   ; [ len; len; vec ]
+   (cg-eq? (const 0) stack)      ; [ 1; len; vec ]
+   (cg-branch term stack)        ; [ len; vec ]
+   (cg-sub stack (const 1))      ; [ i; vec ]
+   (asm 'DUP1)                   ; [ i; i; vec ]
+   (asm 'DUP3)                   ; [ vec; i; i; vec ]
+   (cg-vector-read stack stack)  ; [ x; i; vec ]
+   (cg-unbox-integer stack)      ; [ x'; i; vec ]
+   (asm 'DUP3)                   ; [ vec; x'; i; vec ]
+   (asm 'DUP3)                   ; [ i; vec; x'; i; vec ]
+   (cg-swap 1)                   ; [ vec; i; x'; i; vec ]
+   (cg-vector-write stack stack stack) ; [ i; vec ]
+   (cg-goto loop)
+   `(,term)                      ; [ len; vec ]
+   (cg-pop 1)                    ; [ vec ]
+   )))
 
 ; PSEUDOCODE
 ;; (define (add-binding-to-frame! var val frame)
@@ -970,16 +1019,20 @@ These optimizations are currently unimplemented:
 ;  (cg-allocate-initialize (const 1) (list (const TAG-NIL))))
 
 ; NOTE: It is currently only valid to call cg-make-list on non-stack items.
+; Currently only used to create constant lists, so box the items as we make them.
 (define (cg-make-list lst)
   (define (loop n)
     (if (eq? n 0) ; [ lst; *vals ]
         '()
-        (append
+        (append                   ; [ lst; *vals ]
          (cg-swap 1)              ; [ val'; lst; *vals ]
-         (cg-cons stack stack)))) ; [ 'lst; *vals ]
+         (cg-make-fixnum stack)   ; [ val''; lst; *vals ]
+         (cg-cons stack stack)    ; [ 'lst; *vals ]
+         (loop (- n 1))         
+         ))) 
   (append
    (debug-label 'cg-make-list)
-   (cg-intros (reverse lst)) ; [ *vals ]
+   (cg-intros lst) ; [ *vals ]
    (cg-make-nil)             ; [ nil; *vals ]
    (loop (length lst))))
 
@@ -1038,6 +1091,7 @@ These optimizations are currently unimplemented:
 (define (cg-install-standard-library)
   (let ((label-= (make-label '=))
         (label-* (make-label '*))
+        (label-+ (make-label '+))
         (label-sub (make-label 'sub))
         (label-install (make-label 'install)))
     ; A binop has
@@ -1076,6 +1130,9 @@ These optimizations are currently unimplemented:
      ; * operator
      `(,label-*)
      (binop-wrap (cg-mul stack stack))
+     ; + operator
+     `(,label-+)
+     (binop-wrap (cg-add stack stack))
      ; - operator
      `(,label-sub)
      (binop-wrap (cg-sub stack stack))
@@ -1089,6 +1146,9 @@ These optimizations are currently unimplemented:
 
      (cg-make-primitive-procedure label-sub)
      (cg-op-define-variable! (const '-) stack (reg 'env))
+
+     (cg-make-primitive-procedure label-+)
+     (cg-op-define-variable! (const '+) stack (reg 'env))
      )))
                                   
 
@@ -1107,14 +1167,69 @@ These optimizations are currently unimplemented:
    (cg-make-nil)
    (cg-cons stack stack)))
     
-; TODO: Make this work for more than just integers.
 (define (cg-return exp)
+  (let ([ label-uint256 (make-label 'cg-return-ty-uint256-)]
+        [ label-list    (make-label 'cg-return-ty-list-)]
+        [ label-vector  (make-label 'cg-return-ty-vector-)]
+        )
+    (append
+     (debug-label 'cg-return)
+     (cg-intros (list exp))     ; [ exp ]
+     (asm 'DUP1)                ; [ exp; exp ]
+     (cg-tag stack)             ; [ tag; exp ]
+     
+     (asm 'DUP1)                       ; [ tag; tag; exp ]
+     (cg-eq? (const TAG-FIXNUM) stack) ; [ pred; tag; exp ]
+     (cg-branch label-uint256 stack)   ; [ tag; exp ]
+     
+     (asm 'DUP1)                     ; [ tag; tag; exp ]
+     (cg-eq? (const TAG-PAIR) stack) ;  [ pred; tag; exp ]
+     (cg-branch label-list stack)    ; [ tag; exp ]
+     
+     (asm 'DUP1)                       ; [ tag; tag; exp ]
+     (cg-eq? (const TAG-VECTOR) stack) ; [ pred; tag; exp ]
+     (cg-branch label-vector stack)    ; [ tag; exp ]
+     
+     (asm 'REVERT)
+     
+     `(,label-vector)           ; [ tag; exp ]
+     (cg-pop 1)                 ; [ exp ]
+     (cg-return-vector stack)
+     `(,label-list)             ; [ tag; exp ]
+     (cg-pop 1)                 ; [ exp ]
+     (cg-return-list-uint256 stack)
+     `(,label-uint256)          ; [ tag; exp ]
+     (cg-pop 1)                 ; [ exp ]
+     (cg-return-uint256 stack)
+     )))
+
+(define (cg-return-uint256 exp)
   (append
-   (debug-label 'cg-return)
-   (cg-add (const WORD) exp)
-   `(,(eth-push 1 WORD))
-   (cg-reverse 2)   
-   (asm 'RETURN)))
+   (debug-label 'cg-return-uint256) ; [ n ]
+   (cg-add (const WORD) exp)        ; [ &val ]
+   `(,(eth-push 1 WORD))            ; [ 1; &val ]
+   (cg-reverse 2)                   ; [ &val; 1 ]
+   (asm 'RETURN)))                  ; [ ]
+
+(define (cg-return-vector exp)
+  (append
+   (debug-label 'cg-return-vector) ; [ vec ]
+   (asm 'DUP1)                     ; [ vec; vec ]
+   (cg-vector-len stack)           ; [ len; vec ]
+   (cg-mul (const WORD) stack)     ; [ len'; vec ]
+   (cg-reverse 2)                  ; [ vec; len ]
+   (cg-vector-data stack)          ; [ data; len ]
+   (asm 'RETURN)
+   ))
+
+(define (cg-return-list-uint256 exp)
+  (append
+   (debug-label 'cg-return-list-uint256)
+   (cg-list->vector exp)  ; [ vec ]
+   (cg-vector-unbox! stack) ; [ vec' ]
+   (cg-return-vector stack) ; [ ]
+   ))
+  
 
 ; Leaves [ x1; x2; ... ; xn; remaining list ] on the stack.
 (: cg-unroll-list (Generator2 Fixnum MExpr))

@@ -64,13 +64,23 @@
 
 ; '(lambda (x y) (+ x y))
 (: lambda? (-> Pyramid Boolean))
-(define (lambda? exp) (tagged-list? exp 'lambda))
+(define (lambda? exp) (or (tagged-list? exp 'lambda)
+                          (tagged-list? exp 'λ)))
 
 (: lambda-parameters (-> PyrLambda VariableNames))
-(define (lambda-parameters exp) (cadr exp))
+(define (lambda-parameters exp)
+  (if (= 2 (length exp))
+      null
+      (if (symbol? (cadr exp))
+          (list (cadr exp))
+          (cadr exp))))
+      
 
 (: lambda-body (-> PyrLambda Sequence))
-(define (lambda-body (exp : PyrLambda)) (cddr exp))
+(define (lambda-body (exp : PyrLambda))
+  (if (= 2 (length exp))
+      (cdr exp)
+      (cddr exp)))
 
 (: make-lambda (-> (Listof Pyramid) Pyramid PyrLambda))
 (define (make-lambda parameters body)
