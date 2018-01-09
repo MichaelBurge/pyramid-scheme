@@ -75,6 +75,7 @@
 (define-type RegisterValue Any)
 (struct reg ([name : RegisterName]) #:transparent)
 (struct const ([ value : RegisterValue ]) #:transparent)
+(struct boxed-const ([ value : RegisterValue ]) #:transparent)
 (struct label ([ name : LabelName ]) #:transparent)
 (struct op ([ name : Symbol] [ args : MExprs ]) #:transparent)
 (struct eth-stack () #:transparent)
@@ -82,6 +83,7 @@
 (define stack? eth-stack?)
 (define-type MExpr (U reg
                       const
+                      boxed-const
                       label
                       op))
 (define-type MExprs (Listof MExpr))

@@ -3,6 +3,7 @@
 (require "types.rkt")
 (require "disassembler.rkt")
 (require "serializer.rkt")
+(require "codegen.rkt")
 (require binaryio/integer)
 
 (provide (all-defined-out))
@@ -237,7 +238,10 @@
 
 (: read-memory (-> evm Fixnum Fixnum Bytes))
 (define (read-memory vm addr len)
-  (subbytes (evm-memory vm) addr (+ addr len))
+  (if (>= addr (bytes-length (evm-memory vm)))
+      (make-bytes len 0)
+      (subbytes (evm-memory vm) addr (+ addr len))
+      )
   )
 
 (: write-memory-word! (-> evm Fixnum Fixnum Integer Void))
@@ -360,3 +364,45 @@
         ((list? x) (string-append (infer-type (car x))
                                   "[]"))
         (else (error "infer-type: Unknown type" x))))
+
+; TODO: Incorrect if x is a null value that isn't the shared copy of nil.
+(define (vm-null? vm x)
+  (or (equal? x 0)
+      (equal? x MEM-NIL)))
+
+(define (vm-tag vm x) (read-memory-word vm x 32))
+
+(define (vm-pair? vm x) (equal? TAG-PAIR (vm-tag vm x)))
+
+(define (vm-pair vm x) (cons (read-memory-word vm (+ x #x20) 32)
+                             (read-memory-word vm (+ x #x40) 32)))
+
+(define (vm-list vm x [ max-recursion 10 ])
+  (if (<= max-recursion 0)
+      null
+      (cond ((vm-null? vm x) null)
+            ((vm-pair? vm x)
+             (let ([ pair (vm-pair vm x) ]
+                   [ i    (- max-recursion 1) ]
+                   )
+               (cons (car pair)
+                     (vm-list vm (cdr pair) i))))
+            (else null))))
+
+(define (variable-environment vm)
+  (let ([ frames (vm-list vm (read-memory-word vm MEM-ENV 32)) ])
+    (define (parse-frame frame-ptr)
+      (let* ([ frame (vm-pair vm frame-ptr) ]
+             [ vars (vm-list vm (car frame) )]
+             [ vals (vm-list vm (cdr frame) )]
+             [ sz1 (length vars) ]
+             [ sz2 (length vals) ]
+             [ sz (min sz1 sz2) ]
+             )
+        (if (> sz 0)
+            (map list
+                 (map integer->string (take vars sz))
+                 (take vals sz)
+                 )
+            null)))
+    (map parse-frame frames)))

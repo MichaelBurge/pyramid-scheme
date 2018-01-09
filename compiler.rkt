@@ -89,13 +89,13 @@
 (define (compile-self-evaluating exp target linkage)
   (end-with-linkage linkage
                     (inst-seq '() (list target)
-                              (list (assign target (op 'box `(,(const exp))))))))
+                              (list (assign target (boxed-const exp))))))
 
 (: compile-quoted (-> PyrQuote Target Linkage inst-seq))
 (define (compile-quoted exp target linkage)
   (end-with-linkage linkage
                     (inst-seq '() (list target)
-                              (list (assign target (const (text-of-quotation exp)))))))
+                              (list (assign target (boxed-const (text-of-quotation exp)))))))
 
 (: install-macro! (-> Symbol Procedure Void))
 (define (install-macro! name func)

@@ -46,6 +46,8 @@
   (write-json (memory-dict vm))
   (write-char #\tab)
   (display i)
+  (write-char #\tab)
+  (write-json (variable-environment vm))
   (newline)
   )
 

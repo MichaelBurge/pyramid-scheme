@@ -471,6 +471,7 @@ These optimizations are currently unimplemented:
 (define (cg-mexpr exp)
   (cond ((reg?   exp)  (cg-mexpr-reg   exp))
         ((const? exp)  (cg-mexpr-const exp))
+        ((boxed-const? exp) (cg-mexpr-boxed-const exp))
         ((op?    exp)  (cg-mexpr-op    exp))
         ((symbol? exp) (cg-mexpr-label (label exp)))
         ((label? exp)  (cg-mexpr-label exp))
@@ -508,10 +509,22 @@ These optimizations are currently unimplemented:
              (let ((int (symbol->integer val)))
                (list (eth-push (integer-bytes int) int))))
             ((integer? val) (list (eth-push (integer-bytes val) val)))
-            ((list? val)    (cg-make-list (map const val)))
+            ((list? val)    (cg-make-list (map const val) #f))
             (else
              (error "Unsupported constant - cg-mexpr-const" exp))))))
           
+
+(: cg-mexpr-boxed-const (Generator unboxed-const))
+(define (cg-mexpr-boxed-const exp)
+  (let ([ val (boxed-const-value exp) ])
+    (cond ((symbol? val)
+           (let ((int (symbol->integer val)))
+             (cg-make-symbol (const (integer-bytes int)))))
+          ((integer? val) (cg-make-fixnum (const (integer-bytes val))))
+          ((list? val)    (cg-make-list (map const val) #t))
+          (else
+           (error "Unsupported constant - cg-mexpr-const" exp)))))
+      
 
 (: cg-mexpr-op    (Generator op))
 (define (cg-mexpr-op exp)
@@ -557,6 +570,7 @@ These optimizations are currently unimplemented:
 (: cg-intros               (Generator MExprs)) ; Use at start of a primitive op. Ensures all arguments are on the stack first-to-last.
 (: cg-insert               (Generator2 Fixnum MExpr)) ; 
 (: symbol->integer         (-> Symbol Integer)) ; TODO: I think the "official" ABI uses a Keccak hash for this.
+(: integer->string         (-> Integer String))
 (: asm                     (-> Symbol EthInstructions))
 (: stack                   MExpr)
 (: stack-write?            (-> MExpr Boolean))
@@ -642,6 +656,16 @@ These optimizations are currently unimplemented:
                 (+ (char->integer (car lst))
                    (* 256 i)))))
     (loop lst 0)))
+
+(define (integer->string n)
+  (define (integer->char-list n)
+    (if (equal? n 0)
+        null
+        (let-values ([ (q r) (quotient/remainder n 256) ])
+          (cons (integer->char r)
+                (integer->char-list q)))))
+  (list->string (reverse (integer->char-list n))))
+    
 
 (define (asm sym) (list (eth-asm sym)))
 
@@ -964,7 +988,7 @@ These optimizations are currently unimplemented:
 (: cg-make-pair                (Generator2 MExpr MExpr))
 (: cg-make-vector              (Generator2 MExpr MExprs))
 (: cg-make-nil                 (Generator  Nothing))
-(: cg-make-list                (Generator MExprs))
+(: cg-make-list                (Generator2 MExprs Boolean))
 (: cg-add-binding-to-frame     (Generator3 MExpr MExpr Mexpr))
 (: cg-allocate                 (Generator MExpr))              ; Returns a pointer to a newly-allocated block of 256-bit words.
 (: cg-allocate-initialize      (Generator2 MExpr MExprs))      ; Allocates memory and initializes each word from the argument list.
@@ -1020,13 +1044,15 @@ These optimizations are currently unimplemented:
 
 ; NOTE: It is currently only valid to call cg-make-list on non-stack items.
 ; Currently only used to create constant lists, so box the items as we make them.
-(define (cg-make-list lst)
+(define (cg-make-list lst [box? #t])
   (define (loop n)
     (if (eq? n 0) ; [ lst; *vals ]
         '()
         (append                   ; [ lst; *vals ]
          (cg-swap 1)              ; [ val'; lst; *vals ]
-         (cg-make-fixnum stack)   ; [ val''; lst; *vals ]
+         (if box?
+             (cg-make-fixnum stack)   ; [ val''; lst; *vals ]
+             '())
          (cg-cons stack stack)    ; [ 'lst; *vals ]
          (loop (- n 1))         
          ))) 
