@@ -45,20 +45,16 @@ Additionally, there are derived objects used in the standard library:
 -- Assembly --
 Some procedures are written in EVM assembly. To help validate them, they are annotated as follows:
 * Arguments are first-to-last on the stack.
-* The stack or its changes are on each assembly line
-** A list with no qualifiers is the current stack: [ x; y; z]
-**  +x means that x was pushed to the front of the stack
-**  -x means that x was removed from the front of the stack
-**  x <-> y means that object x was swapped with object y
+* Each line is annotated with the expected stack difference from the method beginning.
 * A goto must arrive on a line with the same stack size.
 * A branch pops one element, and then arrives on a line with the same stack size.
 * The procedure must terminate with a stack size of 0
 
 -- Primitive operations --
 There is a standard library of primitive operations.
-* Some ops are emitted by the compiler. Others are available for users.
-* Primitive operations are always inlined. A later update may instead emit a single copy and save/restore the 'continue register
-* Because they are always inlined, their linkage is implicity 'next. 
+* Primitive operations are used by the abstract machine code.
+* Some primitive operations are inlined. Their linkage is implicitly 'next.
+* Others have a single copy placed near the start of the program. It costs 2 additional JUMP instructions.
 
 -- Optimizations --
 These optimizations are currently unimplemented:
@@ -70,7 +66,6 @@ These optimizations are currently unimplemented:
 * Quotes are always variable names. Labels have their own classification in MExpr.
 * Quotes are converted into 256-bit integers by treating up to 32 characters as 8-bit ASCII.
 * Lists emits a series of (cons) calls corresponding to the elements.
-
 |#
 
 ; Global variables
@@ -101,7 +96,7 @@ These optimizations are currently unimplemented:
 (define (codegen is)
   (append
    (cg-initialize-program)
-   (cg-install-standard-library)
+   (cg-define-primops)
    (codegen-list is)
    (cg-return (reg 'val))))
 
@@ -168,6 +163,10 @@ These optimizations are currently unimplemented:
    (debug-label 'cg-perform-end)))
 
 ;;; Primitive operations emitted by the abstract compiler
+
+(define (op-lookup-variable-value name env)     (cg-invoke-primop *label-op-lookup-variable-value* name env))
+(define (op-define-variable! name value env)    (cg-invoke-primop *label-op-define-variable!* name value env))
+(define (op-set-variable-value! name value env) (cg-invoke-primop *label-op-set-variable-value!* name value env))
 
 (: cg-op-box                       (Generator  MExpr))       ; Creates a boxed integer or symbol.
 (: cg-op-extend-environment        (Generator3 MExpr MExpr MExpr)) ; Adds a frame to the environment.
@@ -374,8 +373,8 @@ These optimizations are currently unimplemented:
      (cg-branch scan-else-2 stack) ; [ fvals; fvars; name; value; env ]
      (asm 'DUP4)      ; [ value; fvals; fvars; name; value; env ]
      (cg-swap 1)      ; [ fvals; value; fvars; name; fvars; env ]
-     (cg-set-car! stack stack) ; [ name; fvars; env ]
-     (cg-pop 3)       ; [ ]
+     (cg-set-car! stack stack) ; [ fvars; name; fvars; env ]
+     (cg-pop 4)       ; [ ]
      (cg-goto term)   ; [ ]
      ; Stack: [ fvals, fvars, name, value, env ]
      `(,scan-else-2)
@@ -386,7 +385,7 @@ These optimizations are currently unimplemented:
      (cg-goto scan)    ; [ fvals'; fvars'; name; value; env ]
      `(,not-found)
      (asm 'REVERT)
-     `(,term))))
+     `(,term))))      ; []
 
 ; PSEUDOCODE:
 ;; (define (cg-op-define-variable! var val env)
@@ -533,7 +532,8 @@ These optimizations are currently unimplemented:
     (cond
       ; Procedures
       ((eq? name 'make-compiled-procedure)   (cg-op-make-compiled-procedure   (car args) (cadr args)))
-      ((eq? name 'define-variable!)          (cg-op-define-variable!          (car args) (cadr args) (caddr args)))
+      ((eq? name 'define-variable!)          (op-define-variable!             (car args) (cadr args) (caddr args)))
+      ((eq? name 'set-variable-value!)       (op-set-variable-value!          (car args) (cadr args) (caddr args)))
       ; Expressions
       ((eq? name 'box)                       (cg-op-box                       (car args)))
       ((eq? name 'extend-environment)        (cg-op-extend-environment        (car args) (cadr args) (caddr args)))
@@ -541,8 +541,7 @@ These optimizations are currently unimplemented:
       ((eq? name 'compiled-procedure-env)    (cg-op-compiled-procedure-env    (car args)))
       ((eq? name 'primitive-procedure?)      (cg-op-primitive-procedure?      (car args)))
       ((eq? name 'apply-primitive-procedure) (cg-op-apply-primitive-procedure (car args) (cadr args)))
-      ((eq? name 'lookup-variable-value)     (cg-op-lookup-variable-value     (car args) (cadr args)))
-      ((eq? name 'set-variable-value!)       (cg-op-set-variable-value!       (car args) (cadr args) (caddr args)))
+      ((eq? name 'lookup-variable-value)     (op-lookup-variable-value        (car args) (cadr args)))
       ((eq? name 'false?)                    (cg-op-false?                    (car args)))
       ((eq? name 'list)                      (cg-op-list                      (car args)))
       ((eq? name 'cons)                      (cg-op-cons                      (car args) (cadr args)))
@@ -568,7 +567,8 @@ These optimizations are currently unimplemented:
 (: cg-write-address        (Generator2 MExpr MExpr))
 (: cg-write-address-offset (Generator3 MExpr MExpr MExpr))
 (: cg-intros               (Generator MExprs)) ; Use at start of a primitive op. Ensures all arguments are on the stack first-to-last.
-(: cg-insert               (Generator2 Fixnum MExpr)) ; 
+(: cg-insert               (Generator2 Fixnum MExpr)) ;
+(: cg-invoke-primop        (Generator MExpr MExprs))
 (: symbol->integer         (-> Symbol Integer)) ; TODO: I think the "official" ABI uses a Keccak hash for this.
 (: integer->string         (-> Integer String))
 (: asm                     (-> Symbol EthInstructions))
@@ -993,7 +993,7 @@ These optimizations are currently unimplemented:
 (: cg-allocate                 (Generator MExpr))              ; Returns a pointer to a newly-allocated block of 256-bit words.
 (: cg-allocate-initialize      (Generator2 MExpr MExprs))      ; Allocates memory and initializes each word from the argument list.
 (: cg-initialize-program       (Generator Nothing))
-(: cg-install-standard-library (Generator Nothing))
+(: cg-define-primops           (Generator Nothing))
 (: cg-make-environment         (Generator Nothing))
 (: cg-make-frame               (Generator Nothing))
 (: cg-return                   (Generator MExpr))              ; Ends the program with a boxed value as the output.
@@ -1114,7 +1114,11 @@ These optimizations are currently unimplemented:
    (cg-write-address (const MEM-NIL) (const TAG-NIL))
    ))
 
-(define (cg-install-standard-library)
+(define *label-op-lookup-variable-value* (make-label 'op-lookup-variable-value))
+(define *label-op-define-variable!*      (make-label 'op-define-variable!))
+(define *label-op-set-variable-value!*   (make-label 'op-set-variable!))
+
+(define (cg-define-primops)
   (let ((label-= (make-label '=))
         (label-* (make-label '*))
         (label-+ (make-label '+))
@@ -1150,6 +1154,21 @@ These optimizations are currently unimplemented:
     (append
      (debug-label 'cg-install-standard-library)
      (cg-goto label-install)
+     ; Primops
+     ; op-lookup-variable-value
+     `(,*label-op-lookup-variable-value*)      ; [ var; env; ret ]
+     (cg-op-lookup-variable-value stack stack) ; [ result; ret ]
+     (asm 'SWAP1)                              ; [ ret; result ]
+     (cg-goto stack)                           ; [ result ]
+     ; op-define-variable!
+     `(,*label-op-define-variable!*)            ; [ var; val; env; ret ]
+     (cg-op-define-variable! stack stack stack) ; [ ret ]
+     (cg-goto stack)                            ; [ ]
+     ; op-set-variable!
+     `(,*label-op-set-variable-value!*)            ; [ var; val; env; ret ]
+     (cg-op-set-variable-value! stack stack stack) ; [ ret ]
+     (cg-goto stack)                               ; [ ]
+     ; Prefined user functions
      ; = operator
      `(,label-=)              
      (unboxed-binop-wrap (cg-eq? stack stack))
@@ -1402,6 +1421,14 @@ SWAP1 -> [ x1; x2; x3; c ]
                         (loop (- n 1))))))
   (append (cg-mexpr expr)
           (loop pos)))
+
+(define (cg-invoke-primop target . args)
+  (let ([ ret (make-label 'cg-invoke-primop-ret) ])
+    (append
+     (cg-intros (append (list target) args (list ret))) ; [ target; args*; ret ]
+     (cg-goto stack)                                    ; [ args*; ret ]
+     `(,ret)                                            ; [ ]
+     )))
 
 ; (: cg-move-front (Generator Fixnum))
 
