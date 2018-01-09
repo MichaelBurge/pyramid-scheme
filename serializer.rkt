@@ -25,11 +25,6 @@ numerical value to insert. It generates a relocation, but needs to leave a speci
 
 (define assumed-label-size 2) ; TODO: Number of bytes to leave behind for label relocations. This makes it difficult to write programs larger than 65536 bytes.
 
-; Global variables
-(define *byte-offset* 0)
-(define *symbol-table* (make-hash '()))
-(define *relocation-table* (set))
-
 (: opcode-table (Listof opcode))
 (define opcode-table
   ; Byte Symbol StackReads StackWrites
@@ -191,8 +186,10 @@ numerical value to insert. It generates a relocation, but needs to leave a speci
 (: serialize-with-relocations (-> EthInstructions bytes))
 (define (serialize-with-relocations is)
   (let* ((bs (serialize is)))
-    (apply-relocations! bs *relocation-table* *symbol-table*)
-    bs))
+    (apply-relocations! bs (*relocation-table*) (*symbol-table*))
+    (*reverse-symbol-table* (invert-dict (*symbol-table*)))
+    bs)
+  )
 
 ; Consider using wrap-loader to prepend an initializer program.
 (: serialize (-> EthInstructions bytes))
@@ -204,7 +201,7 @@ numerical value to insert. It generates a relocation, but needs to leave a speci
 
 (: serialize-one (-> EthInstruction bytes))
 (define (serialize-one i)
-  (set! *byte-offset* (+ 1 *byte-offset*))
+  (*byte-offset* (+ 1 (*byte-offset*)))
   (cond ((eth-asm?     i) (serialize-asm i))
         ((eth-push?    i) (serialize-push i))
         ((eth-unknown? i) (bytes i))
@@ -233,7 +230,7 @@ numerical value to insert. It generates a relocation, but needs to leave a speci
   (let ((op (lookup-push-opcode push))
         (val (push-true-value push))
         (size (push-true-size push)))
-    (set! *byte-offset* (+ size *byte-offset*))
+    (*byte-offset* (+ size (*byte-offset*)))
     (bytes-append (bytes (opcode-byte op))
                   (integer->bytes val size #f))))
 
@@ -252,7 +249,7 @@ numerical value to insert. It generates a relocation, but needs to leave a speci
 
 (: remember-label (-> label Void))
 (define (remember-label lbl)
-  (dict-set! *symbol-table* lbl (- *byte-offset* 1)))
+  (dict-set! (*symbol-table*) lbl (- (*byte-offset*) 1)))
 
 (: push-true-value (-> eth-push integer))
 #| push-true-value:
@@ -264,8 +261,8 @@ Either a label or integer can be pushed onto the stack.
 (define (push-true-value push)
   (let ((val (eth-push-value push)))
     (cond ((label? val) (begin
-                          (generate-relocation (relocation *byte-offset* val))
-                          (dict-ref *symbol-table* (label-name val) 0)))
+                          (generate-relocation (relocation (*byte-offset*) val))
+                          (dict-ref (*symbol-table*) (label-name val) 0)))
           ; Symbols are unexpected: Labels are wrapped in a struct; quotes are expanded to integers in the code generator.
           ((symbol? val) (error "Unexpected symbol - push-true-val" val))
           ((integer? val) val)
@@ -312,7 +309,7 @@ Either a label or integer can be pushed onto the stack.
 
 (: generate-relocation (-> relocation Void))
 (define (generate-relocation reloc)
-  (set! *relocation-table* (set-add *relocation-table* reloc)))
+  (*relocation-table* (set-add (*relocation-table*) reloc)))
 
 ; Ethereum programs must have two "modules": A program to run, and an initializer that returns it.
 ; This prepends a minimal initializer that returns a given program.
@@ -355,9 +352,9 @@ Either a label or integer can be pushed onto the stack.
 
 (: reset-serializer-globals! (-> Void))
 (define (reset-serializer-globals!)
-  (set! *byte-offset* 0)
-  (set! *symbol-table* (make-hash '()))
-  (set! *relocation-table* (set)))
+  (*byte-offset* 0)
+  (*symbol-table* (make-hash '()))
+  (*relocation-table* (set)))
 
 ;; (remember-label (label 'derp))
 ;; (push-true-value (eth-push 5 'derp))

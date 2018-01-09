@@ -58,7 +58,7 @@
 (: run-until-return (-> Bytes Bytes))
 (define (run-until-return bs)
   (let* ([ result null ]
-         [ reverse-symbol-table (invert-dict *symbol-table*) ]
+         [ reverse-symbol-table (invert-dict (*symbol-table*)) ]
          [ on-simulate (if (*verbose?*)
                            (λ (vm i reads) (on-simulate-debug reverse-symbol-table vm i reads))
                            on-simulate-nop)

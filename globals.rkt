@@ -13,3 +13,8 @@
 (define *test-expected-result* (make-parameter null))
 (define *exports* (make-parameter null)) ; Used to generate the standard ABI for the current Pyramid contract
 (define *loader-size* (make-parameter 0)) ; Size of the most recently generated loader
+
+(define *byte-offset* (make-parameter 0)) ; Used during serialization to track output stream position
+(define *symbol-table* (make-parameter (make-hash '())))
+(define *relocation-table* (make-parameter (set)))
+(define *reverse-symbol-table* (make-parameter null))

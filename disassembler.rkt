@@ -31,7 +31,7 @@
 ; Outputs 3 column TSV suitable for pasting into Google sheets
 (: print-disassembly (-> bytes Void))
 (define (print-disassembly bs)
-  (let ((reverse-symbol-table (invert-dict *symbol-table*)))
+  (let ((reverse-symbol-table (invert-dict (*symbol-table*))))
     (define (loop n)
       (fprintf (current-output-port) "~x" n)
       (write-char #\tab)

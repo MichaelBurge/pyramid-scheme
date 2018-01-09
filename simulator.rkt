@@ -4,6 +4,7 @@
 (require "disassembler.rkt")
 (require "serializer.rkt")
 (require "codegen.rkt")
+(require "globals.rkt")
 (require binaryio/integer)
 
 (provide (all-defined-out))
@@ -366,16 +367,45 @@
         (else (error "infer-type: Unknown type" x))))
 
 ; TODO: Incorrect if x is a null value that isn't the shared copy of nil.
-(define (vm-null? vm x)
-  (or (equal? x 0)
-      (equal? x MEM-NIL)))
 
 (define (vm-tag vm x) (read-memory-word vm x 32))
 
-(define (vm-pair? vm x) (equal? TAG-PAIR (vm-tag vm x)))
+(define (vm-value vm x)
+  (cond ((vm-fixnum? vm x)              (vm-fixnum vm x))
+        ((vm-symbol? vm x)              (vm-symbol vm x))
+        ((vm-compiled-procedure? vm x)  (vm-compiled-procedure vm x))
+        ((vm-primitive-procedure? vm x) (vm-primitive-procedure vm x))
+        ((vm-pair? vm x)                (vm-pair vm x))
+        ((vm-vector? vm x)              (vm-vector vm x))
+        ((vm-null? vm x)                null)
+        (else (cons 'unboxed x))))
 
+(define (vm-tag-checker tag) (λ (vm x) (equal? tag (vm-tag vm x))))
+
+(define vm-fixnum? (vm-tag-checker TAG-FIXNUM))
+(define vm-symbol? (vm-tag-checker TAG-SYMBOL))
+(define vm-compiled-procedure? (vm-tag-checker TAG-COMPILED-PROCEDURE))
+(define vm-primitive-procedure? (vm-tag-checker TAG-PRIMITIVE-PROCEDURE))
+(define vm-pair? (vm-tag-checker TAG-PAIR))
+(define vm-vector? (vm-tag-checker TAG-VECTOR))
+(define vm-null? (vm-tag-checker TAG-NIL))
+
+(define (vm-fixnum vm x) (read-memory-word vm (+ x #x20) 32))
+(define (vm-symbol vm x) (integer->string (read-memory-word vm (+ x #x20) 32)))
+(define (vm-procedure vm x)
+  (string-append
+   "label-"
+   (symbol->string (label-name (dict-ref (*reverse-symbol-table*) (read-memory-word vm (+ x #x20) 32))))))
+(define vm-compiled-procedure vm-procedure)
+(define vm-primitive-procedure vm-procedure)
 (define (vm-pair vm x) (cons (read-memory-word vm (+ x #x20) 32)
                              (read-memory-word vm (+ x #x40) 32)))
+(define (vm-vector vm x)
+  (let ([ addr (read-memory-word vm (+ x #x60))]
+        [ len  (read-memory-word vm (+ x #x40))]
+        )
+    (subbytes (evm-memory vm) addr (+ addr len))))
+                                   
 
 (define (vm-list vm x [ max-recursion 10 ])
   (if (<= max-recursion 0)
@@ -402,7 +432,7 @@
         (if (> sz 0)
             (map list
                  (map integer->string (take vars sz))
-                 (take vals sz)
+                 (map (λ (x) (vm-value vm x)) (take vals sz))
                  )
             null)))
     (map parse-frame frames)))

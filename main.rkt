@@ -46,8 +46,8 @@
       (display-all (inst-seq-statements instructions))
   
       ; (newline) (display "EVM Instructions:") (newline) (display-all eth-instructions)
-      ; (print-symbol-table *symbol-table*)
-      (print-relocations *relocation-table*)
+      ; (print-symbol-table (*symbol-table*))
+      (print-relocations (*relocation-table*))
       (print-disassembly bs))))
   
 (: standard-output (-> Pyramid Void))
