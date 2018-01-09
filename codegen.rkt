@@ -520,7 +520,7 @@ These optimizations are currently unimplemented:
     (cond ((symbol? val)
            (let ((int (symbol->integer val)))
              (cg-make-symbol (const (integer-bytes int)))))
-          ((integer? val) (cg-make-fixnum (const (integer-bytes val))))
+          ((integer? val) (cg-make-fixnum (const val)))
           ((list? val)    (cg-make-list (map const val) #t))
           (else
            (error "Unsupported constant - cg-mexpr-const" exp)))))
