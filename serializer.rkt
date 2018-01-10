@@ -333,8 +333,10 @@ Either a label or integer can be pushed onto the stack.
 
 (: push-op? (-> opcode Boolean))
 (define (push-op? op)
-  (and (>= (opcode-byte op) #x60)
-       (<= (opcode-byte op) #x7f)))
+  (and
+   (opcode? op)
+   (>= (opcode-byte op) #x60)
+   (<= (opcode-byte op) #x7f)))
 
 (: op-extra-size (-> opcode Fixnum))
 (define (op-extra-size op)

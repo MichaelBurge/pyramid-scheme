@@ -11,8 +11,8 @@
 (define (disassemble-one bs i)
   (let* ([ byte (bytes-ref bs i) ]
          [ op (dict-ref opcodes-by-byte byte (eth-unknown byte)) ]
-         [ ethi (cond ((push-op? op) (disassemble-push bs i))
-                      ((eth-unknown? op) op)
+         [ ethi (cond ((eth-unknown? op) op)
+                      ((push-op? op) (disassemble-push bs i))
                       (else (eth-asm (opcode-name op)))
                       )])
     (cons op ethi)))
@@ -42,13 +42,18 @@
       (write-char #\tab)
       (let* ([ op-ethi (disassemble-one bs n) ]
              [ op (car op-ethi) ]
-             [ ethi (cdr op-ethi) ])        
-        (if (push-op? op)
-            (fprintf (current-output-port)
-                     "Push~a 0x~x"
-                     (op-extra-size op)
-                     (eth-push-value ethi))
-            (write-string (symbol->string (opcode-name op))))
+             [ ethi (cdr op-ethi) ])
+        (cond ((push-op? op)
+               (fprintf (current-output-port)
+                        "Push~a 0x~x"
+                        (op-extra-size op)
+                        (eth-push-value ethi)))
+              ((eth-asm? ethi) (write-string (symbol->string (opcode-name op))))
+              ((eth-unknown? ethi)
+               (fprintf (current-output-port)
+                        "BYTE ~a"
+                        (eth-unknown-byte ethi)))
+              (else (error "print-disassembly: Unknown ethi" ethi)))
         (set! n (+ n (op-extra-size op))))
       (newline)
       (if (>= n (- (bytes-length bs) 1))
