@@ -194,7 +194,6 @@ numerical value to insert. It generates a relocation, but needs to leave a speci
 ; Consider using wrap-loader to prepend an initializer program.
 (: serialize (-> EthInstructions bytes))
 (define (serialize is)
-  (display is)
   (apply bytes-append (map serialize-one is))
   )
   ;; (if (null? is)
@@ -207,7 +206,7 @@ numerical value to insert. It generates a relocation, but needs to leave a speci
   (*byte-offset* (+ 1 (*byte-offset*)))
   (cond ((eth-asm?     i) (serialize-asm i))
         ((eth-push?    i) (serialize-push i))
-        ((eth-unknown? i) (bytes i))
+        ((eth-unknown? i) (bytes (eth-unknown-byte i)))
         ((label?       i) (serialize-label i))
         (else
          (error "Unknown EthInstruction - serialize-one:" i))))

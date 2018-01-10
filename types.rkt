@@ -129,7 +129,7 @@
 (define-type Address Fixnum)
 (struct eth-asm     ([ name : Symbol ]) #:transparent)
 (struct eth-push    ([ size : (U 'shrink Fixnum) ] [ value : (U Integer Symbol) ]) #:transparent)
-(struct eth-unknown ([ opcode : Fixnum ]) #:transparent)
+(struct eth-unknown ([ byte : Fixnum ]) #:transparent)
 (define-type EthInstruction     (U eth-asm eth-push eth-unknown label))
 (define-type EthInstructions    (Listof   EthInstruction))
 (define-type (Generator  A)     (-> A     EthInstructions))

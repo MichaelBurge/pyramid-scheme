@@ -109,7 +109,6 @@ These optimizations are currently unimplemented:
 
 (: codegen-one (Generator Instruction))
 (define (codegen-one i)
-  (begin
   (cond ((label?   i) (cg-label   i))
         ((symbol?  i) (error "Unexpected symbol - codegen-one" i))
         ((assign?  i) (cg-assign  i))
@@ -121,7 +120,8 @@ These optimizations are currently unimplemented:
         ((perform? i) (cg-perform i))
         ((asm?     i) (cg-asm i))
         (else
-         (error "Unknown instruction type -- codegen-one:" i)))))
+         (error "Unknown instruction type -- codegen-one:" i))))
+
 (: cg-label   (Generator InstLabel))
 (define (cg-label i) (list i))
 
