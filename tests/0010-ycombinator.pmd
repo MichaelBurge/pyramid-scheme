@@ -1,0 +1,23 @@
+(%-test-set-expected-result 120)
+
+; TODO: Implement apply
+;; (define Y (λ (h) ((λ (x) (x x))
+;;                   (λ (g)
+;;                     (h (λ args (apply (g g) args)))))))
+
+(define Y
+  (λ (h)
+    ((λ (x) (x x))
+     (λ (g)
+       (h (λ (n)
+            ((g g) n)))))))
+
+(define factorial
+  (Y
+   (λ (f)
+     (λ (n)
+       (if (= n 0)
+           1
+           (* n (f (- n 1))))))))
+
+(factorial 5)
