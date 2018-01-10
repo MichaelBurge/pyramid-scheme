@@ -12,3 +12,6 @@
         (display (car xs))
         (newline)
         (display-all (cdr xs)))))
+
+(: get-collection-directory (-> Symbol String))
+(define (get-collection-directory collection) (symbol->string collection))

@@ -74,6 +74,12 @@ These optimizations are currently unimplemented:
 (define-namespace-anchor *asm-anchor*)
 (define *asm-namespace* (namespace-anchor->namespace *asm-anchor*))
 
+; To avoid excessive inlining, a single copy of these is emitted.
+(define *label-op-lookup-variable-value* (make-label 'op-lookup-variable-value))
+(define *label-op-define-variable!*      (make-label 'op-define-variable!))
+(define *label-op-set-variable-value!*   (make-label 'op-set-variable!))
+(define *label-op-return*                (make-label 'op-return))
+
 ; Constants
 (define TAG-FIXNUM              0)
 (define TAG-SYMBOL              1)
@@ -101,7 +107,7 @@ These optimizations are currently unimplemented:
    (cg-initialize-program)
    (cg-define-primops)
    (codegen-list is)
-   (cg-return (reg 'val))))
+   (op-return (reg 'val))))
 
 (: codegen-list (Generator Instructions))
 (define (codegen-list is)
@@ -181,6 +187,7 @@ These optimizations are currently unimplemented:
 (define (op-lookup-variable-value name env)     (cg-invoke-primop *label-op-lookup-variable-value* name env))
 (define (op-define-variable! name value env)    (cg-invoke-primop *label-op-define-variable!* name value env))
 (define (op-set-variable-value! name value env) (cg-invoke-primop *label-op-set-variable-value!* name value env))
+(define (op-return value)                       (cg-invoke-primop *label-op-return* value))
 
 (: cg-op-box                       (Generator  MExpr))       ; Creates a boxed integer or symbol.
 (: cg-op-extend-environment        (Generator3 MExpr MExpr MExpr)) ; Adds a frame to the environment.
@@ -1128,10 +1135,6 @@ These optimizations are currently unimplemented:
    (cg-write-address (const MEM-NIL) (const TAG-NIL))
    ))
 
-(define *label-op-lookup-variable-value* (make-label 'op-lookup-variable-value))
-(define *label-op-define-variable!*      (make-label 'op-define-variable!))
-(define *label-op-set-variable-value!*   (make-label 'op-set-variable!))
-
 (define (cg-define-primops)
   (let ((label-= (make-label '=))
         (label-* (make-label '*))
@@ -1182,6 +1185,8 @@ These optimizations are currently unimplemented:
      `(,*label-op-set-variable-value!*)            ; [ var; val; env; ret ]
      (cg-op-set-variable-value! stack stack stack) ; [ ret ]
      (cg-goto stack)                               ; [ ]
+     `(,*label-op-return*)
+     (cg-return stack)
      ; Prefined user functions
      ; = operator
      `(,label-=)              

@@ -1,0 +1,20 @@
+(defmacro (let args body)
+  (begin
+    (let* ([vars (map first args)]
+           [exprs (map second args)])
+      (cons `(lambda ,vars ,body) exprs))))
+
+(defmacro (let* args)
+  (begin
+    (assert-length xs 2)
+    (let ([args (first xs) ]
+          [body (tail xs) ]
+          [wrap-body (lambda (arg body)
+                       `((lambda ,(l arg) ,body) ,(r arg)))]
+          [wrap-args (lambda (args body)
+                       (if (null? args)
+                           body
+                           (wrap-body (first args)
+                                      (wrap-args (tail args) body))))]
+          )
+      (wrap-args args body))))

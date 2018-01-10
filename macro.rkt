@@ -17,6 +17,7 @@ Functions defined here are available to Pyramid programs within macros.
 
 (define (%-install-macro-library)
   (parameterize ([ current-namespace (*macro-namespace*) ])
+    (namespace-require 'racket/list)
     (namespace-require "macro.rkt")
     )
   (install-macro! '%-test-set-expected-result %-test-set-expected-result)
@@ -74,6 +75,10 @@ Functions defined here are available to Pyramid programs within macros.
   (*test-expected-result* exp)
   '(begin))
 
-(define (%-include exp)
-  (parameterize ([ current-directory (*include-directory*) ])
-    (read-file exp)))
+(define %-include
+  (case-lambda
+    ([mod] (parameterize ([ current-directory (*include-directory*) ])
+             (read-file mod)))
+    ([collection mod] (parameterize ([ current-directory (get-collection-directory collection) ])
+                        (read-file mod)))
+    ))
