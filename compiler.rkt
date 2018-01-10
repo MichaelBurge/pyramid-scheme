@@ -25,6 +25,7 @@
   (cond ((self-evaluating? exp)
          (compile-self-evaluating exp target linkage))
         ((quoted? exp) (compile-quoted exp target linkage))
+        ((asm? exp) (inst-seq '() '() (list exp)))
         ((macro? exp) (compile-macro exp target linkage))
         ((variable? exp)
          (compile-variable exp target linkage))

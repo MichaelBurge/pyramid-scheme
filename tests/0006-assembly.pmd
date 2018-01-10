@@ -1,0 +1,15 @@
+(%-test-set-expected-result 5)
+
+;; (asm
+;;  (push 1 2)
+;;  (push 1 3)
+;;  (op 'ADD)
+;;  (cg-make-fixnum stack)
+;;  )
+(asm
+ (label 'example)
+ (push 1 2)
+ (push 1 3)
+ (op 'ADD)
+ (cg-make-fixnum stack)
+ )

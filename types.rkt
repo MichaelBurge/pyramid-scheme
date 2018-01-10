@@ -24,6 +24,11 @@
 (define-type PyrCond       (Pairof 'cond (Listof PyrCondClause)))
 (define-type PyrApplication (Pairof Pyramid Sequence))
 (define-type PyrMacro      (List 'defmacro (U VariableName VariableNames) (Listof Racket)))
+(define-type PyrAsmPush    (List 'push (U 'shrink Fixnum) Fixnum))
+(define-type PyrAsmOp      (List 'op Symbol))
+(define-type PyrAsmByte    (List 'byte Fixnum))
+(define-type PyrAsmLabel   (List 'label Symbol))
+(define-type PyrAsm        (List 'asm (Listof (U PyrAsmPush PyrAsmOp PyrAsmByte PyrAsmLabel))))
 (define-type Pyramid (U PyrSelfEvaluating
                         PyrVariable
                         PyrQuote
@@ -35,6 +40,7 @@
                         PyrCond
                         PyrApplication
                         PyrMacro
+                        PyrAsm
                         ))
 
 (define-type Racket Any)
@@ -96,6 +102,7 @@
 (struct save ([ reg-name : RegisterName ]) #:transparent)
 (struct restore ([ reg-name : RegisterName ]) #:transparent)
 (struct perform ([ action : op ]) #:transparent)
+(struct am-asm ([ insts : EthInstructions ]))
 (define-type Instruction (U InstLabel
                             assign
                             test
@@ -103,7 +110,9 @@
                             goto
                             save
                             restore
-                            perform))
+                            perform
+                            PyrAsm
+                            ))
 (define-type Instructions (Listof Instruction))
 (define-type InstructionOp (MPairof Instruction MachineOp))
 (define-type InstructionOps (Listof InstructionOp))

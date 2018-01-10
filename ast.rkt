@@ -198,3 +198,8 @@
 (define macro-variable definition-variable)
 (define (macro-args exp) (cdadr exp))
 (define (macro-body exp) (caddr exp))
+
+(: asm? (-> Pyramid Boolean))
+(define (asm? exp) (tagged-list? exp 'asm))
+
+(define (asm-insts exp) (cdr exp))

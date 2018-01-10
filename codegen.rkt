@@ -1,10 +1,11 @@
-#lang errortrace typed/racket/no-check
+#lang typed/racket/no-check
 
 (require "compiler.rkt")
 (require "evaluator.rkt")
 (require "types.rkt")
 (require "interpreter.rkt")
 (require "utils.rkt")
+(require "ast.rkt")
 (require racket/list)
 
 (provide (all-defined-out))
@@ -70,6 +71,8 @@ These optimizations are currently unimplemented:
 
 ; Global variables
 (define *use-debug-symbols?* (make-parameter #f))
+(define-namespace-anchor *asm-anchor*)
+(define *asm-namespace* (namespace-anchor->namespace *asm-anchor*))
 
 ; Constants
 (define TAG-FIXNUM              0)
@@ -102,17 +105,13 @@ These optimizations are currently unimplemented:
 
 (: codegen-list (Generator Instructions))
 (define (codegen-list is)
-    (if (null? is)
-        '()
-        (append (codegen-one  (car is))
-                (codegen-list (cdr is)))))
-  
+  (apply append (map codegen-one is)))
 
 (: codegen-one (Generator Instruction))
 (define (codegen-one i)
   (begin
   (cond ((label?   i) (cg-label   i))
-        ((symbol?  i) (error "Unexpected symbol - codegen-one"))
+        ((symbol?  i) (error "Unexpected symbol - codegen-one" i))
         ((assign?  i) (cg-assign  i))
         ((test?    i) (cg-test    i))
         ((branch?  i) (cg-branch (branch-dest i) stack))
@@ -120,6 +119,7 @@ These optimizations are currently unimplemented:
         ((save?    i) (cg-save    i))
         ((restore? i) (cg-restore i))
         ((perform? i) (cg-perform i))
+        ((asm?     i) (cg-asm i))
         (else
          (error "Unknown instruction type -- codegen-one:" i)))))
 (: cg-label   (Generator InstLabel))
@@ -161,6 +161,20 @@ These optimizations are currently unimplemented:
    (debug-label 'cg-perform)
    (cg-mexpr-op (perform-action i))
    (debug-label 'cg-perform-end)))
+
+(: cg-asm (Generator (Listof PyrAsm)))
+(define (cg-asm is)
+  (parameterize ([ current-namespace *asm-namespace* ])
+    (namespace-set-variable-value! 'push  (λ (x y) (list (eth-push x y))) #t)
+    (namespace-set-variable-value! 'op    (λ (x) (list (eth-asm x)))      #t)
+    (namespace-set-variable-value! 'label (λ (x) (list (label x)))        #t)
+    (namespace-set-variable-value! 'byte  (λ (x) (list (eth-unknown x)))  #t)
+    
+    (define (parse-asm i) (eval i))
+
+    (apply append (map parse-asm (cdr is)))
+    )
+  )
 
 ;;; Primitive operations emitted by the abstract compiler
 

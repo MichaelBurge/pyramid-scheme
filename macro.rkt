@@ -77,4 +77,3 @@ Functions defined here are available to Pyramid programs within macros.
 (define (%-include exp)
   (parameterize ([ current-directory (*include-directory*) ])
     (read-file exp)))
-  

@@ -194,10 +194,13 @@ numerical value to insert. It generates a relocation, but needs to leave a speci
 ; Consider using wrap-loader to prepend an initializer program.
 (: serialize (-> EthInstructions bytes))
 (define (serialize is)
-  (if (null? is)
-      (bytes)
-      (bytes-append (serialize-one (car is))
-                    (serialize     (cdr is)))))
+  (display is)
+  (apply bytes-append (map serialize-one is))
+  )
+  ;; (if (null? is)
+  ;;     (bytes)
+  ;;     (bytes-append (serialize-one (car is))
+  ;;                   (serialize     (cdr is)))))
 
 (: serialize-one (-> EthInstruction bytes))
 (define (serialize-one i)
