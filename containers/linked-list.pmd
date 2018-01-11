@@ -1,4 +1,4 @@
-(require "base.pmd")
+(include psl "base.pmd")
 
 (define (linked-list) (pair **allocator** null))
 

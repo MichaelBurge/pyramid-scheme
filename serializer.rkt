@@ -170,7 +170,7 @@ numerical value to insert. It generates a relocation, but needs to leave a speci
     
     ,(opcode #xfd 'REVERT       0 0)
     ,(opcode #xfe 'INVALID      0 0)
-    ,(opcode #xff 'SELFDESTRUCT 1 0)
+    ,(opcode #xff 'SUICIDE      1 0)
     ))
 
 (define opcodes-by-sym

@@ -120,42 +120,9 @@
 (define (vector-singleton x)
   (vector-f 1 (λ x)))
 
-(defmacro λ lambda)
-
 ; Utility
-(define + %-+)
-(define - %--)
-(define * %-*)
-(define / %-/)
-(define % %-mod)
-(define = %-=)
-(define > %->)
-(define < %-<)
-(define ptr-= %-ptr-=)
 
-(defmacro (and  xs)
-  (cond ((null? xs) 'true)
-        ((null? (cdr xs)) (car xs))
-        (else `(if ,(car xs)
-                   (and ,(cdr xs))
-                   false))))
-
-(defmacro (or xs)
-  (cond ((null? xs) 'false)
-        ((null? (cdr xs)) (car xs))
-        (else `(if ,(car xs)
-                   true
-                   (or ,(cdr xs))))))
-
-(define (pred i) (- i 1))
 (define (void) (begin))
-
-(define (equal? a b)
-  (or (ptr-= a b)
-      (and (eq? (%-tag a) (%-tag b))
-           (cond ((fixnum? x) (equal-fixnum? x))
-                 ((symbol? x) (equal-fixnum? x))
-                 (else (%-throw))))))
 
 (define (assert x)
   (if x

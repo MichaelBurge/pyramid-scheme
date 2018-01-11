@@ -608,6 +608,13 @@ These optimizations are currently unimplemented:
   (cond ((eq? size 2) (asm 'SWAP1))
         ((eq? size 3)  ; [ x1; x2; x3 ]
          (asm 'SWAP2)) ; [ x3; x2; x1 ]
+        ((eq? size 4) ; [ x1; x2; x3; x4 ]
+         (append
+          (asm 'SWAP3) ; [ x4; x2; x3; x1 ]
+          (asm 'SWAP1) ; [ x2; x4; x3; x1 ]
+          (asm 'SWAP2) ; [ x3; x4; x2; x1 ]
+          (asm 'SWAP1) ; [ x4; x3; x2; x1 ]
+          ))
         (else
          (error "Unsupported size -- cg-reverse" size))))
 

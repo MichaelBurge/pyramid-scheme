@@ -1,0 +1,115 @@
+; The (asm) language primitive executes ordinary Racket code within the codegen.rkt module, where
+; the cg-* helpers are defined.
+
+; Helpers
+
+(defmacro (%-nullop xs)
+  `(asm
+    ,xs                      ; [ result; return ]
+    (cg-make-fixnum stack)   ; [ result'; return ]
+    (cg-swap 1 )             ; [ return; result' ]
+    (cg-goto stack)          ; [ result' ]
+    ))
+
+(defmacro (%-unop xs)
+  `(asm
+    (cg-unroll-args1 stack)  ; [ x1; return ]
+    ,xs                      ; [ result; return ]
+    (cg-make-fixnum stack)   ; [ result'; return ]
+    (cg-swap 1)              ; [ return; result' ]
+    (cg-goto stack)          ; [ result' ]
+    ))
+
+(defmacro (%-binop xs)
+  `(asm
+    (cg-unroll-args2 stack)   ; [ x1; x2; return ]
+    ,xs                       ; [ result; return ]
+    (cg-make-fixnum stack)    ; [ result'; return ]
+    (cg-swap 1)               ; [ return; result' ]
+    (cg-goto stack)           ; [ result' ]
+    ))
+
+(defmacro (%-triop xs)
+  `(asm
+    (cg-unroll-args3 stack)    ; [ x1; x2; x3; return ]
+    ,xs                        ; [ result; return ]
+    (cg-make-fixnum stack)     ; [ result'; return ]
+    (cg-swap 1)                ; [ return; result' ]
+    (cg-goto stack)            ; [ result' ]
+    ))
+
+; primitives are ordinary functions, but separate them syntactically since the arguments are manually handled by the assembly.
+(defmacro (primitive name body)
+  `(define (,name) ,body))
+  
+; "True" Primitives
+;; These don't take any arguments because the assembly manually handles them.
+(primitive %-+       (%-binop  (op 'ADD)))
+(primitive %-*       (%-binop  (op 'MUL)))
+(primitive %--       (%-binop  (op 'SUB)))
+(primitive %-/       (%-binop  (op 'DIV)))
+(primitive %-mod     (%-binop  (op 'MOD)))
+(primitive %-=       (%-binop  (op 'EQ)))
+(primitive %->       (%-binop  (op 'GT)))
+(primitive %-<       (%-binop  (op 'LT)))
+(primitive %-ptr-= (asm
+                    (cg-unroll-args2 stack) ; [ x1; x2; return ]
+                    (op 'EQ)                ; [ result; return ]
+                    (cg-make-fixnum stack)  ; [ result'; return ]
+                    (cg-swap 1)             ; [ return; result' ]
+                    (cg-goto stack)         ; [ result' ]
+                    ))
+(primitive %-suicide (%-unop   (asm 'SUICIDE)))
+(primitive %-address (%-nullop (asm 'ADDRESS)))
+(primitive %-balance (%-unop   (asm 'BALANCE)))
+(primitive %-log1
+           (asm
+            (cg-unroll-args2 stack) ; [ bs; t; return  ]
+            (op 'DUP1)              ; [ bs; bs; t; return ]
+            (cg-vector-len stack)   ; [ len; bs; t; return ]
+            (cg-swap 1)             ; [ bs; len; t; return ]
+            (cg-vector-data stack)  ; [ data; len; t; return ]
+            (op 'LOG1)              ; [ return ]
+            (cg-goto stack)))       ; [ ]
+
+(primitive %-origin       (%-nullop (op 'ORIGIN)))
+(primitive %-caller       (%-nullop (op 'CALLER)))
+(primitive %-callvalue    (%-nullop (op 'CALLVALUE)))
+(primitive %-calldataload (%-unop   (op 'CALLDATALOAD)))
+(primitive %-timestamp    (%-nullop (op 'TIMESTAMP)))
+
+(primitive %-tag            (%-unop  (cg-tag stack)))
+(primitive %-mem-alloc      (%-unop  (cg-allocate stack)))
+(primitive %-mem-ptr-read   (%-binop (cg-read-address-offset stack stack)))
+(primitive %-mem-ptr-write! (%-triop (cg-write-address-offset stack stack stack)))
+(primitive %-store-ptr-read
+           (%-binop
+            (append
+             (cg-add stack stack)
+             (op 'SLOAD))))
+(primitive %-store-ptr-write!
+           (%-triop
+            (append
+             (cg-add stack stack)
+             (op 'SSTORE))))
+(primitive %-box (%-unop (cg-make-fixnum stack)))
+(primitive %-unbox (%-unop (cg-unbox-integer stack)))
+
+(define (%-throw) (nullop (op 'REVERT)))
+
+(define %-TAG-FIXNUM 0)
+(define %-TAG-SYMBOL 1)
+(define %-TAG-COMPILED-PROCEDURE 2)
+(define %-TAG-PRIMITIVE-PROCEDURE 3)
+(define %-TAG-PAIR   4)
+(define %-TAG-VECTOR 5)
+(define %-TAG-NIL    6)
+
+(define %-MEM-ENV            #x20)
+(define %-MEM-PROC           #x40)
+(define %-MEM-CONTINUE       #x60)
+(define %-MEM-ARGL           #x80)
+(define %-MEM-VAL            #xa0)
+(define %-MEM-NIL            #xc0)
+(define %-MEM-ALLOCATOR      #xe0)
+(define %-MEM-DYNAMIC-START #x100)

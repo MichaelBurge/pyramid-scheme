@@ -9,7 +9,7 @@
 
 (provide (all-defined-out))
 
-(define MEMORY-SIZE 20000)
+(define MEMORY-SIZE 30000)
 
 ; Appendix G in Ethereum Yellow Paper: http://gavwood.com/paper.pdf
 (define G_zero          0)
@@ -233,7 +233,7 @@
 
 (: read-memory-word (-> evm Fixnum Fixnum Integer))
 (define (read-memory-word vm addr len)
-  (check-addr addr)
+  (check-addr vm addr)
   (bytes->integer (read-memory vm addr len)
                   #f))
 
@@ -247,7 +247,7 @@
 
 (: write-memory-word! (-> evm Fixnum Fixnum Integer Void))
 (define (write-memory-word! vm addr len val)
-  (check-addr addr)
+  (check-addr vm addr)
   (write-memory! vm addr (integer->bytes val len #f)))
 
 (: write-memory! (-> evm Fixnum Bytes Void))
@@ -255,11 +255,11 @@
   (touch-memory! vm (+ addr (bytes-length val)))
   (bytes-copy! (evm-memory vm) addr val))
 
-(: check-addr (-> Fixnum Fixnum))
-(define (check-addr addr)
+(: check-addr (-> evm Fixnum Fixnum))
+(define (check-addr vm addr)
   (if (equal? (modulo addr 32) 0)
       addr
-      (error "resolve-addr: Unaligned memory access")))
+      (error "resolve-addr: Unaligned memory access" addr (evm-pc vm))))
 
 (: push-stack! (-> evm Integer Void))
 (define (push-stack! vm val)
