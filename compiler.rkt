@@ -3,6 +3,7 @@
 (require "types.rkt")
 (require "ast.rkt")
 (require "interpreter.rkt")
+(require "globals.rkt")
 (require racket/set)
 (provide (all-defined-out))
 
@@ -13,8 +14,6 @@
 
 ; Global variables
 (define label-counter 0)
-(define *available-macros* (make-parameter (make-empty-namespace)))
-(define *macro-namespace* (make-parameter (make-base-namespace)))
 
 (: make-pyramid-machine (-> ControllerText Machine))
 (define (make-pyramid-machine text)
@@ -237,17 +236,11 @@
                 proc-code
                 (preserving '(proc continue)
                             (construct-arglist operand-codes)
-                            (compile-procedure-call target linkage)))))
+                            (compile-procedure-call target linkage)))))  
 
 (: compile-macro-application (-> PyrApplication Target Linkage inst-seq))
 (define (compile-macro-application exp target linkage)
-  (let* ((name (operator exp))
-         (macro (namespace-variable-value name #t #f (*available-macros*)))
-         (result (parameterize ([ current-namespace (*macro-namespace*) ])
-                   (apply macro (operands exp))))
-         )
-    (compile-pyramid result target linkage)))
-    
+    (compile-pyramid (expand-macro exp) target linkage))
 
 (: construct-arglist (-> (Listof inst-seq) inst-seq))
 (define (construct-arglist operand-codes)
@@ -346,7 +339,6 @@
 (: all-regs RegisterNames)
 (define all-regs '(env proc val argl continue))
 
-
 (: registers-needed (-> iseq-or-label RegisterNames))
 (define (registers-needed s)
   (if (label? s) '() (inst-seq-needs s)))
@@ -440,16 +432,3 @@
 
 (define (display-macros)
   (display `(,"Mapped symbols:" ,(namespace-mapped-symbols (*available-macros*)))))
-
-(: macro-application? (-> Pyramid Boolean))
-(define (macro-application? exp)
-  (if (application? exp)
-      (let ((name (operator exp)))
-        (if (symbol? name)
-            (namespace-contains? (*available-macros*) name)
-            #f))
-      #f))
-
-(define (namespace-contains? namespace name)
-  (namespace-variable-value name #f (λ () #f) namespace)
-  )

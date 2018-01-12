@@ -1,6 +1,7 @@
 #lang typed/racket/no-check
 
 (require "types.rkt")
+(require "globals.rkt")
 
 (provide (all-defined-out))
 (define (self-evaluating? exp)
@@ -198,6 +199,28 @@
 (define macro-variable definition-variable)
 (define (macro-args exp) (cdadr exp))
 (define (macro-body exp) (caddr exp))
+
+(: expand-macro (-> PyrApplication Pyramid))
+(define (expand-macro exp)
+  (let* ((name (operator exp))
+         (macro (namespace-variable-value name #t #f (*available-macros*)))
+         (result (parameterize ([ current-namespace (*macro-namespace*) ])
+                   (apply macro (operands exp))))
+         )
+    result))
+
+(: macro-application? (-> Pyramid Boolean))
+(define (macro-application? exp)
+  (if (application? exp)
+      (let ((name (operator exp)))
+        (if (symbol? name)
+            (namespace-contains? (*available-macros*) name)
+            #f))
+      #f))
+
+(define (namespace-contains? namespace name)
+  (namespace-variable-value name #f (λ () #f) namespace)
+  )
 
 (: asm? (-> Pyramid Boolean))
 (define (asm? exp) (tagged-list? exp 'asm))

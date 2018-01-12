@@ -13,6 +13,7 @@
 (require "macro.rkt")
 (require "globals.rkt")
 (require "io.rkt")
+(require "minimize.rkt")
 
 (provide (all-defined-out))
 
@@ -32,6 +33,13 @@
 ;;   (%-install-macro-library)
 ;;   (reset-serializer-globals!)
 ;;   )
+
+(: minimize-pred (-> Pyramid (-> Pyramid Boolean) Pyramid))
+(define (minimize-pred exp pred?)
+  (let ([ next (memf pred? (reductions exp)) ])
+    (if (equal? next #f)
+        exp
+        next)))
 
 (define (verbose-section title body)
   (when (*verbose?*)

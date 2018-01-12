@@ -58,7 +58,7 @@
 
 (define (main)
   (let ([ prog (read-file file-to-compile) ])
-    (cond ((*test?*)    (run-test file-to-compile prog))
+    (cond ((*test?*)    (assert-test file-to-compile prog))
           ((*verbose?*) (verbose-output prog))
           (else         (standard-output prog)))
     (when (*verbose?*)

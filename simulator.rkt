@@ -9,6 +9,9 @@
 
 (provide (all-defined-out))
 
+(define-struct (exn:evm exn:fail) ())
+(define-struct (exn:evm:misaligned-read exn:evm) ())
+
 (define MEMORY-SIZE 30000)
 
 ; Appendix G in Ethereum Yellow Paper: http://gavwood.com/paper.pdf
@@ -362,6 +365,7 @@
 
 (define (infer-type x)
   (cond ((fixnum? x) "uint256")
+        ((null? x) "uint256[]")
         ((list? x) (string-append (infer-type (car x))
                                   "[]"))
         (else (error "infer-type: Unknown type" x))))

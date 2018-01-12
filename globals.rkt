@@ -18,4 +18,5 @@
 (define *symbol-table* (make-parameter (make-hash '())))
 (define *relocation-table* (make-parameter (set)))
 (define *reverse-symbol-table* (make-parameter null))
-
+(define *available-macros* (make-parameter (make-empty-namespace)))
+(define *macro-namespace* (make-parameter (make-base-namespace)))
