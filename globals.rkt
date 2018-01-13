@@ -6,6 +6,7 @@
 
 (define *verbose?* (make-parameter #f))
 (define *test?* (make-parameter #f))
+(define *minimize?* (make-parameter #f))
 ; (define optimize-level (make-parameter 0))
 
 (define *include-directory* (make-parameter "."))

@@ -1,18 +1,23 @@
-#lang lazy
+#lang errortrace typed/racket/no-check
 
 (require "types.rkt")
 (require "ast.rkt")
+(require "utils.rkt")
+
 (require racket/match)
 (require racket/list)
 
 (provide (all-defined-out))
 
 (define (minimize pred? e)
+  ;(debug-print e)
   (match (memf pred? (reductions e))
     [#f e]
-    [e2 (minimize pred? e2)]))
+    [e2 (minimize pred? (car e2)) ]))
 
+; (: reductions (-> Pyramid (Listof Pyramid)))
 (define (reductions e)
+  (debug-print `(,e ,(exp-type e)))
   (cond ((self-evaluating?   e) '())
         ((quoted?            e) '())
         ((asm?               e) (reductions-asm e))
@@ -59,7 +64,7 @@
 
 (define (reductions-begin e)
   (let ([ xss (reductions-list (begin-actions e)) ]
-        [ mk-reduction (λ (xs) (cons 'begin xs)) ])
+        [ mk-reduction (λ (xs) (assert-pyramid (cons 'begin xs))) ])
     (map mk-reduction xss)))
 
 (define (reductions-cond e)
@@ -73,9 +78,10 @@
 (define (reductions-list xs)
   (let ([ mk-reduction
           (λ (i)
-            (let-values ([(hd tl) (split-at xs i)])
-              (cons hd (cdr tl)))) ])
-          
+            (let ([ hd (take xs i) ]
+                  [ tl (drop xs i) ]
+                  )
+              (append hd (cdr tl)))) ])
     (for/list ([i (in-range (length xs)) ])
       (mk-reduction i))))
-      
+

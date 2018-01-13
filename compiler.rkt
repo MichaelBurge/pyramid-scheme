@@ -45,25 +45,6 @@
         (else
          (error "Unknown expression type -- COMPILE" exp))))
 
-(: display-exp-type (-> Pyramid Void))
-(define (display-exp-type exp)
-  (cond ((self-evaluating? exp)   (display 'self-evaluating))
-        ((quoted? exp)            (display 'quoted))
-        ((macro? exp)             (display 'macro))
-        ((variable? exp)          (display 'variable))
-        ((assignment? exp)        (display 'assignment))
-        ((definition? exp)        (display 'definition))
-        ((if? exp)                (display 'if))
-        ((lambda? exp)            (display 'lambda))
-        ((begin? exp)             (display 'begin))
-        ((cond? exp)              (display 'cond))
-        ((macro-application? exp) (display 'macro-application))
-        ((application? exp)       (display 'application))
-        (else
-         (error "Unknown expression type -- display-exp-type" exp)))
-  (newline))
-
-
 (: empty-instruction-sequence (-> inst-seq))
 (define (empty-instruction-sequence)
   (inst-seq '() '() '()))

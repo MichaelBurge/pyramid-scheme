@@ -25,6 +25,8 @@
                        (*use-debug-symbols?* #t)]
    [("-t")             "Run file as a test"
                        (*test?* #t)]
+   [("-m")             "Minify the source"
+                       (*minimize?* #t)]
    [("-l" "--link")
     val
     "Generate deployable Ethereum bytecode"

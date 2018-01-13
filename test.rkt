@@ -4,6 +4,7 @@
 (require racket/cmdline)
 (require json)
 (require binaryio/integer)
+(require lazy/force)
 
 (require "types.rkt")
 (require "ast.rkt")
@@ -24,14 +25,17 @@
 
 (define MAX-ITERATIONS 1000000)
 
-(define (assert-equal name expected actual-bs)
+(define (assert-equal name expected actual)
+  (if (equal? expected actual)
+      (begin
+        (display `("Test Passed: " ,name ,expected ,actual))
+        (newline))
+      (error "Test failed: " name expected actual))
+  )
+
+(define (assert-equal-vm name expected actual-bs)
   (let ([ actual (parse-type (infer-type expected) actual-bs) ])
-    (if (equal? expected actual)
-        (begin
-          (display `("Test Passed: " ,name ,expected ,actual))
-          (newline))
-        (error "Test failed: " name expected actual))
-    ))
+    (assert-equal name expected actual)))
 
 (define (on-simulate-nop vm i reads) (void))
 
@@ -76,6 +80,7 @@
 (: run-test (-> String Pyramid Any))
 (define (run-test name prog)
   (with-handlers ([exn:evm? (λ (x) x)])
+    (display `(Testing ,prog)) (newline)
     (*include-directory* "tests")
     (let* ([ params (full-compile prog) ]
            [ initializer-bs (third params) ]
@@ -84,17 +89,22 @@
            )
       actual-result)))
 
-(: minimize-test (-> Pyramid Pyramid))
-(define (minimize-test prog)
-  (let* ([ baseline (run-test prog) ]
-         [ pred? (λ (candidate) (equal? baseline (run-test candidate)))])
-    (minimize prog pred?)))
+(: minimize-test (-> String Pyramid Pyramid))
+(define (minimize-test name prog)
+  (let* ([ baseline (run-test name prog) ]
+         [ pred? (λ (candidate) (equal? baseline (run-test name candidate)))]
+         [ result (minimize pred? prog) ]
+         )
+    (display `("Minimal: " ,result))))
+               
 
 ; A test is a regular Pyramid program that uses special test macros to communicate with the compiler.
 (: assert-test (-> String Pyramid Void))
 (define (assert-test name prog)
-  (let ([ actual-result (run-test name prog) ])
-    (assert-equal name (*test-expected-result*) actual-result)))
+  (if (*minimize?*)
+      (minimize-test name prog)
+      (let ([ actual-result (run-test name prog) ])
+        (assert-equal-vm name (*test-expected-result*) actual-result))))
 
 ; TODO: Turn these into unit tests.
 ; TEST 1: (cg-intros (list (const 1234) (const 4321)))

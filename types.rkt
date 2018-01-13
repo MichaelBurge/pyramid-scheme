@@ -154,3 +154,7 @@
              )
   #:mutable
   )
+
+; Exception types
+(struct exn:evm exn:fail ([ vm : evm ]))
+(struct exn:evm:misaligned-addr exn:evm ([ addr : EthWord ]))

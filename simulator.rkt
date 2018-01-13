@@ -9,9 +9,6 @@
 
 (provide (all-defined-out))
 
-(define-struct (exn:evm exn:fail) ())
-(define-struct (exn:evm:misaligned-read exn:evm) ())
-
 (define MEMORY-SIZE 30000)
 
 ; Appendix G in Ethereum Yellow Paper: http://gavwood.com/paper.pdf
@@ -262,7 +259,10 @@
 (define (check-addr vm addr)
   (if (equal? (modulo addr 32) 0)
       addr
-      (error "resolve-addr: Unaligned memory access" addr (evm-pc vm))))
+      (raise (exn:evm:misaligned-addr "check-addr: Misaligned address"
+                                      (current-continuation-marks)
+                                      vm
+                                      addr))))
 
 (: push-stack! (-> evm Integer Void))
 (define (push-stack! vm val)

@@ -10,6 +10,46 @@
         (else false)))
 
 
+(: pyramid? (-> Any Boolean))
+(define (pyramid? x)
+  (or (quoted? x)
+      (variable? x)
+      (assignment? x)
+      (definition? x)
+      (lambda? x)
+      (if? x)
+      (begin? x)
+      (application? x)
+      (cond? x)
+      (macro? x)
+      (macro-application? x)
+      (asm? x)
+      ))
+
+
+(: exp-type (-> Pyramid Void))
+(define (exp-type exp)
+  (cond ((self-evaluating? exp)   'self-evaluating)
+        ((quoted? exp)            'quoted)
+        ((macro? exp)             'macro)
+        ((variable? exp)          'variable)
+        ((assignment? exp)        'assignment)
+        ((definition? exp)        'definition)
+        ((if? exp)                'if)
+        ((lambda? exp)            'lambda)
+        ((begin? exp)             'begin)
+        ((cond? exp)              'cond)
+        ((macro-application? exp) 'macro-application)
+        ((application? exp)       'application)
+        (else
+         (error "Unknown expression type -- display-exp-type" exp))))
+
+(: assert-pyramid (-> Any Any))
+(define (assert-pyramid x)
+  (if (pyramid? x)
+      x
+      (error "assert-pyramid: Not a valid value" x)))
+
 (: quoted? (-> Pyramid Boolean))
 (define (quoted? exp)
   (tagged-list? exp 'quote))
