@@ -228,7 +228,10 @@
 
 (: simulate-revert! (-> evm Void))
 (define (simulate-revert! vm)
-  ((evm-on-error vm) vm)
+  (raise (exn:evm:throw "simulate-revert!"
+                        (current-continuation-marks)
+                        vm
+                        (bytes)))
   (halt! vm))
 
 (: read-memory-word (-> evm Fixnum Fixnum Integer))

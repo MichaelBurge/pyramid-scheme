@@ -34,8 +34,10 @@
   )
 
 (define (assert-equal-vm name expected actual-bs)
-  (let ([ actual (parse-type (infer-type expected) actual-bs) ])
-    (assert-equal name expected actual)))
+  (if (exn:evm? actual-bs)
+      (error "assert-equal-vm: Caught error" actual-bs)
+      (let ([ actual (parse-type (infer-type expected) actual-bs) ])
+        (assert-equal name expected actual))))
 
 (define (on-simulate-nop vm i reads) (void))
 
@@ -92,7 +94,11 @@
 (: minimize-test (-> String Pyramid Pyramid))
 (define (minimize-test name prog)
   (let* ([ baseline (run-test name prog) ]
-         [ pred? (λ (candidate) (equal? baseline (run-test name candidate)))]
+         [ pred? (λ (candidate)
+                   (let ([ result (run-test name candidate) ])
+                     (begin
+                       (debug-print `(minimize-test ,candidate ,result))
+                       (equal? baseline result))))]
          [ result (minimize pred? prog) ]
          )
     (display `("Minimal: " ,result))))
