@@ -1,8 +1,8 @@
-; (%-test-set-expected-result 3)
+(begin (begin (define / '%-/) (define % '%-mod)) (* 2 (- 3 (/ 4 (% 5 3)))))
 
-(define equal? (lambda () true))
+;; (%-test-set-expected-result 3)
 
-; (include psl "arith.pmd")
+;; (include psl "arith.pmd")
 
 ;; (+ 1                    ; 3
 ;;    (* 2                 ; 2

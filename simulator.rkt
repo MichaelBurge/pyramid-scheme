@@ -9,7 +9,7 @@
 
 (provide (all-defined-out))
 
-(define MEMORY-SIZE 30000)
+(define MEMORY-SIZE 60000)
 
 ; Appendix G in Ethereum Yellow Paper: http://gavwood.com/paper.pdf
 (define G_zero          0)
@@ -84,13 +84,18 @@
         (simulate! vm (- max-iterations 1)))))
 
 (: next-instruction (-> evm EthInstruction))
-(define (next-instruction vm) (cdr (disassemble-one (evm-bytecode vm) (evm-pc vm))))
+(define (next-instruction vm)
+  (cdr (disassemble-one (evm-bytecode vm) (evm-pc vm))))
   
 (: simulate-one! (-> evm EthInstruction evm))
 (define (simulate-one! vm i)
   (let* ([ used-gas (instruction-gas vm i) ]
          [ op       (eth-to-opcode i) ]
-         [ reads (take (evm-stack vm) (opcode-num-reads op)) ]
+         [ stk      (evm-stack vm) ]
+         [ num-reads (opcode-num-reads op) ]
+         [ reads (if (>= (length stk) num-reads)
+                     (take stk num-reads)
+                     (raise (exn:evm:stack-underflow "simulate-one!" (current-continuation-marks) vm num-reads stk)))]
          )
     ((evm-on-simulate vm) vm i reads)
     (cond ((label? i)    (simulate-nop!  vm))
@@ -115,7 +120,8 @@
         ((eq? sym 'ADD)    (simulate-binop! vm (λ (a b) (+ a b))))
         ((eq? sym 'SUB)    (simulate-binop! vm (λ (a b) (- a b))))
         ((eq? sym 'MUL)    (simulate-binop! vm (λ (a b) (* a b))))
-        ((eq? sym 'DIV)    (simulate-binop! vm (λ (a b) (/ a b))))
+        ((eq? sym 'DIV)    (simulate-binop! vm (λ (a b) (if (equal? 0 b) 0 (/ a b)))))
+        ((eq? sym 'MOD)    (simulate-binop! vm (λ (a b) (if (equal? 0 b) 0 (modulo a b)))))
         ((eq? sym 'EQ)     (simulate-binop! vm (λ (a b) (if (= a b) 1 0))))
         ((eq? sym 'LT)     (simulate-binop! vm (λ (a b) (if (< a b) 1 0))))
         ((eq? sym 'GT)     (simulate-binop! vm (λ (a b) (if (> a b) 1 0))))

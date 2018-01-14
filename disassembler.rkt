@@ -7,9 +7,14 @@
 (require binaryio/integer)
 (provide (all-defined-out))
 
+(define (byte-or-zero bs i)
+  (if (>= i (bytes-length bs))
+      0
+      (bytes-ref bs i)))
+
 (: disassemble-one (-> bytes Fixnum (Pairof opcode EthInstruction)))
 (define (disassemble-one bs i)
-  (let* ([ byte (bytes-ref bs i) ]
+  (let* ([ byte (byte-or-zero bs i) ]
          [ op (dict-ref opcodes-by-byte byte (eth-unknown byte)) ]
          [ ethi (cond ((eth-unknown? op) op)
                       ((push-op? op) (disassemble-push bs i))

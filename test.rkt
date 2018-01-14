@@ -78,7 +78,7 @@
     (*reverse-symbol-table* reverse-symbol-table)
     (simulate! vm MAX-ITERATIONS)
     (unless (evm-halted? vm)
-      (error "Did not halt after iterations:" MAX-ITERATIONS))
+      (raise (exn:evm:did-not-halt "run-until-return" (current-continuation-marks) vm MAX-ITERATIONS)))
     result))
 
 (: run-test (-> String Pyramid Any))
