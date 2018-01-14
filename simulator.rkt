@@ -402,7 +402,7 @@
 (define (vm-procedure vm x)
   (string-append
    "label-"
-   (symbol->string (label-name (dict-ref (*reverse-symbol-table*) (read-memory-word vm (+ x #x20) 32))))))
+   (symbol->string (label-name (dict-ref (*reverse-symbol-table*) (read-memory-word vm (+ x #x20) 32) (label 'ERROR))))))
 (define vm-compiled-procedure vm-procedure)
 (define vm-primitive-procedure vm-procedure)
 (define (vm-pair vm x) (cons (read-memory-word vm (+ x #x20) 32)

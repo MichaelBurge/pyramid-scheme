@@ -6,6 +6,7 @@
 (require "interpreter.rkt")
 (require "utils.rkt")
 (require "ast.rkt")
+(require "globals.rkt")
 (require racket/list)
 
 (provide (all-defined-out))
@@ -103,6 +104,10 @@ These optimizations are currently unimplemented:
 ; Top-level code generator
 (: codegen (Generator Instructions))
 (define (codegen is)
+  (*symbol-table* (make-hash '()))
+  (*relocation-table* (set))
+  (*reverse-symbol-table* null)
+
   (append
    (cg-initialize-program)
    (cg-define-primops)
@@ -1242,6 +1247,7 @@ These optimizations are currently unimplemented:
   (let ([ label-uint256 (make-label 'cg-return-ty-uint256-)]
         [ label-list    (make-label 'cg-return-ty-list-)]
         [ label-vector  (make-label 'cg-return-ty-vector-)]
+        [ label-compiled-procedure (make-label 'cg-return-ty-compiled-procedure)]
         )
     (append
      (debug-label 'cg-return)
@@ -1260,9 +1266,16 @@ These optimizations are currently unimplemented:
      (asm 'DUP1)                       ; [ tag; tag; exp ]
      (cg-eq? (const TAG-VECTOR) stack) ; [ pred; tag; exp ]
      (cg-branch label-vector stack)    ; [ tag; exp ]
+
+     (asm 'DUP1) ; [ tag; tag; exp ]
+     (cg-eq? (const TAG-COMPILED-PROCEDURE) stack) ; [ pred; tag; exp ]
+     (cg-branch label-compiled-procedure stack)    ; [ tag; exp ]
      
-     (asm 'REVERT)
-     
+     (cg-throw 'cg-return-invalid-type)
+
+     `(,label-compiled-procedure)   ; [ tag; exp ]
+     (cg-pop 1)                     ; [ exp ]
+     (cg-return-compiled-procedure stack)
      `(,label-vector)           ; [ tag; exp ]
      (cg-pop 1)                 ; [ exp ]
      (cg-return-vector stack)
@@ -1301,6 +1314,7 @@ These optimizations are currently unimplemented:
    (cg-return-vector stack) ; [ ]
    ))
   
+(define cg-return-compiled-procedure cg-return-uint256)
 
 ; Leaves [ x1; x2; ... ; xn; remaining list ] on the stack.
 (: cg-unroll-list (Generator2 Fixnum MExpr))

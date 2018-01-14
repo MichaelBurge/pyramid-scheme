@@ -75,6 +75,7 @@
                        on-simulate
                        (λ (vm bs) (set! result bs))
                        on-error-throw) ])
+    (*reverse-symbol-table* reverse-symbol-table)
     (simulate! vm MAX-ITERATIONS)
     (unless (evm-halted? vm)
       (error "Did not halt after iterations:" MAX-ITERATIONS))

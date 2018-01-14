@@ -194,9 +194,6 @@ numerical value to insert. It generates a relocation, but needs to leave a speci
 ; Consider using wrap-loader to prepend an initializer program.
 (: serialize (-> EthInstructions bytes))
 (define (serialize is)
-  (*symbol-table* (make-hash '()))
-  (*relocation-table* (set))
-  (*reverse-symbol-table* null)
   (parameterize ([ *byte-offset* 0 ])
     (apply bytes-append (map serialize-one is))
   ))
