@@ -17,7 +17,6 @@
 
 ; (: reductions (-> Pyramid (Listof Pyramid)))
 (define (reductions e)
-  (debug-print `(,e ,(exp-type e)))
   (cond ((self-evaluating?   e) '())
         ((quoted?            e) '())
         ((asm?               e) (reductions-asm e))
@@ -62,10 +61,23 @@
 
 (define (reductions-lambda e) (list 0))
 
+(define (reductions-elements lst)
+  (define (helper pre post)
+    (if (null? post)
+        '()
+        (let ([ x (car post) ]
+              [ xs (cdr post) ])
+          (append (for/list ([i (reductions x) ])
+                    (append pre (list i) xs))
+                  (helper (append pre (list x)) xs)))))
+  (helper '() lst))
+
 (define (reductions-begin e)
-  (let ([ xss (reductions-list (begin-actions e)) ]
-        [ mk-reduction (λ (xs) (assert-pyramid (cons 'begin xs))) ])
-    (map mk-reduction xss)))
+  (let ([ removes (reductions-list (begin-actions e)) ]
+        [ reds (reductions-elements (begin-actions e)) ]
+        [ mk-reduction (λ (xs) (assert-pyramid (cons 'begin xs))) ]
+        )
+    (map mk-reduction (append removes reds))))
 
 (define (reductions-cond e)
   (let ([ clausess (reductions-list (cond-clauses e)) ]

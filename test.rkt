@@ -82,7 +82,6 @@
 (: run-test (-> String Pyramid Any))
 (define (run-test name prog)
   (with-handlers ([exn:evm? (λ (x) x)])
-    (display `(Testing ,prog)) (newline)
     (*include-directory* "tests")
     (let* ([ params (full-compile prog) ]
            [ initializer-bs (third params) ]
@@ -97,7 +96,6 @@
          [ pred? (λ (candidate)
                    (let ([ result (run-test name candidate) ])
                      (begin
-                       (debug-print `(minimize-test ,candidate ,result))
                        (equal? baseline result))))]
          [ result (minimize pred? prog) ]
          )

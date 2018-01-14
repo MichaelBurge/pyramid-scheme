@@ -42,7 +42,7 @@
         ((macro-application? exp) 'macro-application)
         ((application? exp)       'application)
         (else
-         (error "Unknown expression type -- display-exp-type" exp))))
+         (error "Unknown expression type -- exp-type" exp))))
 
 (: assert-pyramid (-> Any Any))
 (define (assert-pyramid x)
