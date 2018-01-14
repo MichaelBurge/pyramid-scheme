@@ -59,7 +59,10 @@
           (cons on-false
                 (map mk-pred-reduction preds)))))
 
-(define (reductions-lambda e) (list 0))
+(define (reductions-lambda e)
+  (append (list 0)
+          (map (λ (ps) (make-lambda ps (lambda-body e))) (reductions-list (lambda-parameters e)))
+          (map (λ (body) (make-lambda (lambda-parameters e) body)) (reductions-sequence (lambda-body e)))))
 
 (define (reductions-elements lst) (point-expansions lst reductions))
 
@@ -77,16 +80,20 @@
                   (helper (append pre (list x)) xs)))))
   (helper '() lst))
 
-(define (reductions-begin e)
-  (let ([ removes (reductions-list (begin-actions e)) ]
-        [ reds (reductions-elements (begin-actions e)) ]
-        [ expansions (point-expansions (begin-actions e)
+(define (reductions-sequence xs)
+  (let ([ removes (reductions-list xs) ]
+        [ reds (reductions-elements xs) ]
+        [ expansions (point-expansions xs
                                        (λ (x) (if (begin? x)
                                                   (begin-actions x)
                                                   #f))) ]
-        [ mk-reduction (λ (xs) (assert-pyramid (cons 'begin xs))) ]
         )
-    (map mk-reduction (append removes reds expansions))))
+    (append removes reds expansions)))
+  
+
+(define (reductions-begin e)
+  (let ([ mk-reduction (λ (xs) (assert-pyramid (cons 'begin xs))) ])
+    (map mk-reduction (reductions-sequence (begin-actions e)))))
 
 (define (reductions-cond e)
   (let ([ clausess (reductions-list (cond-clauses e)) ]
