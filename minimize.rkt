@@ -10,7 +10,7 @@
 (provide (all-defined-out))
 
 (define (minimize pred? e)
-  ;(debug-print e)
+  ; (debug-print e)
   (match (memf pred? (reductions e))
     [#f e]
     [e2 (minimize pred? (car e2)) ]))
@@ -61,23 +61,32 @@
 
 (define (reductions-lambda e) (list 0))
 
-(define (reductions-elements lst)
+(define (reductions-elements lst) (point-expansions lst reductions))
+
+(define (point-expansions lst f)
   (define (helper pre post)
     (if (null? post)
         '()
-        (let ([ x (car post) ]
-              [ xs (cdr post) ])
-          (append (for/list ([i (reductions x) ])
-                    (append pre (list i) xs))
+        (let* ([ x (car post) ]
+               [ xs (cdr post) ]
+               [ seq (f x) ])
+          (append (if seq
+                      (for/list ([i seq])
+                        (append pre (list i) xs))
+                      '())
                   (helper (append pre (list x)) xs)))))
   (helper '() lst))
 
 (define (reductions-begin e)
   (let ([ removes (reductions-list (begin-actions e)) ]
         [ reds (reductions-elements (begin-actions e)) ]
+        [ expansions (point-expansions (begin-actions e)
+                                       (λ (x) (if (begin? x)
+                                                  (begin-actions x)
+                                                  #f))) ]
         [ mk-reduction (λ (xs) (assert-pyramid (cons 'begin xs))) ]
         )
-    (map mk-reduction (append removes reds))))
+    (map mk-reduction (append removes reds expansions))))
 
 (define (reductions-cond e)
   (let ([ clausess (reductions-list (cond-clauses e)) ]
@@ -85,7 +94,9 @@
     (map mk-reduction clausess)))
 
 (define (reductions-macro-application e) (list (expand-macro e)))
-(define (reductions-application e) (list 0))
+(define (reductions-application e)
+  (append (list 0)
+          (operands e)))
 
 (define (reductions-list xs)
   (let ([ mk-reduction

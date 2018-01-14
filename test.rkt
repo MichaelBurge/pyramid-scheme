@@ -5,6 +5,7 @@
 (require json)
 (require binaryio/integer)
 (require lazy/force)
+(require racket/pretty)
 
 (require "types.rkt")
 (require "ast.rkt")
@@ -90,16 +91,21 @@
            )
       actual-result)))
 
+(define (evm-result-equal? a b)
+  (cond [(and (exn? a) (exn? b)) (equal? (exn-message a) (exn-message b)) ]
+        [else (equal? a b)]))
+
 (: minimize-test (-> String Pyramid Pyramid))
 (define (minimize-test name prog)
   (let* ([ baseline (run-test name prog) ]
          [ pred? (λ (candidate)
                    (let ([ result (run-test name candidate) ])
                      (begin
-                       (equal? baseline result))))]
+                       ; (debug-print `(,candidate ,baseline ,result))
+                       (evm-result-equal? baseline result))))]
          [ result (minimize pred? prog) ]
          )
-    (display `("Minimal: " ,result))))
+    (pretty-print result)))
                
 
 ; A test is a regular Pyramid program that uses special test macros to communicate with the compiler.
