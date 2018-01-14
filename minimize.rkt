@@ -10,7 +10,7 @@
 (provide (all-defined-out))
 
 (define (minimize pred? e)
-  ; (debug-print e)
+  (debug-print e)
   (match (memf pred? (reductions e))
     [#f e]
     [e2 (minimize pred? (car e2)) ]))
@@ -35,11 +35,15 @@
 
 (define (reductions-asm e)
   (let ([ is (asm-insts e) ]
-        [ mk-reduction (λ (is2) (cons 'asm is2))]
+        [ mk-reduction (λ (is2)
+                         (if (null? is2)
+                             '(begin)
+                             (cons 'asm is2)))]
         )
     (map mk-reduction (reductions-list is))
     ))
-(define (reductions-variable e) (list `(quote ,e)))
+(define (reductions-variable e)
+  (list `(quote ,e)))
 (define (reductions-assignment e)
   (let ([ vs (reductions (assignment-value e)) ]
         [ mk-reduction (λ (v) (list 'set! (assignment-variable e) v)) ])
@@ -60,9 +64,11 @@
                 (map mk-pred-reduction preds)))))
 
 (define (reductions-lambda e)
+  (debug-print e)
   (append (list 0)
           (map (λ (ps) (make-lambda ps (lambda-body e))) (reductions-list (lambda-parameters e)))
-          (map (λ (body) (make-lambda (lambda-parameters e) body)) (reductions-sequence (lambda-body e)))))
+          (map (λ (body) (make-lambda (lambda-parameters e) body)) (reductions-sequence-nonempty (lambda-body e)))
+          ))
 
 (define (reductions-elements lst) (point-expansions lst reductions))
 
@@ -80,6 +86,9 @@
                   (helper (append pre (list x)) xs)))))
   (helper '() lst))
 
+(define (reductions-sequence-nonempty xs)
+  (filter (λ (ys) (not (null? ys))) (reductions-sequence xs)))
+
 (define (reductions-sequence xs)
   (let ([ removes (reductions-list xs) ]
         [ reds (reductions-elements xs) ]
@@ -92,7 +101,10 @@
   
 
 (define (reductions-begin e)
-  (let ([ mk-reduction (λ (xs) (assert-pyramid (cons 'begin xs))) ])
+  (let ([ mk-reduction (λ (xs)
+                         (cond ((null? xs) '(begin))
+                               ((null? (cdr xs)) (car xs))
+                               (else (cons 'begin xs)))) ])
     (map mk-reduction (reductions-sequence (begin-actions e)))))
 
 (define (reductions-cond e)

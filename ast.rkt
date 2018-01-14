@@ -158,9 +158,14 @@
 (: rest-exps (-> Sequence Sequence))
 (define (rest-exps seq) (cdr seq))
 
+(define syntaxes '(quote set! define if lambda begin else cond defmacro push op byte label asm))
+
 ; '(f x y)
 (: application? (-> Pyramid Boolean))
-(define (application? exp) (pair? exp))
+(define (application? exp)
+  (and (pair? exp)
+       true))
+       ;(not (member (car exp) syntaxes))))
 (: operator (-> PyrApplication Pyramid))
 (define (operator exp) (car exp))
 (: operands (-> PyrApplication Sequence))

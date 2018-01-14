@@ -4,6 +4,7 @@
 (require "test.rkt")
 (require "macro.rkt")
 (require "globals.rkt")
+(require "ast.rkt")
 
 (define (pred? x) #t)
 
@@ -22,13 +23,25 @@
               (reductions '(begin 1 (begin 2 (begin 3)))))
 (assert-equal "Reductions define" '((define x 0) (define x 5)) (reductions '(define x (f 5))))
 (assert-equal "Reductions define 2" '((begin) (begin (define x 0)) (begin (define x 5))) (reductions '(begin (define x (f 5)))))
+;(assert-equal "Reductions lambda" '(0) '(lambda () (begin)))
 (assert-equal "Minimize begin 0" '(begin) (minimize pred? '(begin)))
 (assert-equal "Minimize begin 1" '(begin) (minimize pred? '(begin 5)))
 (assert-equal "Minimize begin nested 0" '(begin) (minimize pred? '(begin (begin (begin)))))
 (assert-equal "Minimize begin nested 1" '(begin) (minimize pred? '(begin 1 (begin 2 (begin)))))
 
-; (reductions '(define (f a b) (+ a b)))
 
+(reductions '(asm (op 'derp)))
+; (reductions '(define (f a b) (+ a b)))
+; (reductions '(begin (begin (define equal? (lambda () (begin))))))
+; (reductions '(lambda () (begin)))
+;; (reductions
+;;  '(lambda ()
+;;     (or (ptr-= a b)
+;;         (and (eq? (%-tag a) (%-tag b))
+;;              (cond
+;;                ((fixnum? x) (equal-fixnum? x))
+;;                ((symbol? x) (equal-fixnum? x))
+;;                (else (%-throw)))))))
 ;; (reductions
 ;;  '(or (ptr-= a b)
 ;;       (ptr-= a b)))
