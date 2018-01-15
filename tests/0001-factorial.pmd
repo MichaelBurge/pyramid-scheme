@@ -1,4 +1,5 @@
 (%-test-set-expected-result 120)
+(include psl "arith.pmd")
 
 (define (factorial n)
   (if (= n 1)

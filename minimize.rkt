@@ -64,7 +64,6 @@
                 (map mk-pred-reduction preds)))))
 
 (define (reductions-lambda e)
-  (debug-print e)
   (append (list 0)
           (map (λ (ps) (make-lambda ps (lambda-body e))) (reductions-list (lambda-parameters e)))
           (map (λ (body) (make-lambda (lambda-parameters e) body)) (reductions-sequence-nonempty (lambda-body e)))

@@ -18,9 +18,10 @@
 (define file-to-compile
   (command-line
    #:program "pyramid"
-   #:once-each
+   #:multi
    [("-v" "--verbose") "Compile with verbose messages. Used to debug the compiler."
-                       (*verbose?* #t)]
+                       (*verbosity* (+ 1 (*verbosity*)))]
+   #:once-each
    [("-g")             "Compile with debug symbols"
                        (*use-debug-symbols?* #t)]
    [("-t")             "Run file as a test"
@@ -45,8 +46,8 @@
     (begin
       (newline) (display prog)
       (newline) (display "Abstract Instructions:") (newline)
-      (display-all (inst-seq-statements instructions))
-  
+      (display-abstract-instructions instructions)
+      
       ; (newline) (display "EVM Instructions:") (newline) (display-all eth-instructions)
       ; (print-symbol-table (*symbol-table*))
       (print-relocations (*relocation-table*))
@@ -60,10 +61,10 @@
 
 (define (main)
   (let ([ prog (read-file file-to-compile) ])
-    (cond ((*test?*)    (assert-test file-to-compile prog))
-          ((*verbose?*) (verbose-output prog))
-          (else         (standard-output prog)))
-    (when (*verbose?*)
+    (cond ((*test?*)  (assert-test file-to-compile prog))
+          ((verbose?) (verbose-output prog))
+          (else       (standard-output prog)))
+    (when (verbose? VERBOSITY-MEDIUM)
       (display-macros))
     ))
 (main)

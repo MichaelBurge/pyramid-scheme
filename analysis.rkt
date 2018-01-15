@@ -41,8 +41,8 @@
         exp
         next)))
 
-(define (verbose-section title body)
-  (when (*verbose?*)
+(define (verbose-section title level body)
+  (when (verbose? level)
     (display title)
     (newline) (body)
     (newline)))
@@ -51,16 +51,16 @@
 (define (full-compile prog)
   ; (reinitialize-globals!)
   (%-install-macro-library)
-  (verbose-section "Program"
+  (verbose-section "Program" VERBOSITY-LOW
                    (λ () (pretty-print prog)))
   (let ([ instructions     (compile-pyramid prog 'val 'next) ])
-    (verbose-section "Abstract Machine Code"
-                     (λ () (display-all (inst-seq-statements instructions))))
+    (verbose-section "Abstract Machine Code" VERBOSITY-LOW
+                     (λ () (display-abstract-instructions instructions)))
     (let ([ eth-instructions (codegen (inst-seq-statements instructions)) ])
-      (verbose-section "EVM Instructions"
+      (verbose-section "EVM Instructions" VERBOSITY-HIGH
                        (λ () (display-all eth-instructions)))
       (let* ([ bs-unlinked (serialize-with-relocations eth-instructions) ]
              [ bs (maybe-link bs-unlinked) ])
-        (verbose-section "EVM Disassembly"
+        (verbose-section "EVM Disassembly" VERBOSITY-LOW
                          (λ () (print-disassembly bs-unlinked)))
         (list instructions eth-instructions bs)))))

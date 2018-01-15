@@ -1,5 +1,7 @@
 (%-test-set-expected-result 21) ; 1 + 2 + 3 + 4 + 5 + 6
 
+(include psl "arith.pmd")
+
 (+ ((lambda 1))
    (+ ((lambda x 2) 0)
       (+ ((lambda (x y) 3) 0 0)

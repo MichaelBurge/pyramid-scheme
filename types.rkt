@@ -161,3 +161,4 @@
 (struct exn:evm:throw exn:evm ([ value : Bytes ]))
 (struct exn:evm:did-not-halt exn:evm ([ max-iterations : Fixnum ]))
 (struct exn:evm:stack-underflow exn:evm ([ num-elements : Fixnum ] [ stack : (Listof EthWord )]))
+(struct exn:evm:misaligned-jump exn:evm ([ addr : EthWord ]))

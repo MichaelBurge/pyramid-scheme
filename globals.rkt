@@ -2,9 +2,16 @@
 
 (provide (all-defined-out))
 
+(define VERBOSITY-NONE 0)
+(define VERBOSITY-LOW 1)
+(define VERBOSITY-MEDIUM 2)
+(define VERBOSITY-HIGH 3)
+(define VERBOSITY-ALL 4)
+
 ; All global variables should be moved here
 
-(define *verbose?* (make-parameter #f))
+(define *verbosity* (make-parameter 0))
+(define (verbose? n) (>= (*verbosity*) n))
 (define *test?* (make-parameter #f))
 (define *minimize?* (make-parameter #f))
 ; (define optimize-level (make-parameter 0))
@@ -16,6 +23,8 @@
 (define *loader-size* (make-parameter 0)) ; Size of the most recently generated loader
 
 (define *byte-offset* (make-parameter 0)) ; Used during serialization to track output stream position
+(define *abstract-offset* (make-parameter 0)) ; Used to generate debug labels. Index of the last-generated abstract machine instruction.
+
 (define *symbol-table* (make-parameter (make-hash '())))
 (define *relocation-table* (make-parameter (set)))
 (define *reverse-symbol-table* (make-parameter null))

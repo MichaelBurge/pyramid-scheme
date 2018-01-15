@@ -142,6 +142,9 @@
 (define (make-label name)
   (label (string->symbol
           (string-append (symbol->string name)
+                         "-"
+                         (number->string (*abstract-offset*))
+                         "-"
                          (number->string (new-label-number))))))
 
 (: compile-if (-> PyrIf Target Linkage inst-seq))
@@ -225,21 +228,20 @@
 
 (: construct-arglist (-> (Listof inst-seq) inst-seq))
 (define (construct-arglist operand-codes)
-  (let ((operand-codes (reverse operand-codes)))
-    (if (null? operand-codes)
-        (inst-seq '() '(argl)
-                  (list (assign 'argl (const '()))))
-        (let ((code-to-get-last-arg
-               (append-instruction-sequences
-                (car operand-codes)
-                (inst-seq '(val) '(argl)
-                          (list (assign 'argl (op 'list `(,(reg 'val)))))))))
-          (if (null? (cdr operand-codes))
-              code-to-get-last-arg
-              (preserving '(env)
-                          code-to-get-last-arg
-                          (code-to-get-rest-args
-                           (cdr operand-codes))))))))
+  (if (null? operand-codes)
+      (inst-seq '() '(argl)
+                (list (assign 'argl (const '()))))
+      (let ((code-to-get-last-arg
+             (append-instruction-sequences
+              (car operand-codes)
+              (inst-seq '(val) '(argl)
+                        (list (assign 'argl (op 'list `(,(reg 'val)))))))))
+        (if (null? (cdr operand-codes))
+            code-to-get-last-arg
+            (preserving '(env)
+                        code-to-get-last-arg
+                        (code-to-get-rest-args
+                         (cdr operand-codes)))))))
 
 (: code-to-get-rest-args (-> (Listof inst-seq) inst-seq))
 (define (code-to-get-rest-args operand-codes)

@@ -120,6 +120,7 @@ These optimizations are currently unimplemented:
 
 (: codegen-one (Generator Instruction))
 (define (codegen-one i)
+  (*abstract-offset* (+ 1 (*abstract-offset*)))
   (cond ((label?   i) (cg-label   i))
         ((symbol?  i) (error "Unexpected symbol - codegen-one" i))
         ((assign?  i) (cg-assign  i))
@@ -1148,41 +1149,10 @@ These optimizations are currently unimplemented:
    ))
 
 (define (cg-define-primops)
-  (let ((label-= (make-label '=))
-        (label-* (make-label '*))
-        (label-+ (make-label '+))
-        (label-sub (make-label 'sub))
-        (label-install (make-label 'install)))
-    ; A binop has
-    ; Input:  [ argl = [ x1; x2; nil ] ] ; length = 1
-    ; Output: [ result ]                 ; length = 1
-    (define (binop-wrap xs)    ; [ argl; return ]
-      (append
-       (cg-unroll-list 2 stack) ; [ x1; x2; nil; return ]  
-       (cg-swap 2)              ; [ nil; x2; x1; return ]
-       (cg-pop 1)               ; [ x2; x1; return ]
-       (cg-unbox-integer stack) ; [ x2'; x1; return ]
-       (asm 'SWAP1)             ; [ x1; x2'; return ]
-       (cg-unbox-integer stack) ; [ x1'; x2'; return ]
-       xs                       ; [ result; return ]
-       (cg-make-fixnum stack)   ; [ result'; return ]
-       (cg-swap 1)              ; [ return; result' ]
-       (cg-goto stack)))        ; [ result' ]
-    (define (unboxed-binop-wrap xs)
-      (append
-       (cg-unroll-list 2 stack) ; [ x1; x2; nil; return ]  
-       (cg-swap 2)              ; [ nil; x2; x1; return ]
-       (cg-pop 1)               ; [ x2; x1; return ]
-       (cg-unbox-integer stack) ; [ x2'; x1; return ]
-       (asm 'SWAP1)             ; [ x1; x2'; return ]
-       (cg-unbox-integer stack) ; [ x1'; x2'; return ]
-       xs                       ; [ result; return ]
-       (cg-swap 1)              ; [ return; result ]
-       (cg-goto stack)))        ; [ result ]
-      
+  (let ((label-skip (make-label 'cg-define-primops-skip)))
     (append
      (debug-label 'cg-install-standard-library)
-     (cg-goto label-install)
+     (cg-goto label-skip)
      ; Primops
      ; op-lookup-variable-value
      `(,*label-op-lookup-variable-value*)      ; [ var; env; ret ]
@@ -1199,32 +1169,8 @@ These optimizations are currently unimplemented:
      (cg-goto stack)                               ; [ ]
      `(,*label-op-return*)
      (cg-return stack)
-     ; Prefined user functions
-     ; = operator
-     `(,label-=)              
-     (unboxed-binop-wrap (cg-eq? stack stack))
-     ; * operator
-     `(,label-*)
-     (binop-wrap (cg-mul stack stack))
-     ; + operator
-     `(,label-+)
-     (binop-wrap (cg-add stack stack))
-     ; - operator
-     `(,label-sub)
-     (binop-wrap (cg-sub stack stack))
      ; Install the primitives
-     `(,label-install)
-     (cg-make-primitive-procedure label-=)
-     (cg-op-define-variable! (const '=) stack (reg 'env))
-     
-     (cg-make-primitive-procedure label-*)
-     (cg-op-define-variable! (const '*) stack (reg 'env))
-
-     (cg-make-primitive-procedure label-sub)
-     (cg-op-define-variable! (const '-) stack (reg 'env))
-
-     (cg-make-primitive-procedure label-+)
-     (cg-op-define-variable! (const '+) stack (reg 'env))
+     `(,label-skip)
      )))
                                   
 
@@ -1485,8 +1431,8 @@ SWAP1 -> [ x1; x2; x3; c ]
 ; Debug labels are not used for flow control. They generate entries in the relocation table that
 ; help locate the code that generated an assembly fragment. They have 1 byte of overhead for a
 ; JUMPDEST instruction, but even that could be eliminated if necessary.
-(define (debug-label sym)
-  (if *use-debug-symbols?*
+(define (debug-label sym . verbosity)
+  (if (*use-debug-symbols?*)
       (list (make-label sym))
       '()))
 

@@ -83,9 +83,13 @@
         (simulate-one! vm (next-instruction vm))
         (simulate! vm (- max-iterations 1)))))
 
+(: instruction-at (-> evm Fixnum EthInstruction))
+(define (instruction-at vm addr)
+  (cdr (disassemble-one (evm-bytecode vm) addr)))
+
 (: next-instruction (-> evm EthInstruction))
 (define (next-instruction vm)
-  (cdr (disassemble-one (evm-bytecode vm) (evm-pc vm))))
+  (instruction-at vm (evm-pc vm)))
   
 (: simulate-one! (-> evm EthInstruction evm))
 (define (simulate-one! vm i)
@@ -194,15 +198,17 @@
 ; JUMP and JUMPI subtract 1 to ensure they balance the plus 1 every instruction gets.
 (: simulate-jump! (-> evm Void))
 (define (simulate-jump! vm)
-  (let ((addr (pop-stack! vm)))
-    (set-evm-pc! vm (- addr 1))))
+  (let ((addr (- (pop-stack! vm) 0)))
+    (assert-landing-pad vm addr)
+    (set-evm-pc! vm addr)))
 
 (: simulate-jumpi! (-> evm Void))
 (define (simulate-jumpi! vm)
-  (let* ((addr (pop-stack! vm))
+  (let* ((addr (- (pop-stack! vm) 0))
          (pred (pop-stack! vm)))
+    (assert-landing-pad vm addr)
     (unless (eq? 0 pred)
-      (set-evm-pc! vm (- addr 1)))))
+      (set-evm-pc! vm addr))))
 
 (: simulate-codecopy! (-> evm void))
 (define (simulate-codecopy! vm)
@@ -449,3 +455,13 @@
                  )
             null)))
     (map parse-frame frames)))
+
+(define (assert-landing-pad vm addr)
+  (let ([ ethi (instruction-at vm addr)])
+    (if (and (eth-asm? ethi)
+             (equal? 'JUMPDEST (eth-asm-name ethi)))
+        (void)
+        (raise (exn:evm:misaligned-jump "assert-landing-pad"
+                                        (current-continuation-marks)
+                                        vm
+                                        addr)))))
