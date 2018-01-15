@@ -22,6 +22,7 @@ Functions defined here are available to Pyramid programs within macros.
     )
   (install-macro! '%-test-set-expected-result %-test-set-expected-result)
   (install-macro! 'include %-include)
+  (install-macro! 'require %-require)
   )
 
 ; Compiles a fragment of code rather than a whole program.
@@ -82,3 +83,15 @@ Functions defined here are available to Pyramid programs within macros.
     ([collection mod] (parameterize ([ current-directory (get-collection-directory collection) ])
                         (read-file mod)))
     ))
+
+
+
+(define %-require
+  (case-lambda
+    ([ mod ] (%-require "*current-directory*" mod))
+    ([ collection mod ]
+     (let ([ key (string-append (symbol->string collection) "/" mod) ])
+       (if (set-member? (*required-modules*) key)
+           '(begin)
+           (%-include collection mod))))))
+  

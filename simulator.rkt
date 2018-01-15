@@ -9,7 +9,7 @@
 
 (provide (all-defined-out))
 
-(define MEMORY-SIZE 60000)
+(define MEMORY-SIZE 200000)
 
 ; Appendix G in Ethereum Yellow Paper: http://gavwood.com/paper.pdf
 (define G_zero          0)

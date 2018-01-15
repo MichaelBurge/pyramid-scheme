@@ -1,7 +1,7 @@
 (%-test-set-expected-result 21)
 
-(include containers "linked-list.pmd") ; For the linked list specifically
-(include psl "containers.pmd")         ; For general helpers like push! and sum
+(include psl "linked-list.pmd") ; For the linked list specifically
+(include psl "containers.pmd")  ; For general helpers like push! and sum
 
 (define lst (linked-list))
 

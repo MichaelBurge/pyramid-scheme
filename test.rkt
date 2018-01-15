@@ -35,7 +35,7 @@
   )
 
 (define (assert-equal-vm name expected actual-bs)
-  (if (exn:evm? actual-bs)
+  (if (exn:fail? actual-bs)
       (error "assert-equal-vm: Caught error" actual-bs)
       (let ([ actual (parse-type (infer-type expected) actual-bs) ])
         (assert-equal name expected actual))))
@@ -87,7 +87,8 @@
                   [exn:fail? (λ (x)
                                (begin
                                  (displayln `("Unexpected exception encountered" ,x))
-                                 x))])
+                                 x))]
+                  )
                                
     (*include-directory* "tests")
     (let* ([ params (full-compile prog) ]

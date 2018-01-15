@@ -1,0 +1,104 @@
+(define memory-allocator
+  (let ([ ptr (%-mem-alloc 3) ])
+    (begin
+      (%-mem-ptr-write! ptr 0    %-mem-alloc)
+      (%-mem-ptr-write! ptr #x20 %-mem-ptr-read)
+      (%-mem-ptr-write! ptr #x40 %-mem-ptr-write)
+      ptr)))
+
+(define storage-allocator
+  (let ([ ptr (%-mem-alloc 3) ])
+    (begin
+      (%-mem-ptr-write! ptr 0    store-alloc)
+      (%-mem-ptr-write! ptr #x20 %-store-ptr-read)
+      (%-mem-ptr-write! ptr #x40 %-store-ptr-write!)
+      ptr)))
+
+(define **allocator** memory-allocator)
+
+(define (set-allocator! a) (set! **allocator** a))
+
+(define (with-allocator a f)
+  (let ([ a **allocator** ])
+    (set-allocator! x)
+    (f)
+    (set-allocator! a)))
+
+(define (&alloc)     (%-mem-ptr-read **allocator** 0))
+(define (&ptr-read)  (%-mem-ptr-read **allocator** #x20))
+(define (&ptr-write) (%-mem-ptr-read **allocator** #x40))
+
+(define (alloc sz)            ((&alloc)     sz))
+(define (ptr-read ptr os)     ((&ptr-read)  ptr os))
+(define (ptr-write! ptr os x) ((&ptr-write) ptr os x))
+; Primitives
+(define null %-MEM-NIL)
+
+(define (fixnum x)
+  (let ([ ptr (alloc 2) ])
+    (begin
+      (ptr-write! ptr 0 %-TAG-FIXNUM)
+      (ptr-write! ptr #x20 x)
+      ptr)))
+
+(define (fixnum-bytes x n) (mod x (* n 8)))
+
+(define (symbol x)
+  (let ([ ptr (alloc 2) ])
+    (begin
+      (ptr-write! ptr 0 %-TAG-SYMBOL)
+      (ptr-write! ptr #x20 x))))
+
+; (fixnum? x) implies x = (fixnum (unbox x))
+; (symbol? x) implies x = (symbol (unbox x))
+(define (unbox x) (ptr-read ptr #x20))
+
+(define (word x)
+  (let ([ ptr (alloc 1) ])
+    (begin
+      (ptr-write! ptr 0 x)
+      ptr)))
+
+(define (pair a b)
+  (let ([ ptr (alloc 3) ])
+    (begin
+      (ptr-write! ptr 0   %-TAG-NIL)
+      (ptr-write! ptr #x20 a)
+      (ptr-write! ptr #x40 b)
+      ptr)))
+
+(define (l p)    (ptr-read   ptr #x20))
+(define (r p)    (ptr-read   ptr #x40))
+(define (l! p x) (ptr-write! ptr #x20 x))
+(define (r! p x) (ptr-write! ptr #x40 x))
+
+(define (alloc-vector sz) (alloc (+ 3 sz)))
+(define (vector-read    vec i)   (ptr-read   ptr (+ #x60 i)))
+(define (vector-write!  vec i x) (ptr-write! ptr (+ #x60 i) x))
+(define (vector-modify! vec i f) (vector-write! vec i (f (vector-read vec i))))
+
+(define (vector xs)
+  (let ([sz (length xs)]
+        [vec (alloc-vector sz) ])
+    (copy-list->vector! vec 0 xs)))
+
+(define (copy-list->vector! vec i xs)
+  (if (null? xs)
+      (void)
+      (begin
+        (vector-write! vec i (l xs))
+        (copy-list->vector! vec (+ i 1) (r xs)))))
+
+(define (vector-initialize! vec i sz f)
+  (if (equal? sz 0)
+      (void)
+      (begin
+        (vector-write! vec i (f))
+        (vector-modify! vec (+ i 1) f))))
+
+(define (vector-f sz f)
+  (let ([ vec (alloc-vector sz) ])
+    (vector-initalize! vec 0 sz f)))
+
+(define (vector-singleton x)
+  (vector-f 1 (λ x)))

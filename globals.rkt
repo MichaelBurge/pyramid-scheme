@@ -30,3 +30,5 @@
 (define *reverse-symbol-table* (make-parameter null))
 (define *available-macros* (make-parameter (make-empty-namespace)))
 (define *macro-namespace* (make-parameter (make-base-namespace)))
+
+(define *required-modules* (make-parameter (set)))
