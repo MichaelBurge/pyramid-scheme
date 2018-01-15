@@ -83,7 +83,12 @@
 
 (: run-test (-> String Pyramid Any))
 (define (run-test name prog)
-  (with-handlers ([exn:evm? (λ (x) x)])
+  (with-handlers ([exn:evm? (λ (x) x)]
+                  [exn:fail? (λ (x)
+                               (begin
+                                 (displayln `("Unexpected exception encountered" ,x))
+                                 x))])
+                               
     (*include-directory* "tests")
     (let* ([ params (full-compile prog) ]
            [ initializer-bs (third params) ]
