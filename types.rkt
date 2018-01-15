@@ -18,10 +18,6 @@
 (define-type PyrIf         (List 'if     Pyramid Pyramid (U Nothing Pyramid)))
 (define-type PyrLambda     (List 'lambda VariableNames Sequence))
 (define-type PyrBegin      (List 'begin  (Listof Pyramid)))
-(define-type PyrCondClause (U PyrCondPred PyrCondElse))
-(define-type PyrCondPred   (Pairof Pyramid Sequence))
-(define-type PyrCondElse   (Pairof 'else Sequence))
-(define-type PyrCond       (Pairof 'cond (Listof PyrCondClause)))
 (define-type PyrApplication (Pairof Pyramid Sequence))
 (define-type PyrMacro      (List 'defmacro (U VariableName VariableNames) (Listof Racket)))
 (define-type PyrAsmPush    (List 'push (U 'shrink Fixnum) Fixnum))
@@ -37,7 +33,6 @@
                         PyrIf
                         PyrLambda
                         PyrBegin
-                        PyrCond
                         PyrApplication
                         PyrMacro
                         PyrAsm

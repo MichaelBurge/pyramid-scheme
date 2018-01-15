@@ -38,7 +38,6 @@
          (compile-sequence (begin-actions exp)
                            target
                            linkage))
-        ((cond? exp) (compile-pyramid (cond->if exp) target linkage))
         ((macro-application? exp) (compile-macro-application exp target linkage))
         ((application? exp)
          (compile-application exp target linkage))

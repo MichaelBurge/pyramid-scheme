@@ -20,7 +20,6 @@
       (if? x)
       (begin? x)
       (application? x)
-      (cond? x)
       (macro? x)
       (macro-application? x)
       (asm? x)
@@ -38,7 +37,6 @@
         ((if? exp)                'if)
         ((lambda? exp)            'lambda)
         ((begin? exp)             'begin)
-        ((cond? exp)              'cond)
         ((macro-application? exp) 'macro-application)
         ((application? exp)       'application)
         (else
@@ -158,7 +156,7 @@
 (: rest-exps (-> Sequence Sequence))
 (define (rest-exps seq) (cdr seq))
 
-(define syntaxes '(quote set! define if lambda begin else cond defmacro push op byte label asm))
+(define syntaxes '(quote set! define if lambda begin defmacro push op byte label asm))
 
 ; '(f x y)
 (: application? (-> Pyramid Boolean))
@@ -196,40 +194,8 @@
 (: make-begin (-> Sequence Pyramid))
 (define (make-begin seq) (cons 'begin seq))
 
-; '(cond (pred1 (act11 act12)) (pred2 (act21 act22 act23)) ... [(else (actn1 actn2))])
-(: cond? (-> Pyramid Boolean))
-(define (cond? exp) (tagged-list? exp 'cond))
-(: cond-clauses (-> PyrCond (Listof PyrCondClause)))
-(define (cond-clauses exp) (cdr exp))
-(: cond-else-clause? (-> PyrCondClause Boolean))
-(define (cond-else-clause? clause)
-  (eq? (cond-predicate clause) 'else))
-(: cond-predicate (-> PyrCondClause Pyramid))
-(define (cond-predicate clause) (car clause))
-(: cond-actions (-> PyrCondClause Sequence))
-(define (cond-actions clause) (cdr clause))
-
-(: cond->if (-> PyrCond (U 'false Pyramid)))
-(define (cond->if exp)
-  (expand-clauses (cond-clauses exp)))
-
-(: expand-clauses (-> (Listof PyrCondClause) (U 'false Pyramid)))
-(define (expand-clauses clauses)
-  (if (null? clauses)
-      'false                          ; no else clause
-      (let ((first (car clauses))
-            (rest (cdr clauses)))
-        (if (cond-else-clause? first)
-            (if (null? rest)
-                (sequence->exp (cond-actions first))
-                (error "ELSE clause isn't last -- COND->IF"
-                       clauses))
-            (make-if (cond-predicate first)
-                     (sequence->exp (cond-actions first))
-                     (expand-clauses rest))))))
-;; end of Cond support
-
 #|
+Macro example:
 (defmacro (duplicate x)
   (if (definition? x)
       x
@@ -271,3 +237,17 @@
 (define (asm? exp) (tagged-list? exp 'asm))
 
 (define (asm-insts exp) (cdr exp))
+
+;; (: children (-> Pyramid (Listof Pyramid)))
+;; (define (children prog)
+;;   (cond ((quoted? prog) '())
+;;         ((variable? prog) '())
+;;         ((assignment? prog) (list (assignment-value prog)))
+;;         ((definition? prog) (list (definition-value prog)))
+;;         ((lambda? prog) (lambda-body prog))
+;;         ((if? prog) (list (if-predicate prog) (if-consequent prog) (if-alternative prog)))
+;;         ((begin? prog) (begin-actions prog))
+;;         ((application? prog) (cons (operator prog) (operands prog)))
+;;                        (macro? x)
+;;       (macro-application? x)
+;;       (asm? x)

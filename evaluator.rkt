@@ -24,7 +24,6 @@
                       env)))
         ((begin? exp) 
          (eval-sequence (begin-actions (cast exp PyrBegin)) env))
-        ((cond? exp) (eval-pyramid (cond->if (cast exp PyrCond)) env))
         ((application? exp)
          (let ((aexp (cast exp PyrApplication)))
            (metacircular-apply (cast (eval-pyramid (operator aexp) env) procedure)

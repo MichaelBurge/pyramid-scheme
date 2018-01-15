@@ -27,7 +27,6 @@
         ((if?                e) (reductions-if e))
         ((lambda?            e) (reductions-lambda e))
         ((begin?             e) (reductions-begin e))
-        ((cond?              e) (reductions-cond e))
         ((macro-application? e) (reductions-macro-application e))
         ((application?       e) (reductions-application e))
         (else (error "reductions: Unknown expression type" e))
@@ -105,11 +104,6 @@
                                ((null? (cdr xs)) (car xs))
                                (else (cons 'begin xs)))) ])
     (map mk-reduction (reductions-sequence (begin-actions e)))))
-
-(define (reductions-cond e)
-  (let ([ clausess (reductions-list (cond-clauses e)) ]
-        [ mk-reduction (λ (clauses) (cons 'cond clauses))])
-    (map mk-reduction clausess)))
 
 (define (reductions-macro-application e) (list (expand-macro e)))
 (define (reductions-application e)
