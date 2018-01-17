@@ -54,11 +54,10 @@
   (%-install-macro-library)
   (verbose-section "Program" VERBOSITY-LOW
                    (λ () (pretty-print prog)))
-  (let ([ simplified (simplify prog)])
-    ;(let ([ simplified prog ])
+  (let ([ simplified (if (*simplify?*) (simplify prog) prog) ])
     (verbose-section "Simplified Program" VERBOSITY-LOW
                      (λ () (pretty-print simplified)))
-    (let ([ instructions     (compile-pyramid prog 'val 'next) ])
+    (let ([ instructions     (compile-pyramid simplified 'val 'next) ])
       (verbose-section "Abstract Machine Code" VERBOSITY-LOW
                        (λ () (display-abstract-instructions instructions)))
       (let ([ eth-instructions (codegen (inst-seq-statements instructions)) ])

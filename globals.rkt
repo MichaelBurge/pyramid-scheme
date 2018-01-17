@@ -14,6 +14,7 @@
 (define (verbose? n) (>= (*verbosity*) n))
 (define *test?* (make-parameter #f))
 (define *minimize?* (make-parameter #f))
+(define *simplify?* (make-parameter #t))
 ; (define optimize-level (make-parameter 0))
 
 (define *include-directory* (make-parameter "."))

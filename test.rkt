@@ -26,19 +26,19 @@
 
 (define MAX-ITERATIONS 1000000)
 
-(define (assert-equal name expected actual)
+(define (assert-equal name expected actual debug-info)
   (if (equal? expected actual)
       (begin
-        (display `("Test Passed: " ,name ,expected ,actual))
+        (display `("Test Passed: " ,name ,expected ,actual ,debug-info))
         (newline))
       (error "Test failed: " name expected actual))
   )
 
-(define (assert-equal-vm name expected actual-bs)
+(define (assert-equal-vm name expected actual-bs debug-info)
   (if (exn:fail? actual-bs)
       (error "assert-equal-vm: Caught error" actual-bs)
       (let ([ actual (parse-type (infer-type expected) actual-bs) ])
-        (assert-equal name expected actual))))
+        (assert-equal name expected actual debug-info))))
 
 (define (on-simulate-nop vm i reads) (void))
 
@@ -63,7 +63,7 @@
   (error "Test Failure - exception thrown")
   )
 
-(: run-until-return (-> Bytes Bytes))
+(: run-until-return (-> Bytes simulation-result))
 (define (run-until-return bs)
   (let* ([ result null ]
          [ reverse-symbol-table (invert-dict (*symbol-table*)) ]
@@ -79,7 +79,7 @@
     (simulate! vm MAX-ITERATIONS)
     (unless (evm-halted? vm)
       (raise (exn:evm:did-not-halt "run-until-return" (current-continuation-marks) vm MAX-ITERATIONS)))
-    result))
+    (simulation-result vm result)))
 
 (: run-test (-> String Pyramid Any))
 (define (run-test name prog)
@@ -93,10 +93,11 @@
     (*include-directory* "tests")
     (let* ([ params (full-compile prog) ]
            [ initializer-bs (third params) ]
-           [ program-bs (run-until-return initializer-bs) ]
-           [ actual-result (run-until-return program-bs) ]
+           [ deploy-result (run-until-return initializer-bs) ]
+           [ program-bs (simulation-result-val deploy-result) ]
+           [ exec-result (run-until-return program-bs) ]
            )
-      actual-result)))
+      (cons deploy-result exec-result))))
 
 (define (evm-result-equal? a b)
   (cond [(and (exn? a) (exn? b)) (equal? (exn-message a) (exn-message b)) ]
@@ -113,15 +114,32 @@
          [ result (minimize pred? prog) ]
          )
     (pretty-print result)))
-               
+
+(: debug-info (-> (Pair simulation-result simulation-result) Any))
+(define (debug-info result)
+  (let* ([ deploy-result (car result) ]
+         [ exec-result (cdr result) ]
+         [ exec-vm (simulation-result-vm exec-result) ]
+         [ exec-val (simulation-result-val exec-result) ]
+         [ deploy-vm (simulation-result-vm deploy-result) ]
+         [ deploy-val (simulation-result-val deploy-result) ]
+         )
+    (list (cons 'exec-gas (evm-gas exec-vm))
+          (cons 'exec-size (bytes-length (evm-bytecode exec-vm)))
+          (cons 'deploy-gas (evm-gas deploy-vm))
+          (cons 'deploy-size (bytes-length (evm-bytecode deploy-vm))))))
+
 
 ; A test is a regular Pyramid program that uses special test macros to communicate with the compiler.
 (: assert-test (-> String Pyramid Void))
 (define (assert-test name prog)
   (if (*minimize?*)
       (minimize-test name prog)
-      (let ([ actual-result (run-test name prog) ])
-        (assert-equal-vm name (*test-expected-result*) actual-result))))
+      (let* ([ result      (run-test name prog) ])
+        (assert-equal-vm name
+                         (*test-expected-result*)
+                         (simulation-result-val (cdr result))
+                         (debug-info result)))))
 
 ; TODO: Turn these into unit tests.
 ; TEST 1: (cg-intros (list (const 1234) (const 4321)))

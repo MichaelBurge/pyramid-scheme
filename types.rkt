@@ -158,3 +158,4 @@
 (struct exn:evm:stack-underflow exn:evm ([ num-elements : Fixnum ] [ stack : (Listof EthWord )]))
 (struct exn:evm:misaligned-jump exn:evm ([ addr : EthWord ]))
 
+(struct simulation-result ([ vm : evm ] [ val : Bytes ]))
