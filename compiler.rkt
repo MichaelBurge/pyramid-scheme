@@ -76,24 +76,13 @@
   (end-with-linkage linkage
                     (inst-seq '() (list target)
                               (list (assign target (boxed-const (text-of-quotation exp)))))))
-
-(: install-macro! (-> Symbol Procedure Void))
-(define (install-macro! name func)
-  (namespace-set-variable-value! name func #t (*available-macros*))
-  )
+  
 
 (: compile-macro (-> Pyramid Target Linkage inst-seq))
 (define (compile-macro exp target linkage)
-  (let* ((mac-name (macro-variable exp))
-         (arg-names (macro-args exp))
-         (mac-body (macro-body exp))
-         (macro-exp `(lambda ,arg-names ,mac-body))
-         (macro (eval macro-exp (*macro-namespace*)))
-         )
-    (install-macro! mac-name macro)
-    (inst-seq '() '() '())
-    ))
-
+  (install-macro-exp! exp)
+  (inst-seq '() '() '())
+  )
 
 (: compile-variable (-> PyrVariable Target Linkage inst-seq))
 (define (compile-variable exp target linkage)

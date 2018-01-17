@@ -28,3 +28,7 @@
 
 (: get-collection-directory (-> Symbol String))
 (define (get-collection-directory collection) (symbol->string collection))
+
+(define (debug-print . xs)
+  (apply display xs)
+  (newline))

@@ -113,7 +113,7 @@
 (define (%-box a)   (%-unop (cg-make-fixnum stack)   a))
 (define (%-unbox a) (%-unop (cg-unbox-integer stack) a))
 
-(define (%-throw) (nullop (op 'REVERT)))
+(define (%-throw) (%-nullop (op 'REVERT)))
 
 (define %-TAG-FIXNUM 0)
 (define %-TAG-SYMBOL 1)

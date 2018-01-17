@@ -15,7 +15,3 @@
   (make-hash
    (map (lambda (x) (cons (cdr x) (car x)))
         (dict->list dict))))
-
-(define (debug-print . xs)
-  (apply display xs)
-  (newline))

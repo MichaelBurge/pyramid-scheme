@@ -1,9 +1,10 @@
-#lang typed/racket/no-check
+#lang errortrace typed/racket/no-check
 
 (require "types.rkt")
 (require "globals.rkt")
 
 (provide (all-defined-out))
+
 (define (self-evaluating? exp)
   (cond ((number? exp) true)
         ((string? exp) true)
@@ -12,18 +13,20 @@
 
 (: pyramid? (-> Any Boolean))
 (define (pyramid? x)
-  (or (quoted? x)
-      (variable? x)
-      (assignment? x)
-      (definition? x)
-      (lambda? x)
-      (if? x)
-      (begin? x)
-      (application? x)
-      (macro? x)
-      (macro-application? x)
-      (asm? x)
-      ))
+  (or
+   (self-evaluating? x)
+   (quoted? x)
+   (variable? x)
+   (assignment? x)
+   (definition? x)
+   (lambda? x)
+   (if? x)
+   (begin? x)
+   (application? x)
+   (macro? x)
+   (macro-application? x)
+   (asm? x)
+   ))
 
 
 (: exp-type (-> Pyramid Void))
@@ -74,6 +77,9 @@
 (: assignment-value (-> PyrAssign Pyramid))
 (define (assignment-value (exp : PyrAssign)) (caddr exp))
 
+(: make-assignment (-> VariableName Pyramid PyrAssign))
+(define (make-assignment var val) (list 'set! var val))
+
 (: definition? (-> Pyramid Boolean))
 (define (definition? exp)
   (tagged-list? exp 'define))
@@ -101,6 +107,9 @@
       (make-lambda (cdadr exp)
                    (cddr exp))))
 
+(: make-definition (-> VariableName Pyramid PyrDefinition))
+(define (make-definition var val) (list 'define var val))
+
 ; '(lambda (x y) (+ x y))
 (: lambda? (-> Pyramid Boolean))
 (define (lambda? exp) (or (tagged-list? exp 'lambda)
@@ -121,7 +130,7 @@
       (cdr exp)
       (cddr exp)))
 
-(: make-lambda (-> (Listof Pyramid) Pyramid PyrLambda))
+(: make-lambda (-> VariableNames Pyramid PyrLambda))
 (define (make-lambda parameters body)
   (list* 'lambda parameters (if (null? body) '((begin)) body)))
 
@@ -143,6 +152,9 @@
       (cadddr exp)
       'false))
 
+(: make-if (-> Pyramid Pyramid Pyramid Pyramid))
+(define (make-if pred cons alt) (list 'if pred cons alt))
+
 ; '(begin <actions>)
 (: begin? (-> Pyramid Boolean))
 (define (begin? exp) (tagged-list? exp 'begin))
@@ -156,14 +168,19 @@
 (: rest-exps (-> Sequence Sequence))
 (define (rest-exps seq) (cdr seq))
 
+(: make-begin (-> (Listof Pyramid) PyrBegin))
+(define (make-begin xs) (cons 'begin xs))
+
 (define syntaxes '(quote set! define if lambda begin defmacro push op byte label asm))
 
 ; '(f x y)
 (: application? (-> Pyramid Boolean))
 (define (application? exp)
   (and (pair? exp)
-       true))
-       ;(not (member (car exp) syntaxes))))
+       (not (member (car exp) syntaxes))
+       (implies (symbol? (operator exp)) (not (namespace-contains? (*available-macros*) (operator exp))))
+       ))
+
 (: operator (-> PyrApplication Pyramid))
 (define (operator exp) (car exp))
 (: operands (-> PyrApplication Sequence))
@@ -176,23 +193,14 @@
 (: rest-operands (-> (Listof Pyramid) (Listof Pyramid)))
 (define (rest-operands ops) (cdr ops))
 
-;;;**following needed only to implement COND as derived expression,
-;;; not needed by eceval machine in text.  But used by compiler
-
-;; from 4.1.2
-(: make-if (-> Pyramid Pyramid Pyramid Pyramid))
-(define (make-if predicate consequent alternative)
-  (list 'if predicate consequent alternative))
-
+(: make-application (-> Pyramid Pyramids PyrApplication))
+(define (make-application operator operands) (cons operator operands))
 
 (: sequence->exp (-> Sequence Pyramid))
 (define (sequence->exp seq)
   (cond ((null? seq) seq)
         ((last-exp? seq) (first-exp seq))
         (else (make-begin seq))))
-
-(: make-begin (-> Sequence Pyramid))
-(define (make-begin seq) (cons 'begin seq))
 
 #|
 Macro example:
@@ -222,12 +230,26 @@ Macro example:
 
 (: macro-application? (-> Pyramid Boolean))
 (define (macro-application? exp)
-  (if (application? exp)
-      (let ((name (operator exp)))
-        (if (symbol? name)
-            (namespace-contains? (*available-macros*) name)
-            #f))
-      #f))
+  (and (pair? exp)
+       (symbol? (operator exp))
+       (namespace-contains? (*available-macros*) (operator exp))
+       ))
+
+(: install-macro! (-> Symbol Procedure Void))
+(define (install-macro! name func)
+  (namespace-set-variable-value! name func #t (*available-macros*))
+  )
+
+(: install-macro-exp! (-> Pyramid Void))
+(define (install-macro-exp! exp)
+  (let* ((mac-name (macro-variable exp))
+         (arg-names (macro-args exp))
+         (mac-body (macro-body exp))
+         (macro-exp `(lambda ,arg-names ,mac-body))
+         (macro (eval macro-exp (*macro-namespace*)))
+         )
+    (install-macro! mac-name macro)
+    ))
 
 (define (namespace-contains? namespace name)
   (namespace-variable-value name #f (λ () #f) namespace)
@@ -238,16 +260,71 @@ Macro example:
 
 (define (asm-insts exp) (cdr exp))
 
-;; (: children (-> Pyramid (Listof Pyramid)))
-;; (define (children prog)
-;;   (cond ((quoted? prog) '())
-;;         ((variable? prog) '())
-;;         ((assignment? prog) (list (assignment-value prog)))
-;;         ((definition? prog) (list (definition-value prog)))
-;;         ((lambda? prog) (lambda-body prog))
-;;         ((if? prog) (list (if-predicate prog) (if-consequent prog) (if-alternative prog)))
-;;         ((begin? prog) (begin-actions prog))
-;;         ((application? prog) (cons (operator prog) (operands prog)))
-;;                        (macro? x)
-;;       (macro-application? x)
-;;       (asm? x)
+(: transform-ast-children (-> Pyramid (-> Pyramid Pyramid) Pyramid))
+(define (transform-ast-children x f)
+  (cond [(quoted?   x) x]
+        [(variable? x) x]
+        [(assignment? x) (make-assignment (assignment-variable x)
+                                          (f (assignment-value x)))]
+        [(definition? x) (make-definition (definition-variable x)
+                                          (f (definition-value x)))]
+        [(lambda? x) (make-lambda (lambda-parameters x)
+                                  (map f (lambda-body x)))]
+        [(if? x) (make-if (f (if-predicate x))
+                          (f (if-consequent x))
+                          (f (if-alternative x)))]
+        [(begin? x) (make-begin (map f (begin-actions x)))]
+        [(macro? x) x]
+        [(macro-application? x) x ] ; TODO: Should we recurse into a macro's args?
+        [(asm? x) x]
+        [(application? x) (make-application (f (operator x))
+                                            (map f (operands x)))]
+
+        [else x]
+        ))
+
+(: ast-map-on (-> (-> Pyramid Boolean) (-> Pyramid Pyramid) (-> Pyramid Pyramid)))
+(define (ast-map-on pred f)
+  (λ (x) (if (pred x) (f x) x)))
+
+(: transform-ast-descendants (-> Pyramid (-> Pyramid Pyramid) Pyramid))
+(define (transform-ast-descendants x f)
+  (f (transform-ast-children x (λ (x) (transform-ast-descendants x f)))))
+
+
+(: transform-ast-children-on (-> Pyramid (-> Pyramid Boolean) (-> Pyramid Pyramid) Pyramid))
+(define (transform-ast-children-on prog pred f)
+  (transform-ast-children prog (ast-map-on pred f)))
+
+
+(: transform-ast-descendants-on (-> Pyramid (-> Pyramid Boolean) (-> Pyramid Pyramid) Pyramid))
+(define (transform-ast-descendants-on prog pred f)
+  (transform-ast-descendants prog (ast-map-on pred f)))
+
+
+(: children (-> Pyramid (Listof Pyramid)))
+(define (children prog)
+  (let ([ ret null ])
+    (define (add-child child)
+      (set! ret (cons child ret))
+      child)
+    (transform-ast-children prog add-child)
+    ret))
+
+(define (descendants prog)
+  (let ([ ret null ])
+    (define (add-child child)
+      (set! ret (cons child ret))
+      child)
+    (transform-ast-descendants prog add-child)
+    ret))
+
+(define (all-syntax pred prog) (filter pred (descendants prog)))
+
+(define (all-definitions prog) (all-syntax definition? prog))
+(define (all-variables prog) (all-syntax variable? prog))
+(define (all-macros prog) (all-syntax macro? prog))
+(define (all-macro-applications prog) (all-syntax macro-application? prog))
+(define (all-applications prog) (all-syntax application? prog))
+(define (all-lambdas prog) (all-syntax lambda? prog))
+

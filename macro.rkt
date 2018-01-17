@@ -84,8 +84,6 @@ Functions defined here are available to Pyramid programs within macros.
                         (read-file mod)))
     ))
 
-
-
 (define %-require
   (case-lambda
     ([ mod ] (%-require "*current-directory*" mod))
@@ -95,3 +93,4 @@ Functions defined here are available to Pyramid programs within macros.
            '(begin)
            (%-include collection mod))))))
   
+

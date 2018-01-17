@@ -14,6 +14,7 @@
 (require "globals.rkt")
 (require "io.rkt")
 (require "minimize.rkt")
+(require "simplifier.rkt")
 
 (provide (all-defined-out))
 
@@ -53,14 +54,18 @@
   (%-install-macro-library)
   (verbose-section "Program" VERBOSITY-LOW
                    (λ () (pretty-print prog)))
-  (let ([ instructions     (compile-pyramid prog 'val 'next) ])
-    (verbose-section "Abstract Machine Code" VERBOSITY-LOW
-                     (λ () (display-abstract-instructions instructions)))
-    (let ([ eth-instructions (codegen (inst-seq-statements instructions)) ])
-      (verbose-section "EVM Instructions" VERBOSITY-HIGH
-                       (λ () (display-all eth-instructions)))
-      (let* ([ bs-unlinked (serialize-with-relocations eth-instructions) ]
-             [ bs (maybe-link bs-unlinked) ])
-        (verbose-section "EVM Disassembly" VERBOSITY-LOW
-                         (λ () (print-disassembly bs-unlinked)))
-        (list instructions eth-instructions bs)))))
+  (let ([ simplified (simplify prog)])
+    ;(let ([ simplified prog ])
+    (verbose-section "Simplified Program" VERBOSITY-LOW
+                     (λ () (pretty-print simplified)))
+    (let ([ instructions     (compile-pyramid prog 'val 'next) ])
+      (verbose-section "Abstract Machine Code" VERBOSITY-LOW
+                       (λ () (display-abstract-instructions instructions)))
+      (let ([ eth-instructions (codegen (inst-seq-statements instructions)) ])
+        (verbose-section "EVM Instructions" VERBOSITY-HIGH
+                         (λ () (display-all eth-instructions)))
+        (let* ([ bs-unlinked (serialize-with-relocations eth-instructions) ]
+               [ bs (maybe-link bs-unlinked) ])
+          (verbose-section "EVM Disassembly" VERBOSITY-LOW
+                           (λ () (print-disassembly bs-unlinked)))
+          (list instructions eth-instructions bs))))))

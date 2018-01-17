@@ -1,0 +1,6 @@
+(%-test-set-expected-result 10)
+
+(defmacro (f x) 5)
+(defmacro (g . xs) (for/sum ([ i xs ]) i))
+
+(g 1 2 3 4)
