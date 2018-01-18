@@ -46,14 +46,3 @@ After:
   (define (export-table rows) (map export-row rows))
   `(cond ,(export-table rows))
   )
-          
-        
-
-(define withdraw! %-withdraw!)
-(define suicide! %-suicide!)
-(define **contract** (%-address))
-(define balance %-balance)
-(define (assert-deposit amount)
-  (assert (>= (%-callvalue) amount)))
-
-(define (block-reentrancy-attacks) (assert (ptr-= (%-caller) (%-origin))))

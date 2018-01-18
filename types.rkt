@@ -121,7 +121,6 @@
 (struct procedure ([ parameters : VariableNames ] [ body : Sequence ] [ environment : Environment ]))
 
 ; Code generator
-(define-type Address Fixnum)
 (struct eth-asm     ([ name : Symbol ]) #:transparent)
 (struct eth-push    ([ size : (U 'shrink Fixnum) ] [ value : (U Integer Symbol) ]) #:transparent)
 (struct eth-unknown ([ byte : Fixnum ]) #:transparent)
@@ -135,27 +134,63 @@
 
 (define-type EthWord Integer)
 
-(struct evm ([ step : Fixnum ]
-             [ bytecode : Bytes ]
-             [ pc : Fixnum ]
-             [ stack : (Listof EthWord) ]
-             [ memory : Bytes ]
-             [ gas : Fixnum ]
-             [ halted? : Boolean ]
-             [ largest-accessed-memory : Fixnum ]
-             [ on-simulate : (-> evm opcode (Listof EthWord) Void) ]
-             [ on-return : (-> evm Bytes Void) ]
-             [ on-error : (-> evm Void) ]
-             )
-  #:mutable
-  )
+; A VM execution state
 
 ; Exception types
-(struct exn:evm exn:fail ([ vm : evm ]))
+(struct exn:evm exn:fail ([ vm : vm-exec ]))
+(struct exn:evm:return exn:evm ([ result : Bytes ]))
 (struct exn:evm:misaligned-addr exn:evm ([ addr : EthWord ]))
 (struct exn:evm:throw exn:evm ([ value : Bytes ]))
 (struct exn:evm:did-not-halt exn:evm ([ max-iterations : Fixnum ]))
 (struct exn:evm:stack-underflow exn:evm ([ num-elements : Fixnum ] [ stack : (Listof EthWord )]))
 (struct exn:evm:misaligned-jump exn:evm ([ addr : EthWord ]))
 
-(struct simulation-result ([ vm : evm ] [ val : Bytes ]))
+(struct simulation-result ([ vm : vm-exec ] [ val : Bytes ]))
+
+(define-type Address Integer) ; Ethereum addresses
+
+(struct vm-world ([ accounts : (HashTable Address vm-account)]))
+(struct vm-account ([ nonce : Fixnum ] [ balance : EthWord ] [ storage-root : EthWord ] [ code-hash : EthWord ]))
+(struct vm-txn ([ nonce : Fixnum ]
+                [ gas-price : Fixnum ]
+                [ gas-limit : Fixnum ]
+                [ to : Address ]
+                [ value : Integer ]
+                [ v : Fixnum ]
+                [ r : Integer ]
+                [ s : Integer ]
+                [ data : Bytes ]))
+
+(define-type undefined Any)
+(define-type vm-checkpoint undefined)
+(define-type vm-log undefined)
+
+(struct vm-block ([ parent-hash : EthWord ]
+                  [ ommers-hash : EthWord ]
+                  [ beneficiary : EthWord ]
+                  [ state-root : EthWord ]
+                  [ transactions-root : EthWord ]
+                  [ receipts-root : EthWord ]
+                  [ logs-bloom : undefined ]
+                  [ difficulty : EthWord ]
+                  [ number : Fixnum ]
+                  [ gas-limit : Fixnum ]
+                  [ gas-used : Fixnum ]
+                  [ timestamp : Fixnum ]
+                  [ extra-data : EthWord ]
+                  [ mix-hash : EthWord ]
+                  [ nonce : Integer ]))
+
+(struct vm-txn-receipt ([ post-transaction : undefined ] [ cumulative-gas : Integer ] [ log-bloom : undefined ] [ logs : (Listof vm-log) ]))
+(struct vm-txn-substate ([ suicides : (Setof Address) ] [ log-series : (Setof vm-checkpoint) ] [ refund-balance : Fixnum ]))
+(struct vm-exec ([ step : Fixnum ]
+                 [ bytecode : Bytes ]
+                 [ pc : Fixnum ]
+                 [ stack : (Listof EthWord) ]
+                 [ memory : Bytes ]
+                 [ gas : Fixnum ]
+                 [ largest-accessed-memory : Fixnum ]
+                 [ on-simulate : (-> vm-exec opcode (Listof EthWord) Void) ]
+                 )
+  #:mutable
+  )

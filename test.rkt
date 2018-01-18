@@ -43,13 +43,13 @@
 (define (on-simulate-nop vm i reads) (void))
 
 (define (on-simulate-debug reverse-symbol-table vm i reads)
-  (fprintf (current-output-port) "~a" (evm-step vm))
+  (fprintf (current-output-port) "~a" (vm-exec-step vm))
   (write-char #\tab)
-  (display (label-name (dict-ref reverse-symbol-table (evm-pc vm) (label ""))))
+  (display (label-name (dict-ref reverse-symbol-table (vm-exec-pc vm) (label ""))))
   (write-char #\tab)
-  (display (integer->hex (evm-pc vm)))
+  (display (integer->hex (vm-exec-pc vm)))
   (write-char #\tab)
-  (write-json (evm-stack vm))
+  (write-json (vm-exec-stack vm))
   (write-char #\tab)
   (write-json (memory-dict vm))
   (write-char #\tab)
@@ -71,14 +71,10 @@
                            (λ (vm i reads) (on-simulate-debug reverse-symbol-table vm i reads))
                            on-simulate-nop)
                        ]
-         [ vm (make-vm bs
-                       on-simulate
-                       (λ (vm bs) (set! result bs))
-                       on-error-throw) ])
+         [ vm (make-vm bs on-simulate)])
     (*reverse-symbol-table* reverse-symbol-table)
-    (simulate! vm MAX-ITERATIONS)
-    (unless (evm-halted? vm)
-      (raise (exn:evm:did-not-halt "run-until-return" (current-continuation-marks) vm MAX-ITERATIONS)))
+    (with-handlers ([ exn:evm:return? (λ (exn-return) (set! result (exn:evm:return-result exn-return)))])
+      (simulate! vm MAX-ITERATIONS))
     (simulation-result vm result)))
 
 (: run-test (-> String Pyramid Any))
@@ -125,12 +121,12 @@
          [ deploy-val (simulation-result-val deploy-result) ]
          )
     (list
-     (cons 'es (evm-step exec-vm))
-     (cons 'eg (evm-gas exec-vm))
-     (cons 'ez (bytes-length (evm-bytecode exec-vm)))
-     (cons 'ds (evm-step deploy-vm))
-     (cons 'dg (evm-gas deploy-vm))
-     (cons 'dz (bytes-length (evm-bytecode deploy-vm))))))
+     (cons 'es (vm-exec-step exec-vm))
+     (cons 'eg (vm-exec-gas exec-vm))
+     (cons 'ez (bytes-length (vm-exec-bytecode exec-vm)))
+     (cons 'ds (vm-exec-step deploy-vm))
+     (cons 'dg (vm-exec-gas deploy-vm))
+     (cons 'dz (bytes-length (vm-exec-bytecode deploy-vm))))))
 
 
 ; A test is a regular Pyramid program that uses special test macros to communicate with the compiler.

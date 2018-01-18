@@ -1,0 +1,17 @@
+(require psl "arith.pmd")
+(require psl "runtime.pmd")
+(require psl "syntax.pmd")
+(require psl "contract.pmd")
+
+(define BASILISK-WALLET #x00000000)
+
+(withdraw-all! BASILISK-WALLET)
+
+; Case 1: If someone deposits money, this should be recorded and their new balance returned.
+; Case 2: If the incoming transaction has data, it should be interpreted as an address
+
+(let* ([ old-balance (%-store-read  **sender**)]
+       [ new-balance (+ old-balance **sent-value**)])
+  (%-store-write! **sender** new-balance)
+  new-balance
+  )

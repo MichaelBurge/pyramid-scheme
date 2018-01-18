@@ -1,0 +1,16 @@
+(require psl "primitives.pmd")
+
+(define (withdraw-all! deliver-to)
+  (withdraw! deliver-to (balance **contract**)))
+(define (withdraw! deliver-to amount)
+  (
+(define suicide! %-suicide!)
+(define balance %-balance)
+(define **contract** (%-address))
+(define **caller** (%-caller))
+(define **sender** **caller)
+(define **sent-value** (%-callvalue))
+(define (assert-deposit amount)
+  (assert (>= (%-callvalue) amount)))
+
+(define (block-reentrancy-attacks) (assert (ptr-= (%-caller) (%-origin))))

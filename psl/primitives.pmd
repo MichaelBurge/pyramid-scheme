@@ -91,29 +91,27 @@
 (define (%-calldataload a) (%-unop (op 'CALLDATALOAD) a))
 (define (%-timestamp)    (%-nullop (op 'TIMESTAMP)))
 
-(define (%-tag a)                (%-unop  (cg-tag stack) a))
-(define (%-mem-alloc a)          (%-unop  (cg-allocate stack) a))
-(define (%-mem-ptr-read a b)     (%-binop (cg-read-address-offset stack stack) a b))
-(define (%-mem-ptr-write! a b c) (%-triop (cg-write-address-offset stack stack stack) a b c))
-(define (%-store-ptr-read a b)
-           (%-binop
-            (append
-             (cg-add stack stack)
-             (op 'SLOAD)
-             )
-            a b
-            ))
-(define (%-store-ptr-write! a b c)
-           (%-triop
-            (append
-             (cg-add stack stack)
-             (op 'SSTORE))
-            a b c
-            ))
+(define (%-tag a)            (%-unop  (cg-tag stack) a))
+(define (%-mem-alloc a)      (%-unop  (cg-allocate stack) a))
+(define (%-mem-read a b)     (%-binop (cg-read-address-offset stack stack) a b))
+(define (%-mem-write! a b c) (%-triop (cg-write-address-offset stack stack stack) a b c))
+(define (%-store-read a)     (%-unop  (op 'SLOAD) a))
+(define (%-store-write! a b) (%-binop (op 'SSTORE) a b))
 (define (%-box a)   (%-unop (cg-make-fixnum stack)   a))
 (define (%-unbox a) (%-unop (cg-unbox-integer stack) a))
 
 (define (%-throw) (%-nullop (op 'REVERT)))
+
+(define (%-call gas to value in-offset in-size out-offset out-size)
+  (intro-var out-size   cg-unbox-integer)
+  (intro-var out-offset cg-unbox-integer)
+  (intro-var in-size    cg-unbox-integer)
+  (intro-var in-offset  cg-unbox-integer)
+  (intro-var value      cg-unbox-integer)
+  (intro-var to         cg-unbox-integer)
+  (intro-var gas        cg-unbox-integer)
+  (asm (op 'CALL))
+  (func-return))
 
 (define %-TAG-FIXNUM 0)
 (define %-TAG-SYMBOL 1)
