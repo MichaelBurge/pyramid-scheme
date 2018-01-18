@@ -40,7 +40,9 @@
   (let ([ undefineds (set-subtract (used-vars prog) (defined-vars prog))])
     (if (set-empty? undefineds)
         prog
-        (error "Undefined variables" undefineds))))
+        (begin
+          (pretty-print prog)
+          (error "Undefined variables" undefineds)))))
 
 (define (pass-collapse-nested-begins prog)
   (transform-ast-descendants-on
@@ -56,14 +58,23 @@
                   (begin-actions x)))))))
 
 (define (pass-inline-simple-definitions prog)
+  (define nonsimple-definitions (mutable-set))
   (define simple-definitions (make-hash))
   (define (simple-definition? x)
     (and (definition? x)
+         (not (set-member? nonsimple-definitions (definition-variable x)))
          (match (definition-value x)
            [(? self-evaluating?) #t]
            [(? variable?)        #t]
            [(? quoted?)          #t]
            [_                    #f])))
+  ; Mutated variables can't be inlined.
+  (set! prog (transform-ast-descendants-on
+              prog assignment?
+              (λ (x) (begin
+                       (set-add! nonsimple-definitions (assignment-variable x))
+                       x))))
+  ; Remove simple definitions
   (set! prog (transform-ast-descendants-on
               prog simple-definition?
               (λ (x) (begin

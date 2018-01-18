@@ -124,10 +124,13 @@
          [ deploy-vm (simulation-result-vm deploy-result) ]
          [ deploy-val (simulation-result-val deploy-result) ]
          )
-    (list (cons 'exec-gas (evm-gas exec-vm))
-          (cons 'exec-size (bytes-length (evm-bytecode exec-vm)))
-          (cons 'deploy-gas (evm-gas deploy-vm))
-          (cons 'deploy-size (bytes-length (evm-bytecode deploy-vm))))))
+    (list
+     (cons 'es (evm-step exec-vm))
+     (cons 'eg (evm-gas exec-vm))
+     (cons 'ez (bytes-length (evm-bytecode exec-vm)))
+     (cons 'ds (evm-step deploy-vm))
+     (cons 'dg (evm-gas deploy-vm))
+     (cons 'dz (bytes-length (evm-bytecode deploy-vm))))))
 
 
 ; A test is a regular Pyramid program that uses special test macros to communicate with the compiler.
