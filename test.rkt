@@ -60,12 +60,12 @@
  
 (: run-test (-> String Pyramid Any))
 (define (run-test name prog)
-  (with-handlers ([exn:evm? (λ (x) x)]
-                  ;; [exn:fail? (λ (x)
-                  ;;              (begin
-                  ;;                (displayln `("Unexpected exception encountered" ,x))
-                  ;;                x)))
-                  )
+  ;; (with-handlers ([exn:evm? (λ (x) x)]
+  ;;                 ;; [exn:fail? (λ (x)
+  ;;                 ;;              (begin
+  ;;                 ;;                (displayln `("Unexpected exception encountered" ,x))
+  ;;                 ;;                x)))
+  ;;                 )
     (*include-directory* "tests")
     (when (verbose? VERBOSITY-LOW)
       (*on-simulate-instruction* (on-simulate-debug (invert-dict (*symbol-table*)))))
@@ -78,7 +78,7 @@
            [ program-txn    (make-txn-message contract 0 (bytes)) ]
            [ exec-result    (apply-txn-message! sim program-txn)]
            )
-      (cons deploy-result exec-result))))
+      (cons deploy-result exec-result)))
 
 (define (evm-result-equal? a b)
   (cond [(and (exn? a) (exn? b)) (equal? (exn-message a) (exn-message b)) ]

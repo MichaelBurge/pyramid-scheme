@@ -25,14 +25,23 @@
 (: apply-txn-create! (-> simulator vm-txn simulation-result-ex))
 (define (apply-txn-create! sim txn)
   (let ([ vm (make-vm-exec sim (vm-txn-data txn)) ])
-    (handle-vm-exns vm (λ () (simulate! vm MAX-ITERATIONS)))
+    (with-handlers ([ exn:evm:return? (λ (x)
+                                        (let* ([ bs (exn:evm:return-result x )]
+                                               [ receipt (vm->receipt vm bs) ]
+                                               [ addr (vm-txn-receipt-contract-address receipt )]
+                                               )
+                                          (install-bytecode! sim addr bs)
+                                          (simulation-result vm bs receipt)))])
+      (simulate! vm MAX-ITERATIONS))
     ))
 
 (: apply-txn-message! (-> simulator vm-txn simulation-result-ex))
 (define (apply-txn-message! sim txn)
   (let* ([ bytecode (lookup-bytecode sim (vm-txn-to txn))]
          [ vm (make-vm-exec sim bytecode)])
-    (handle-vm-exns vm (λ () (simulate! vm MAX-ITERATIONS)))))
+    (with-handlers ([ exn:evm:return? (λ (x) (simulation-result vm (exn:evm:return-result x) (vm->receipt vm x)))]
+                    [ exn:evm? (λ (x) x)])
+      (simulate! vm MAX-ITERATIONS))))
 
 (define (on-simulate-nop vm i reads) (void))
 (define *on-simulate-instruction* (make-parameter on-simulate-nop))
@@ -93,12 +102,6 @@
 (define W_mid '(ADDMOD MULMOD JUMP))
 (define W_high '(JUMPI))
 (define W_extcode '(EXTCODESIZE))
-
-(: handle-vm-exns (-> vm-exec (-> Void) simulation-result-ex))
-(define (handle-vm-exns vm act)
-  (with-handlers ([ exn:evm:return? (λ (x) (simulation-result vm x (vm->receipt vm x)))]
-                  [ exn:evm? (λ (x) x)])
-    (act)))
                     
 (: vm->receipt (-> vm-exec Bytes txn-receipt))
 (define (vm->receipt vm bs) 
@@ -566,6 +569,8 @@
     (x (+ 1 val))
     val))
        
-
 (: lookup-bytecode (-> simulator Address bytes))
 (define (lookup-bytecode sim addr) (dict-ref (vm-world-accounts (simulator-world sim)) addr))
+
+(: install-bytecode! (-> simulator Address! bytes Void))
+(define (install-bytecode! sim addr bs) (dict-set! (vm-world-accounts (simulator-world sim)) addr bs))
