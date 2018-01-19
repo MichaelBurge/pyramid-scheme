@@ -8,7 +8,7 @@
 (define VERBOSITY-HIGH 3)
 (define VERBOSITY-ALL 4)
 
-; All global variables should be moved here
+; All shared global variables should be moved here
 
 (define *verbosity* (make-parameter 0))
 (define (verbose? n) (>= (*verbosity*) n))
@@ -33,3 +33,4 @@
 (define *macro-namespace* (make-parameter (make-base-namespace)))
 
 (define *required-modules* (make-parameter (set)))
+

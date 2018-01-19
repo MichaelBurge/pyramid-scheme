@@ -2,7 +2,6 @@
 
 ; (require test-engine/racket-tests)
 (require racket/cmdline)
-(require json)
 (require binaryio/integer)
 (require lazy/force)
 (require racket/pretty)
@@ -21,6 +20,7 @@
 (require "macro.rkt")
 (require "globals.rkt")
 (require "minimize.rkt")
+(require "storage.rkt")
 
 (provide (all-defined-out))
 
@@ -40,43 +40,24 @@
       (let ([ actual (parse-type (infer-type expected) actual-bs) ])
         (assert-equal name expected actual debug-info))))
 
-(define (on-simulate-nop vm i reads) (void))
-
-(define (on-simulate-debug reverse-symbol-table vm i reads)
-  (fprintf (current-output-port) "~a" (vm-exec-step vm))
-  (write-char #\tab)
-  (display (label-name (dict-ref reverse-symbol-table (vm-exec-pc vm) (label ""))))
-  (write-char #\tab)
-  (display (integer->hex (vm-exec-pc vm)))
-  (write-char #\tab)
-  (write-json (vm-exec-stack vm))
-  (write-char #\tab)
-  (write-json (memory-dict vm))
-  (write-char #\tab)
-  (display i)
-  (write-char #\tab)
-  (write-json (variable-environment vm))
-  (newline)
-  )
-
 (define (on-error-throw vm)
   (error "Test Failure - exception thrown")
   )
 
-(: run-until-return (-> Bytes simulation-result))
-(define (run-until-return bs)
-  (let* ([ result null ]
-         [ reverse-symbol-table (invert-dict (*symbol-table*)) ]
-         [ on-simulate (if (verbose? VERBOSITY-LOW)
-                           (λ (vm i reads) (on-simulate-debug reverse-symbol-table vm i reads))
-                           on-simulate-nop)
-                       ]
-         [ vm (make-vm bs on-simulate)])
-    (*reverse-symbol-table* reverse-symbol-table)
-    (with-handlers ([ exn:evm:return? (λ (exn-return) (set! result (exn:evm:return-result exn-return)))])
-      (simulate! vm MAX-ITERATIONS))
-    (simulation-result vm result)))
-
+;; (: run-until-return (-> Bytes simulation-result))
+;; (define (run-until-return bs)
+;;   (let* ([ result null ]
+;;          [ reverse-symbol-table (invert-dict (*symbol-table*)) ]
+;;          [ on-simulate (if (verbose? VERBOSITY-LOW)
+;;                            (λ (vm i reads) (on-simulate-debug reverse-symbol-table vm i reads))
+;;                            on-simulate-nop)
+;;                        ]
+;;          [ vm (make-vm bs on-simulate)])
+;;     (*reverse-symbol-table* reverse-symbol-table)
+;;     (with-handlers ([ exn:evm:return? (λ (exn-return) (set! result (exn:evm:return-result exn-return)))])
+;;       (simulate! vm MAX-ITERATIONS))
+;;     (simulation-result vm result)))
+ 
 (: run-test (-> String Pyramid Any))
 (define (run-test name prog)
   (with-handlers ([exn:evm? (λ (x) x)]
@@ -85,13 +66,17 @@
                   ;;                (displayln `("Unexpected exception encountered" ,x))
                   ;;                x)))
                   )
-                               
     (*include-directory* "tests")
-    (let* ([ params (full-compile prog) ]
+    (when (verbose? VERBOSITY-LOW)
+      (*on-simulate-instruction* (on-simulate-debug (invert-dict (*symbol-table*)))))
+    (let* ([ params         (full-compile prog) ]
            [ initializer-bs (third params) ]
-           [ deploy-result (run-until-return initializer-bs) ]
-           [ program-bs (simulation-result-val deploy-result) ]
-           [ exec-result (run-until-return program-bs) ]
+           [ sim            (simulator (vm-world (make-hash)) (make-store))]
+           [ deploy-txn     (make-txn-create initializer-bs)]
+           [ deploy-result  (apply-txn-create! sim deploy-txn)]
+           [ contract       (vm-txn-receipt-contract-address (simulation-result-txn-receipt deploy-result))]
+           [ program-txn    (make-txn-message contract 0 (bytes)) ]
+           [ exec-result    (apply-txn-message! sim program-txn)]
            )
       (cons deploy-result exec-result))))
 

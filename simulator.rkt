@@ -6,10 +6,45 @@
 (require "codegen.rkt")
 (require "globals.rkt")
 (require binaryio/integer)
+(require json)
 
-(provide (all-defined-out))
+(provide
+ make-txn-create
+ make-txn-message
+ apply-txn-create!
+ apply-txn-message!
+ ;
+ infer-type
+ parse-type
+ ;
+ *on-simulate-instruction*
+ on-simulate-nop
+ on-simulate-debug
+ )
+
+(: apply-txn-create! (-> simulator vm-txn simulation-result-ex))
+(define (apply-txn-create! sim txn)
+  (let ([ vm (make-vm-exec sim (vm-txn-data txn)) ])
+    (handle-vm-exns vm (λ () (simulate! vm MAX-ITERATIONS)))
+    ))
+
+(: apply-txn-message! (-> simulator vm-txn simulation-result-ex))
+(define (apply-txn-message! sim txn)
+  (let* ([ bytecode (lookup-bytecode sim (vm-txn-to txn))]
+         [ vm (make-vm-exec sim bytecode)])
+    (handle-vm-exns vm (λ () (simulate! vm MAX-ITERATIONS)))))
+
+(define (on-simulate-nop vm i reads) (void))
+(define *on-simulate-instruction* (make-parameter on-simulate-nop))
+(define *nonce* (make-parameter 0))
 
 (define MEMORY-SIZE 200000)
+(define MAX-ITERATIONS 1000000)
+(define DEFAULT-GAS-PRICE 10)
+(define DEFAULT-GAS-LIMIT 1000000)
+
+; TODO: Contract address should use actual Ethereum spec rather than a counter
+(define *contract-create-counter* (make-parameter 0))
 
 ; Appendix G in Ethereum Yellow Paper: http://gavwood.com/paper.pdf
 (define G_zero          0)
@@ -59,8 +94,24 @@
 (define W_high '(JUMPI))
 (define W_extcode '(EXTCODESIZE))
 
-(: make-vm (-> Bytes Procedure evm))
-(define (make-vm bytes on-simulate)
+(: handle-vm-exns (-> vm-exec (-> Void) simulation-result-ex))
+(define (handle-vm-exns vm act)
+  (with-handlers ([ exn:evm:return? (λ (x) (simulation-result vm x (vm->receipt vm x)))]
+                  [ exn:evm? (λ (x) x)])
+    (act)))
+                    
+(: vm->receipt (-> vm-exec Bytes txn-receipt))
+(define (vm->receipt vm bs) 
+  (vm-txn-receipt (simulator-world (vm-exec-sim vm)) ; post-transaction world
+                  (vm-exec-gas vm)                   ; cumulative gas
+                  'undefined                         ; log bloom
+                  '()                                ; logs list
+                  (tick-counter! *contract-create-counter*) ; contract address
+                  )
+  )
+  
+(: make-vm-exec (-> simulation Bytes vm-exec))
+(define (make-vm-exec sim bytes)
   (vm-exec 1     ; step
            bytes ; bytecode
            0     ; pc
@@ -68,7 +119,7 @@
            (make-bytes MEMORY-SIZE) ; memory
            0     ; gas
            0     ; largest memory access
-           on-simulate
+           sim
            ))
 
 (: simulate! (-> vm-exec Fixnum Void))
@@ -97,7 +148,7 @@
                      (take stk num-reads)
                      (raise (exn:evm:stack-underflow "simulate-one!" (current-continuation-marks) vm num-reads stk)))]
          )
-    ((vm-exec-on-simulate vm) vm i reads)
+    ((*on-simulate-instruction*) vm i reads)
     (cond ((label? i)    (simulate-nop!  vm))
           ((eth-push? i) (simulate-push! vm (eth-push-size i) (eth-push-value i)))
           ((eth-asm? i)  (simulate-asm!  vm (eth-asm-name i)))
@@ -461,3 +512,60 @@
                                         (current-continuation-marks)
                                         vm
                                         addr)))))
+
+(define (on-simulate-debug reverse-symbol-table)
+  (λ (vm i reads)
+    (fprintf (current-output-port) "~a" (vm-exec-step vm))
+    (write-char #\tab)
+    (display (label-name (dict-ref reverse-symbol-table (vm-exec-pc vm) (label ""))))
+    (write-char #\tab)
+    (display (integer->hex (vm-exec-pc vm)))
+    (write-char #\tab)
+    (write-json (vm-exec-stack vm))
+    (write-char #\tab)
+    (write-json (memory-dict vm))
+    (write-char #\tab)
+    (display i)
+    (write-char #\tab)
+    (write-json (variable-environment vm))
+    (newline)
+    ))
+
+(: alloc-nonce (-> Fixnum))
+(define (alloc-nonce) (tick-counter! *nonce*))
+
+(: make-txn-create (-> bytes vm-txn))
+(define (make-txn-create bytecode)
+  (vm-txn (alloc-nonce)     ; nonce
+          DEFAULT-GAS-PRICE ; gas price
+          DEFAULT-GAS-LIMIT ; gas limit
+          null              ; to
+          0                 ; value
+          28                ; v
+          0                 ; r
+          0                 ; s
+          bytecode          ; input
+          ))
+          
+(: make-txn-message (-> Address bytes vm-txn))
+(define (make-txn-message to value input)
+  (vm-txn (alloc-nonce)     ; nonce
+          DEFAULT-GAS-PRICE ; gas price
+          DEFAULT-GAS-LIMIT ; gas limit
+          to                ; to
+          value             ; value
+          28                ; v
+          0                 ; r
+          0                 ; s
+          input             ; input
+          ))
+
+(: tick-counter! (-> (Parameter Fixnum) Fixnum))
+(define (tick-counter! x)
+  (let ([ val (x) ])
+    (x (+ 1 val))
+    val))
+       
+
+(: lookup-bytecode (-> simulator Address bytes))
+(define (lookup-bytecode sim addr) (dict-ref (vm-world-accounts (simulator-world sim)) addr))

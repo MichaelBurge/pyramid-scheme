@@ -136,6 +136,8 @@
 
 ; A VM execution state
 
+(struct simulator ([ world : vm-world ] [ store : vm-store ]))
+
 ; Exception types
 (struct exn:evm exn:fail ([ vm : vm-exec ]))
 (struct exn:evm:return exn:evm ([ result : Bytes ]))
@@ -145,12 +147,14 @@
 (struct exn:evm:stack-underflow exn:evm ([ num-elements : Fixnum ] [ stack : (Listof EthWord )]))
 (struct exn:evm:misaligned-jump exn:evm ([ addr : EthWord ]))
 
-(struct simulation-result ([ vm : vm-exec ] [ val : Bytes ]))
+(struct simulation-result ([ vm : vm-exec ] [ val : Bytes ] [ txn-receipt : vm-txn-receipt ]))
+(define-type simulation-result-ex (U simulation-result exn:evm))
 
 (define-type Address Integer) ; Ethereum addresses
+(define-type StorageRoot EthWord) 
 
 (struct vm-world ([ accounts : (HashTable Address vm-account)]))
-(struct vm-account ([ nonce : Fixnum ] [ balance : EthWord ] [ storage-root : EthWord ] [ code-hash : EthWord ]))
+(struct vm-account ([ nonce : Fixnum ] [ balance : EthWord ] [ storage-root : StorageRoot ] [ code-hash : EthWord ]))
 (struct vm-txn ([ nonce : Fixnum ]
                 [ gas-price : Fixnum ]
                 [ gas-limit : Fixnum ]
@@ -181,7 +185,14 @@
                   [ mix-hash : EthWord ]
                   [ nonce : Integer ]))
 
-(struct vm-txn-receipt ([ post-transaction : undefined ] [ cumulative-gas : Integer ] [ log-bloom : undefined ] [ logs : (Listof vm-log) ]))
+(struct vm-txn-receipt (; EVM spec
+                        [ post-transaction : vm-world ]
+                        [ cumulative-gas : Integer ]
+                        [ log-bloom : undefined ]
+                        [ logs : (Listof vm-log) ]
+                        ; Additional fields
+                        [ contract-address : (U Null Address) ]
+                        ))
 (struct vm-txn-substate ([ suicides : (Setof Address) ] [ log-series : (Setof vm-checkpoint) ] [ refund-balance : Fixnum ]))
 (struct vm-exec ([ step : Fixnum ]
                  [ bytecode : Bytes ]
@@ -190,7 +201,16 @@
                  [ memory : Bytes ]
                  [ gas : Fixnum ]
                  [ largest-accessed-memory : Fixnum ]
-                 [ on-simulate : (-> vm-exec opcode (Listof EthWord) Void) ]
+                 [ sim : simulator ]
                  )
   #:mutable
   )
+
+(define-type account-storage (HashTable EthWord EthWord)) ; An individual account's storage
+(define-type world-storage (HashTable Address account-storage)) ; All accounts' storages
+(define-type history-storage (HashTable StorageRoot world-storage)) ; All historical commit checkpoints
+
+(struct vm-store ([ history : history-storage ]
+                  [ world : world-storage ]
+                  [ account : account-storage ])
+  #:mutable)
