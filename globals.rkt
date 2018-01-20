@@ -1,5 +1,7 @@
 #lang typed/racket/no-check
 
+(require racket/undefined)
+
 (provide (all-defined-out))
 
 (define VERBOSITY-NONE 0)
@@ -19,7 +21,10 @@
 
 (define *include-directory* (make-parameter "."))
 
-(define *test-expected-result* (make-parameter null))
+(define *test-contract* (make-parameter null))
+(define *test-suite* (make-parameter undefined))
+
+
 (define *exports* (make-parameter null)) ; Used to generate the standard ABI for the current Pyramid contract
 (define *loader-size* (make-parameter 0)) ; Size of the most recently generated loader
 

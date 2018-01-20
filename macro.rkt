@@ -7,6 +7,8 @@
 (require "io.rkt")
 (require "parser.rkt")
 (require "globals.rkt")
+(require "simulator.rkt")
+(require racket/match)
 
 (provide (all-defined-out))
 #|
@@ -19,8 +21,8 @@ Functions defined here are available to Pyramid programs within macros.
   (parameterize ([ current-namespace (*macro-namespace*) ])
     (namespace-require 'racket/list)
     (namespace-require "macro.rkt")
+    (namespace-require "ast.rkt")
     )
-  (install-macro! '%-test-set-expected-result %-test-set-expected-result)
   (install-macro! 'include %-include)
   (install-macro! 'require %-require)
   )
@@ -72,9 +74,43 @@ Functions defined here are available to Pyramid programs within macros.
 (define (%-register-export sig)
   (*exports* (cons sig (*exports*))))
 
-(define (%-test-set-expected-result exp)
-  (*test-expected-result* exp)
-  '(begin))
+(define (set-test-suite! suite)
+  (*test-suite* suite)
+  (displayln (*test-suite*))
+  )
+
+(: make-test-suite (-> Pyramids Void))
+(define (make-test-suite exps)
+  (test-suite
+   "undefined" ; TODO: Use the currently-compiled filename
+   (for/list ([ exp exps ])
+     (match exp
+       [(list 'case name txns ...) (test-case name (map make-test-txn txns))]
+       [_ (error "make-test-suite: Unexpected syntax" exp)]))))
+
+(: make-parser (-> Any (-> simulation-result-ex Any)))
+(define (make-parser expected)
+  (λ (x)
+    (if (exn:evm:return? x)
+        (parse-type (infer-type expected) (exn:evm:return-result x))
+        x)))
+  
+(: make-test-txn (-> Pyramid test-txn))
+(define (make-test-txn exp)
+  (match exp
+    [(list 'txn (list 'result expected)) (test-txn (make-txn-message *test-contract* 0 (bytes))
+                                              expected
+                                              (make-parser expected))]
+    [_ (error "make-test-txn: Unexpected syntax" exp)]
+    ))
+
+(: make-simple-test-suite (-> Pyramid Void))
+(define (make-simple-test-suite exp)
+  (match exp
+    [(list expected) (test-txn (make-txn-message *test-contract* 0 (bytes))
+                               expected
+                               (make-parser expected))]
+    ))
 
 (define %-include
   (case-lambda

@@ -43,20 +43,6 @@
 (define (on-error-throw vm)
   (error "Test Failure - exception thrown")
   )
-
-;; (: run-until-return (-> Bytes simulation-result))
-;; (define (run-until-return bs)
-;;   (let* ([ result null ]
-;;          [ reverse-symbol-table (invert-dict (*symbol-table*)) ]
-;;          [ on-simulate (if (verbose? VERBOSITY-LOW)
-;;                            (λ (vm i reads) (on-simulate-debug reverse-symbol-table vm i reads))
-;;                            on-simulate-nop)
-;;                        ]
-;;          [ vm (make-vm bs on-simulate)])
-;;     (*reverse-symbol-table* reverse-symbol-table)
-;;     (with-handlers ([ exn:evm:return? (λ (exn-return) (set! result (exn:evm:return-result exn-return)))])
-;;       (simulate! vm MAX-ITERATIONS))
-;;     (simulation-result vm result)))
  
 (: run-test (-> String Pyramid Any))
 (define (run-test name prog)
@@ -113,17 +99,40 @@
      (cons 'dg (vm-exec-gas deploy-vm))
      (cons 'dz (bytes-length (vm-exec-bytecode deploy-vm))))))
 
+(: run-test-case (-> Bytes test-case simulation-result-exs))
+(define (run-test-case bytecode cs)
+  (*include-directory* "tests")
+  (when (verbose? VERBOSITY-LOW)
+    (*on-simulate-instruction* (on-simulate-debug (invert-dict (*symbol-table*)))))
+  (let* ([ sim            (simulator (vm-world (make-hash)) (make-store))]
+         [ deploy-txn     (make-txn-create bytecode)]
+         [ deploy-result  (apply-txn-create! sim deploy-txn)]
+         [ contract       (vm-txn-receipt-contract-address (simulation-result-txn-receipt deploy-result))]
+         [ program-txn    (make-txn-message contract 0 (bytes)) ]
+         [ exec-result    (apply-txn-message! sim program-txn)]
+         )
+    (cons deploy-result
+          (for/list ([ txn-test (test-case-txns cs) ]
+                     [ i (length (test-case-txns cs)) ])
+            (let ([ exec-result (apply-txn-message! sim (test-txn-txn txn-test))]
+                  [ name (string-append (test-case-name cs) "/" (integer->string i))])
+              (assert-equal name (test-txn-expected txn-test (test-txn-actual exec-result)))
+              )))))
+
+(: run-test-suite (-> Bytes test-suite Void))
+(define (run-test-suite bytecode suite)
+  (for ([ x (test-suite-cases suite) ])
+    (run-test-case bytecode x)
+    ))
 
 ; A test is a regular Pyramid program that uses special test macros to communicate with the compiler.
 (: assert-test (-> String Pyramid Void))
 (define (assert-test name prog)
   (if (*minimize?*)
       (minimize-test name prog)
-      (let* ([ result      (run-test name prog) ])
-        (assert-equal-vm name
-                         (*test-expected-result*)
-                         (simulation-result-val (cdr result))
-                         (debug-info result)))))
+      (let ([ bytecode (full-compile prog) ])
+        (displayln (*test-suite*))
+        (run-test-suite bytecode (*test-suite*)))))
 
 ; TODO: Turn these into unit tests.
 ; TEST 1: (cg-intros (list (const 1234) (const 4321)))

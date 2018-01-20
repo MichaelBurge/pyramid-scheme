@@ -149,6 +149,7 @@
 
 (struct simulation-result ([ vm : vm-exec ] [ val : Bytes ] [ txn-receipt : vm-txn-receipt ]))
 (define-type simulation-result-ex (U simulation-result exn:evm))
+(define-type simulation-result-exs (Listof simulation-result-ex))
 
 (define-type Address Integer) ; Ethereum addresses
 (define-type StorageRoot EthWord) 
@@ -214,3 +215,7 @@
                   [ world : world-storage ]
                   [ account : account-storage ])
   #:mutable)
+
+(struct test-txn ([ txn : vm-txn ] [ expected : Any ] [ actual : (-> simulation-result-ex Any) ]) #:transparent)
+(struct test-case ([ name : String ] [ txns : (Listof test-txn)]) #:transparent)
+(struct test-suite ([ name : String ] [ cases : (Listof test-case) ]) #:transparent)

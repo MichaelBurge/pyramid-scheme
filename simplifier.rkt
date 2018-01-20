@@ -9,7 +9,7 @@
 
 (define (simplify prog)
   (set! prog (fixpass pass-expand-macros prog))
-  ;(pretty-print prog)
+  ; (pretty-print prog)
   (set! prog (pass-inline-simple-definitions prog))
   (set! prog (fixpass pass-remove-unused-definitions prog))
   ;(pretty-print prog)
@@ -26,6 +26,7 @@
                                            (λ (x) (begin
                                                     (install-macro-exp! x)
                                                     '(begin)))))
+  ; (pretty-print prog)
   (set! prog (fixpass (λ (x)
                         (transform-ast-descendants-on x macro-application? expand-macro))
                       prog))

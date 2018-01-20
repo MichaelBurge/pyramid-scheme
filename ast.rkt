@@ -217,7 +217,7 @@ Macro example:
 
 (define macro-variable definition-variable)
 (define (macro-args exp) (cdadr exp))
-(define (macro-body exp) (caddr exp))
+(define (macro-body exp) (make-begin (cddr exp)))
 
 (: expand-macro (-> PyrApplication Pyramid))
 (define (expand-macro exp)

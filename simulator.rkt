@@ -37,6 +37,7 @@
 
 (: apply-txn-message! (-> simulator vm-txn simulation-result-ex))
 (define (apply-txn-message! sim txn)
+  
   (let* ([ bytecode (lookup-bytecode sim (vm-txn-to txn))]
          [ vm (make-vm-exec sim bytecode)])
     (with-handlers ([ exn:evm:return? (λ (x) (simulation-result vm (exn:evm:return-result x) (vm->receipt vm x)))]
