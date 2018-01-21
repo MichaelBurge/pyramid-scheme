@@ -19,6 +19,7 @@
 (define-type PyrLambda     (List 'lambda VariableNames Sequence))
 (define-type PyrBegin      (List 'begin  (Listof Pyramid)))
 (define-type PyrApplication (Pairof Pyramid Sequence))
+(define-type PyrMacroApplication PyrApplication)
 (define-type PyrMacro      (List 'defmacro (U VariableName VariableNames) (Listof Racket)))
 (define-type PyrAsmPush    (List 'push (U 'shrink Fixnum) Fixnum))
 (define-type PyrAsmOp      (List 'op Symbol))
@@ -34,6 +35,7 @@
                         PyrLambda
                         PyrBegin
                         PyrApplication
+                        PyrMacroApplication
                         PyrMacro
                         PyrAsm
                         ))

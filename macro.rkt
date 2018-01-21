@@ -23,12 +23,18 @@ Functions defined here are available to Pyramid programs within macros.
     (namespace-require 'racket/list)
     (namespace-require "macro.rkt")
     (namespace-require "ast.rkt")
+
+    ; Debug tools
+    (namespace-require "io.rkt") ; debug-print
+    (namespace-require 'racket/pretty)
     )
   (install-macro! 'include %-include)
   (install-macro! 'require %-require)
   (install-macro! 'test-suite %-test-suite)
   (install-macro! 'set-test-result! %-test-result)
   )
+
+(define (snoc xs x) (append xs (list x)))
 
 ; Compiles a fragment of code rather than a whole program.
 ; The fragment doesn't have standard library or environment initialization code.

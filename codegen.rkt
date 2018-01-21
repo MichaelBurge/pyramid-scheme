@@ -181,6 +181,7 @@ These optimizations are currently unimplemented:
     (namespace-set-variable-value! 'op    (λ (x) (list (eth-asm x)))      #t)
     (namespace-set-variable-value! 'label (λ (x) (list (label x)))        #t)
     (namespace-set-variable-value! 'byte  (λ (x) (list (eth-unknown x)))  #t)
+    ;(namespace-set-variable-value! 'block (λ (xs ...) (apply append (map parse-asm xs))))
     
     (define (parse-asm i) (eval i))
 

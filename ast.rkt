@@ -260,6 +260,8 @@ Macro example:
 
 (define (asm-insts exp) (cdr exp))
 
+(define (make-asm exps) (cons 'asm exps))
+
 (: transform-ast-children (-> Pyramid (-> Pyramid Pyramid) Pyramid))
 (define (transform-ast-children x f)
   (cond [(quoted?   x) x]

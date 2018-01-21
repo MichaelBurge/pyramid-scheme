@@ -6,74 +6,52 @@
 (defmacro (intro-var v1 . f)
   (list* 'asm
          `(op-lookup-variable-value (const (quote ,v1)) (reg 'env))
-         (if (null? f)
-             null
-             (list `(,(car f) stack))
-             )))
+         (if (null? f) null (list `(,(car f) stack)))))
 
 (defmacro (func-return)
   `(asm
     (cg-write-reg (reg 'val) stack)
     (cg-goto (reg 'continue))))
 
-(defmacro (%-nullop xs)
-  `(begin
-     (asm ,xs (cg-make-fixnum stack))
-     (func-return)
-     ))
+(defmacro (make-arities)
+  (define vs "abcdefghijklmnopqrstuvwxyz")
+  (define (arity reads writes box-output? unbox-input?)
+    (define uq 'unquote)
+    (define qq 'quasiquote)
+    (define (maybe->list pred? x) (if pred? (list x) '()))
+    (define (intro c) `(intro-var (,uq ,c) ,@(maybe->list unbox-input? 'cg-unbox-integer)))
+    (define intros (reverse (for/list ([ c (in-string vs 0 reads) ])
+                              (intro (string->symbol (string c))))))
+    `(,qq (begin ,@intros
+                 (asm (,uq x))
+                 (asm ,@(maybe->list box-output? '(cg-make-fixnum stack)))
+                 (func-return))))
+  `(begin               ;                   R W BO BI
+    (defmacro (nullop x)            ,(arity 0 1 #t #t))
+    (defmacro (unop x a)            ,(arity 1 1 #t #t))
+    (defmacro (unproc x a)          ,(arity 1 0 #f #t))
+    (defmacro (binop x a b)         ,(arity 2 1 #t #t))
+    (defmacro (binop-boolean x a b) ,(arity 2 1 #f #t))
+    (defmacro (binop-unboxed x a b) ,(arity 2 1 #f #f))
+    (defmacro (biproc x a b)        ,(arity 2 0 #f #t))
+    (defmacro (triop x a b c)       ,(arity 3 1 #t #t))
+    (defmacro (triproc x a b c)     ,(arity 3 0 #f #t))))
 
-(defmacro (%-unop xs v1)
-  `(begin
-     (intro-var ,v1 cg-unbox-integer) ; [ v1 ]
-     (asm ,xs (cg-make-fixnum stack))    ; [ result ]       
-     (func-return)
-    ))
+(make-arities)
 
-(defmacro (%-binop xs v1 v2)
-  `(begin
-     (intro-var ,v2 cg-unbox-integer) ; [v2]
-     (intro-var ,v1 cg-unbox-integer) ; [v1;v2]
-     (asm ,xs (cg-make-fixnum stack)) ; [result]
-     (func-return)                    ; [ ]
-    ))
-
-(defmacro (%-binop-boolean xs v1 v2)
-  `(begin
-     (intro-var ,v2 cg-unbox-integer) ; [v2]
-     (intro-var ,v1 cg-unbox-integer) ; [v1;v2]
-     (asm ,xs)                        ; result
-     (func-return
-      )))
-
-(defmacro (%-binop-unboxed xs v1 v2)
-  `(begin
-     (intro-var ,v2) ; [v2]
-     (intro-var ,v1) ; [v1;v2]
-     (asm ,xs)       ; [result]
-     (func-return)
-     ))
-
-(defmacro (%-triop xs v1 v2 v3)
-  `(begin
-     (intro-var ,v2 cg-unbox-integer) ; [v2]
-     (intro-var ,v1 cg-unbox-integer) ; [v1;v2]
-     (asm ,xs (cg-make-fixnum stack))   ; [result]
-     (func-return)                    ; [ ]
-     ))
-  
-; "True" Primitives
-(define (%-+ a b)     (%-binop  (op 'ADD) a b))
-(define (%-* a b)     (%-binop  (op 'MUL) a b))
-(define (%-- a b)     (%-binop  (op 'SUB) a b))
-(define (%-/ a b)     (%-binop  (op 'DIV) a b))
-(define (%-mod a b)   (%-binop  (op 'MOD) a b))
-(define (%-= a b)     (%-binop-boolean  (op 'EQ ) a b))
-(define (%-> a b)     (%-binop-boolean  (op 'GT ) a b))
-(define (%-< a b)     (%-binop-boolean  (op 'LT ) a b))
-(define (%-ptr-= a b) (%-binop-unboxed (op 'EQ) a b))
-(define (%-suicide a) (%-unop   (asm 'SUICIDE) a))
-(define (%-address)   (%-nullop (asm 'ADDRESS)  ))
-(define (%-balance a) (%-unop   (asm 'BALANCE) a))
+; Primitives table
+(define (%-+ a b)     (binop (op 'ADD) a b))
+(define (%-* a b)     (binop (op 'MUL) a b))
+(define (%-- a b)     (binop (op 'SUB) a b))
+(define (%-/ a b)     (binop (op 'DIV) a b))
+(define (%-mod a b)   (binop (op 'MOD) a b))
+(define (%-= a b)     (binop-boolean  (op 'EQ ) a b))
+(define (%-> a b)     (binop-boolean  (op 'GT ) a b))
+(define (%-< a b)     (binop-boolean  (op 'LT ) a b))
+(define (%-ptr-= a b) (binop-unboxed (op 'EQ) a b))
+(define (%-suicide a) (unproc (op 'SUICIDE) a))
+(define (%-address)   (nullop (op 'ADDRESS)  ))
+(define (%-balance a) (unop   (op 'BALANCE) a))
 (define (%-log1 bs t)
   (intro-var t)                   ; [ t ]
   (intro-var bs)                  ; [ bs; t ]
@@ -85,20 +63,20 @@
        (cg-goto (reg 'continue))) ; [ ]
   )
 
-(define (%-origin)       (%-nullop (op 'ORIGIN)))
-(define (%-caller)       (%-nullop (op 'CALLER)))
-(define (%-callvalue)    (%-nullop (op 'CALLVALUE)))
-(define (%-calldataload a) (%-unop (op 'CALLDATALOAD) a))
-(define (%-timestamp)    (%-nullop (op 'TIMESTAMP)))
+(define (%-origin)       (nullop (op 'ORIGIN)))
+(define (%-caller)       (nullop (op 'CALLER)))
+(define (%-callvalue)    (nullop (op 'CALLVALUE)))
+(define (%-calldataload a) (unop (op 'CALLDATALOAD) a))
+(define (%-timestamp)    (nullop (op 'TIMESTAMP)))
 
-(define (%-tag a)            (%-unop  (cg-tag stack) a))
-(define (%-mem-alloc a)      (%-unop  (cg-allocate stack) a))
-(define (%-mem-read a b)     (%-binop (cg-read-address-offset stack stack) a b))
-(define (%-mem-write! a b c) (%-triop (cg-write-address-offset stack stack stack) a b c))
-(define (%-store-read a)     (%-unop  (op 'SLOAD) a))
-(define (%-store-write! a b) (%-binop (op 'SSTORE) a b))
-(define (%-box a)   (%-unop (cg-make-fixnum stack)   a))
-(define (%-unbox a) (%-unop (cg-unbox-integer stack) a))
+(define (%-tag a)            (unop    (cg-tag stack) a))
+(define (%-mem-alloc a)      (unop    (cg-allocate stack) a))
+(define (%-mem-read a b)     (binop   (cg-read-address-offset stack stack) a b))
+(define (%-mem-write! a b c) (triproc (cg-write-address-offset stack stack stack) a b c))
+(define (%-store-read a)     (unop    (op 'SLOAD) a))
+(define (%-store-write! a b) (biproc  (op 'SSTORE) a b))
+(define (%-box a)            (unop    (cg-make-fixnum stack)   a))
+(define (%-unbox a)          (unop    (cg-unbox-integer stack) a))
 
 (define (%-throw) (%-nullop (op 'REVERT)))
 
