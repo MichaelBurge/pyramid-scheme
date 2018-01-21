@@ -8,9 +8,9 @@
          `(op-lookup-variable-value (const (quote ,v1)) (reg 'env))
          (if (null? f) null (list `(,(car f) stack)))))
 
-(defmacro (func-return)
+(defmacro (func-return [ save? #t ])
   `(asm
-    (cg-write-reg (reg 'val) stack)
+    ,@(maybe->list save? '(cg-write-reg (reg 'val) stack))
     (cg-goto (reg 'continue))))
 
 (defmacro (make-arities)
@@ -18,14 +18,13 @@
   (define (arity reads writes box-output? unbox-input?)
     (define uq 'unquote)
     (define qq 'quasiquote)
-    (define (maybe->list pred? x) (if pred? (list x) '()))
     (define (intro c) `(intro-var (,uq ,c) ,@(maybe->list unbox-input? 'cg-unbox-integer)))
     (define intros (reverse (for/list ([ c (in-string vs 0 reads) ])
                               (intro (string->symbol (string c))))))
     `(,qq (begin ,@intros
                  (asm (,uq x))
                  (asm ,@(maybe->list box-output? '(cg-make-fixnum stack)))
-                 (func-return))))
+                 (func-return ,(equal? writes 1)))))
   `(begin               ;                   R W BO BI
     (defmacro (nullop x)            ,(arity 0 1 #t #t))
     (defmacro (unop x a)            ,(arity 1 1 #t #t))

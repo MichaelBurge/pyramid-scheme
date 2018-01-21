@@ -2,6 +2,7 @@
 
 (require "types.rkt")
 (require "globals.rkt")
+(require "io.rkt")
 
 (provide make-store
          store-load-checkpoint!
@@ -16,18 +17,13 @@
 (define HARDCODED-STORAGE-ROOT #xFFFFFFFF)
 
 (: make-store (-> vm-store))
-(define (make-store) (vm-store (make-hash) null null))
+(define (make-store) (vm-store null null (make-hash)))
 
 (: store-load-checkpoint! (-> vm-store StorageRoot Void))
-(define (store-load-checkpoint! store root)
-  (set-vm-store-world! store (dict-ref (vm-store-history store) root (make-hash))))
+(define (store-load-checkpoint! store root) (void))
 
 (: store-set-account! (-> vm-store Address Void))
-(define (store-set-account! store target)
-  (when (null? target)
-    (error "store-set-account!: A null address has no associated storage"))
-  (set-vm-store-account! store
-                         (dict-ref (vm-store-world store) target (make-hash))))
+(define (store-set-account! store target) (void))
 
 (: store-get-value (-> vm-store EthWord EthWord))
 (define (store-get-value store key) (dict-ref (vm-store-account store) key 0))

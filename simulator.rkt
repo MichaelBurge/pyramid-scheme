@@ -325,7 +325,6 @@
 
 (: read-memory-word (-> vm-exec Fixnum Fixnum Integer))
 (define (read-memory-word vm addr len)
-  (check-addr vm addr)
   (bytes->integer (read-memory vm addr len)
                   #f))
 
@@ -339,7 +338,6 @@
 
 (: write-memory-word! (-> vm-exec Fixnum Fixnum Integer Void))
 (define (write-memory-word! vm addr len val)
-  (check-addr vm addr)
   (write-memory! vm addr (integer->bytes val len #f)))
 
 (: write-memory! (-> vm-exec Fixnum Bytes Void))

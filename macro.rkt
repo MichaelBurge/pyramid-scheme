@@ -35,6 +35,7 @@ Functions defined here are available to Pyramid programs within macros.
   )
 
 (define (snoc xs x) (append xs (list x)))
+(define (maybe->list pred? x) (if pred? (list x) '()))
 
 ; Compiles a fragment of code rather than a whole program.
 ; The fragment doesn't have standard library or environment initialization code.

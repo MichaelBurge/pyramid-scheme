@@ -32,3 +32,6 @@
 (define (debug-print . xs)
   (apply display xs)
   (newline))
+
+(define-syntax-rule (verbose-print verbosity xs ...)
+  (when (verbose? verbosity) (debug-print xs ...)))
