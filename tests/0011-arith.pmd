@@ -1,4 +1,4 @@
-(%-test-set-expected-result 3)
+(set-test-result! 3)
 
 (include psl "arith.pmd")
 

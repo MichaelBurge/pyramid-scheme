@@ -1,4 +1,4 @@
-(%-test-set-expected-result 5)
+(set-test-result! 5)
 
 (asm
  (label 'example) ; Labels evaluate to their eventual bytecode position

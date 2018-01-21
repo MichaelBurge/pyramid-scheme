@@ -1,3 +1,3 @@
-(%-test-set-expected-result 120)
+(set-test-result! 120)
 
 (include "0001-factorial.pmd")

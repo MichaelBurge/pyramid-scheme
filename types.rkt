@@ -117,8 +117,8 @@
 
 (define-type Values (Listof Value))
 
-(struct primitive ([ implementation : Procedure ]))
-(struct procedure ([ parameters : VariableNames ] [ body : Sequence ] [ environment : Environment ]))
+(struct primitive ([ implementation : Procedure ]) #:transparent)
+(struct procedure ([ parameters : VariableNames ] [ body : Sequence ] [ environment : Environment ]) #:transparent)
 
 ; Code generator
 (struct eth-asm     ([ name : Symbol ]) #:transparent)
@@ -134,28 +134,30 @@
 
 (define-type EthWord Integer)
 
+(struct full-compile-result ([ bytecode : Bytes ] [ abstract-insts : Instructions ] [ eth-insts : EthInstructions ]) #:transparent)
+
 ; A VM execution state
 
-(struct simulator ([ world : vm-world ] [ store : vm-store ]))
+(define-type CodeHash EthWord)
+(struct simulator ([ accounts : vm-world ] [ store : vm-store ] [ code-db : (HashTable CodeHash Bytes) ] ) #:transparent)
 
 ; Exception types
-(struct exn:evm exn:fail ([ vm : vm-exec ]))
-(struct exn:evm:return exn:evm ([ result : Bytes ]))
-(struct exn:evm:misaligned-addr exn:evm ([ addr : EthWord ]))
-(struct exn:evm:throw exn:evm ([ value : Bytes ]))
-(struct exn:evm:did-not-halt exn:evm ([ max-iterations : Fixnum ]))
-(struct exn:evm:stack-underflow exn:evm ([ num-elements : Fixnum ] [ stack : (Listof EthWord )]))
+(struct exn:evm exn:fail ([ vm : vm-exec ]) #:transparent)
+(struct exn:evm:return exn:evm ([ result : Bytes ]) #:transparent)
+(struct exn:evm:misaligned-addr exn:evm ([ addr : EthWord ]) #:transparent)
+(struct exn:evm:throw exn:evm ([ value : Bytes ]) #:transparent)
+(struct exn:evm:did-not-halt exn:evm ([ max-iterations : Fixnum ]) #:transparent)
+(struct exn:evm:stack-underflow exn:evm ([ num-elements : Fixnum ] [ stack : (Listof EthWord )]) #:transparent)
 (struct exn:evm:misaligned-jump exn:evm ([ addr : EthWord ]))
 
-(struct simulation-result ([ vm : vm-exec ] [ val : Bytes ] [ txn-receipt : vm-txn-receipt ]))
+(struct simulation-result ([ vm : vm-exec ] [ val : Bytes ] [ txn-receipt : vm-txn-receipt ]) #:transparent)
 (define-type simulation-result-ex (U simulation-result exn:evm))
 (define-type simulation-result-exs (Listof simulation-result-ex))
 
 (define-type Address Integer) ; Ethereum addresses
-(define-type StorageRoot EthWord) 
+(define-type StorageRoot EthWord)
 
-(struct vm-world ([ accounts : (HashTable Address vm-account)]))
-(struct vm-account ([ nonce : Fixnum ] [ balance : EthWord ] [ storage-root : StorageRoot ] [ code-hash : EthWord ]))
+(struct vm-account ([ nonce : Fixnum ] [ balance : EthWord ] [ storage-root : StorageRoot ] [ code-hash : CodeHash ]) #:mutable)
 (struct vm-txn ([ nonce : Fixnum ]
                 [ gas-price : Fixnum ]
                 [ gas-limit : Fixnum ]
@@ -164,11 +166,14 @@
                 [ v : Fixnum ]
                 [ r : Integer ]
                 [ s : Integer ]
-                [ data : Bytes ]))
+                [ data : Bytes ])
+  #:transparent
+  )
 
 (define-type undefined Any)
 (define-type vm-checkpoint undefined)
 (define-type vm-log undefined)
+(define-type vm-world (HashTable Address vm-account))
 
 (struct vm-block ([ parent-hash : EthWord ]
                   [ ommers-hash : EthWord ]
@@ -184,7 +189,9 @@
                   [ timestamp : Fixnum ]
                   [ extra-data : EthWord ]
                   [ mix-hash : EthWord ]
-                  [ nonce : Integer ]))
+                  [ nonce : Integer ])
+  #:transparent
+  )
 
 (struct vm-txn-receipt (; EVM spec
                         [ post-transaction : vm-world ]
@@ -193,8 +200,10 @@
                         [ logs : (Listof vm-log) ]
                         ; Additional fields
                         [ contract-address : (U Null Address) ]
-                        ))
-(struct vm-txn-substate ([ suicides : (Setof Address) ] [ log-series : (Setof vm-checkpoint) ] [ refund-balance : Fixnum ]))
+                        )
+  #:transparent
+  )
+(struct vm-txn-substate ([ suicides : (Setof Address) ] [ log-series : (Setof vm-checkpoint) ] [ refund-balance : Fixnum ]) #:transparent)
 (struct vm-exec ([ step : Fixnum ]
                  [ bytecode : Bytes ]
                  [ pc : Fixnum ]
@@ -216,6 +225,6 @@
                   [ account : account-storage ])
   #:mutable)
 
-(struct test-txn ([ txn : vm-txn ] [ expected : Any ] [ actual : (-> simulation-result-ex Any) ]) #:transparent)
+(struct test-txn ([ txn : (-> vm-txn) ] [ expected : Any ] [ actual : (-> simulation-result-ex Any) ]) #:transparent)
 (struct test-case ([ name : String ] [ txns : (Listof test-txn)]) #:transparent)
 (struct test-suite ([ name : String ] [ cases : (Listof test-case) ]) #:transparent)

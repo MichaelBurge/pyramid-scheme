@@ -8,6 +8,7 @@
 (require "parser.rkt")
 (require "globals.rkt")
 (require "simulator.rkt")
+(require "crypto.rkt")
 (require racket/match)
 
 (provide (all-defined-out))
@@ -25,6 +26,8 @@ Functions defined here are available to Pyramid programs within macros.
     )
   (install-macro! 'include %-include)
   (install-macro! 'require %-require)
+  (install-macro! 'test-suite %-test-suite)
+  (install-macro! 'set-test-result! %-test-result)
   )
 
 ; Compiles a fragment of code rather than a whole program.
@@ -55,14 +58,6 @@ Functions defined here are available to Pyramid programs within macros.
      (string-join (map symbol->string types) ",")
      ")")))
 
-; Example: $ echo -n 'baz(uint32,bool)' | keccak-256sum
-(define (%-selector sig)
-  (with-input-from-string (%-sig-str sig)
-    (lambda ()
-      (with-output-to-string
-        (lambda ()
-          (system "keccak-256sum"))))))
-
 (define (%-parse-types tys)
   (let* ([ os 4 ]
          [ parse-ty (lambda ()
@@ -76,8 +71,15 @@ Functions defined here are available to Pyramid programs within macros.
 
 (define (set-test-suite! suite)
   (*test-suite* suite)
-  (displayln (*test-suite*))
   )
+
+(define (%-test-suite . exps)
+  (set-test-suite! (make-test-suite exps))
+  '(begin))
+
+(define (%-test-result exp)
+  (set-test-suite! (make-simple-test-suite exp))
+  '(begin))
 
 (: make-test-suite (-> Pyramids Void))
 (define (make-test-suite exps)
@@ -91,26 +93,35 @@ Functions defined here are available to Pyramid programs within macros.
 (: make-parser (-> Any (-> simulation-result-ex Any)))
 (define (make-parser expected)
   (λ (x)
-    (if (exn:evm:return? x)
-        (parse-type (infer-type expected) (exn:evm:return-result x))
+    (if (simulation-result? x)
+        (parse-type (infer-type expected) (simulation-result-val x))
         x)))
   
-(: make-test-txn (-> Pyramid test-txn))
+(: make-test-txn (-> Pyramid (-> test-txn)))
 (define (make-test-txn exp)
   (match exp
-    [(list 'txn (list 'result expected)) (test-txn (make-txn-message *test-contract* 0 (bytes))
-                                              expected
-                                              (make-parser expected))]
+    [(list 'txn (list 'result expected))
+     (λ ()
+       (test-txn (make-txn-message (*test-contract*) 0 (bytes))
+                 expected
+                 (make-parser expected)))
+     ]
     [_ (error "make-test-txn: Unexpected syntax" exp)]
     ))
 
 (: make-simple-test-suite (-> Pyramid Void))
 (define (make-simple-test-suite exp)
-  (match exp
-    [(list expected) (test-txn (make-txn-message *test-contract* 0 (bytes))
-                               expected
-                               (make-parser expected))]
-    ))
+  (test-suite
+   "undefined" ; TODO: Use the currently-compiled filename
+   (list (test-case "undefined"
+           (match exp
+             [ expected (list (λ ()
+                                (test-txn (make-txn-message (*test-contract*) 0 (bytes))
+                                          expected
+                                          (make-parser expected))))])
+           ))))
+
+(define (%-selector sig) (keccak-256 (string->bytes/utf-8 (%-sig-str sig))))
 
 (define %-include
   (case-lambda

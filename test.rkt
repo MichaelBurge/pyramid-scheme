@@ -57,7 +57,7 @@
       (*on-simulate-instruction* (on-simulate-debug (invert-dict (*symbol-table*)))))
     (let* ([ params         (full-compile prog) ]
            [ initializer-bs (third params) ]
-           [ sim            (simulator (vm-world (make-hash)) (make-store))]
+           [ sim            (make-simulator)]
            [ deploy-txn     (make-txn-create initializer-bs)]
            [ deploy-result  (apply-txn-create! sim deploy-txn)]
            [ contract       (vm-txn-receipt-contract-address (simulation-result-txn-receipt deploy-result))]
@@ -82,57 +82,50 @@
          )
     (pretty-print result)))
 
-(: debug-info (-> (Pair simulation-result simulation-result) Any))
+(: debug-info (-> simulation-result Any))
 (define (debug-info result)
-  (let* ([ deploy-result (car result) ]
-         [ exec-result (cdr result) ]
-         [ exec-vm (simulation-result-vm exec-result) ]
-         [ exec-val (simulation-result-val exec-result) ]
-         [ deploy-vm (simulation-result-vm deploy-result) ]
-         [ deploy-val (simulation-result-val deploy-result) ]
+  (let* ([ exec-vm (simulation-result-vm result) ]
+         [ exec-val (simulation-result-val result) ]
          )
     (list
-     (cons 'es (vm-exec-step exec-vm))
-     (cons 'eg (vm-exec-gas exec-vm))
-     (cons 'ez (bytes-length (vm-exec-bytecode exec-vm)))
-     (cons 'ds (vm-exec-step deploy-vm))
-     (cons 'dg (vm-exec-gas deploy-vm))
-     (cons 'dz (bytes-length (vm-exec-bytecode deploy-vm))))))
+     (cons 's (vm-exec-step exec-vm))
+     (cons 'g (vm-exec-gas exec-vm))
+     (cons 'z (bytes-length (vm-exec-bytecode exec-vm))))))
 
-(: run-test-case (-> Bytes test-case simulation-result-exs))
-(define (run-test-case bytecode cs)
-  (*include-directory* "tests")
+(: run-test-case (-> String Bytes test-case simulation-result-exs))
+(define (run-test-case name bytecode cs)
   (when (verbose? VERBOSITY-LOW)
     (*on-simulate-instruction* (on-simulate-debug (invert-dict (*symbol-table*)))))
-  (let* ([ sim            (simulator (vm-world (make-hash)) (make-store))]
+  (let* ([ sim            (make-simulator)]
          [ deploy-txn     (make-txn-create bytecode)]
          [ deploy-result  (apply-txn-create! sim deploy-txn)]
          [ contract       (vm-txn-receipt-contract-address (simulation-result-txn-receipt deploy-result))]
-         [ program-txn    (make-txn-message contract 0 (bytes)) ]
-         [ exec-result    (apply-txn-message! sim program-txn)]
          )
+    (*test-contract* contract)
     (cons deploy-result
-          (for/list ([ txn-test (test-case-txns cs) ]
-                     [ i (length (test-case-txns cs)) ])
-            (let ([ exec-result (apply-txn-message! sim (test-txn-txn txn-test))]
-                  [ name (string-append (test-case-name cs) "/" (integer->string i))])
-              (assert-equal name (test-txn-expected txn-test (test-txn-actual exec-result)))
+          (for/list ([ make-txn-test (test-case-txns cs) ]
+                     [ i (range (length (test-case-txns cs))) ])
+            (let* ([ txn (make-txn-test)]
+                   [ exec-result (apply-txn-message! sim (test-txn-txn txn))]
+                   ;[ name (string-append (test-case-name cs) "/" (integer->string i))]
+                   )
+              (assert-equal name (test-txn-expected txn) ((test-txn-actual txn) exec-result) (debug-info exec-result))
               )))))
 
-(: run-test-suite (-> Bytes test-suite Void))
-(define (run-test-suite bytecode suite)
+(: run-test-suite (-> String Bytes test-suite Void))
+(define (run-test-suite name bytecode suite)
   (for ([ x (test-suite-cases suite) ])
-    (run-test-case bytecode x)
+    (run-test-case name bytecode x)
     ))
 
 ; A test is a regular Pyramid program that uses special test macros to communicate with the compiler.
 (: assert-test (-> String Pyramid Void))
 (define (assert-test name prog)
+  (*include-directory* "tests")
   (if (*minimize?*)
       (minimize-test name prog)
-      (let ([ bytecode (full-compile prog) ])
-        (displayln (*test-suite*))
-        (run-test-suite bytecode (*test-suite*)))))
+      (let ([ result (full-compile prog) ])
+        (run-test-suite name (full-compile-result-bytecode result) (*test-suite*)))))
 
 ; TODO: Turn these into unit tests.
 ; TEST 1: (cg-intros (list (const 1234) (const 4321)))

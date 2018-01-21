@@ -5,10 +5,14 @@
 (require "serializer.rkt")
 (require "codegen.rkt")
 (require "globals.rkt")
+(require "storage.rkt")
+(require "crypto.rkt")
+(require "io.rkt")
 (require binaryio/integer)
 (require json)
 
 (provide
+ make-simulator
  make-txn-create
  make-txn-message
  apply-txn-create!
@@ -22,6 +26,9 @@
  on-simulate-debug
  )
 
+(: make-simulator (-> simulator))
+(define (make-simulator) (simulator (make-hash) (make-store) (make-hash)))
+
 (: apply-txn-create! (-> simulator vm-txn simulation-result-ex))
 (define (apply-txn-create! sim txn)
   (let ([ vm (make-vm-exec sim (vm-txn-data txn)) ])
@@ -30,14 +37,15 @@
                                                [ receipt (vm->receipt vm bs) ]
                                                [ addr (vm-txn-receipt-contract-address receipt )]
                                                )
-                                          (install-bytecode! sim addr bs)
+                                          (create-account! sim addr bs)
+                                          (lookup-bytecode sim addr)
                                           (simulation-result vm bs receipt)))])
       (simulate! vm MAX-ITERATIONS))
     ))
 
 (: apply-txn-message! (-> simulator vm-txn simulation-result-ex))
 (define (apply-txn-message! sim txn)
-  
+  (store-set-account! (simulator-store sim) (vm-txn-to txn))
   (let* ([ bytecode (lookup-bytecode sim (vm-txn-to txn))]
          [ vm (make-vm-exec sim bytecode)])
     (with-handlers ([ exn:evm:return? (λ (x) (simulation-result vm (exn:evm:return-result x) (vm->receipt vm x)))]
@@ -46,7 +54,8 @@
 
 (define (on-simulate-nop vm i reads) (void))
 (define *on-simulate-instruction* (make-parameter on-simulate-nop))
-(define *nonce* (make-parameter 0))
+(define *txn-nonce* (make-parameter 0))
+(define *account-nonce* (make-parameter 0))
 
 (define MEMORY-SIZE 200000)
 (define MAX-ITERATIONS 1000000)
@@ -106,7 +115,7 @@
                     
 (: vm->receipt (-> vm-exec Bytes txn-receipt))
 (define (vm->receipt vm bs) 
-  (vm-txn-receipt (simulator-world (vm-exec-sim vm)) ; post-transaction world
+  (vm-txn-receipt (simulator-accounts (vm-exec-sim vm)) ; post-transaction world
                   (vm-exec-gas vm)                   ; cumulative gas
                   'undefined                         ; log bloom
                   '()                                ; logs list
@@ -199,6 +208,8 @@
         ((eq? sym 'SWAP7)  (simulate-swap!  vm 7))
         ((eq? sym 'MSTORE) (simulate-mstore! vm))
         ((eq? sym 'MLOAD)  (simulate-mload! vm))
+        ((eq? sym 'SLOAD)  (simulate-sload! vm))
+        ((eq? sym 'SSTORE) (simulate-sstore! vm))
         ((eq? sym 'JUMP)   (simulate-jump! vm))
         ((eq? sym 'JUMPI)  (simulate-jumpi! vm))
         ((eq? sym 'JUMPDEST) (simulate-nop! vm))
@@ -245,6 +256,18 @@
 (define (simulate-mload! vm)
   (let ((addr (pop-stack! vm)))
     (push-stack! vm (read-memory-word vm addr 32))))
+
+(: simulate-sload! (-> vm-exec Void))
+(define (simulate-sload! vm)
+  (let* ([ addr (pop-stack! vm) ]
+         [ val (read-storage vm addr) ])
+    (push-stack! vm val)))
+    
+(: simulate-sstore! (-> vm-exec Void))
+(define (simulate-sstore! vm)
+  (let* ([ addr (pop-stack! vm) ]
+         [ val  (pop-stack! vm) ])
+    (write-storage! vm addr val)))
 
 ; JUMP and JUMPI subtract 1 to ensure they balance the plus 1 every instruction gets.
 (: simulate-jump! (-> vm-exec Void))
@@ -324,6 +347,20 @@
   (touch-memory! vm (+ addr (bytes-length val)))
   (bytes-copy! (vm-exec-memory vm) addr val))
 
+(: read-storage (-> vm-exec EthWord EthWord))
+(define (read-storage vm addr)
+  (store-get-value (vm-store vm) addr))
+
+(: write-storage! (-> vm-exec EthWord EthWord Void))
+(define (write-storage! vm addr val)
+  (store-set-value! (vm-store vm) addr val))
+
+(: vm-store (-> vm-exec vm-store))
+(define (vm-store vm)
+  (let* ([ sim (vm-exec-sim vm) ]
+         [ store (simulator-store sim) ])
+    store))
+
 (: check-addr (-> vm-exec Fixnum Fixnum))
 (define (check-addr vm addr)
   (if (equal? (modulo addr 32) 0)
@@ -360,9 +397,17 @@
       (dict-set! os-table os i)
       (set! os (+ os (instruction-size i))))))
 
+(: txn-sender (-> vm-txn Address))
+(define (txn-sender txn) 1234) ; TODO: Deduce this from v,r,s
+
 (: instruction-gas (-> vm-exec EthInstruction Fixnum))
 (define (instruction-gas vm i)
-  (define (C_sstore)  (error "C_sstore unimplemented"))
+  (define (C_sstore)
+    (let ([ addr ( get-stack vm 0) ]
+          [ val  ( get-stack vm 1) ])
+      (if (and (= (read-storage vm addr) 0) (> val 0))
+          G_sset
+          G_sreset)))
   (define (C_call)    (error "C_call unimplemented"))
   (define (C_suicide) (error "C_suicide unimplemented"))
   (define (is-asm sym) (equal? i (eth-asm sym)))
@@ -535,12 +580,12 @@
     (newline)
     ))
 
-(: alloc-nonce (-> Fixnum))
-(define (alloc-nonce) (tick-counter! *nonce*))
+(: alloc-txn-nonce (-> Fixnum))
+(define (alloc-txn-nonce) (tick-counter! *txn-nonce*))
 
 (: make-txn-create (-> bytes vm-txn))
 (define (make-txn-create bytecode)
-  (vm-txn (alloc-nonce)     ; nonce
+  (vm-txn (alloc-txn-nonce) ; nonce
           DEFAULT-GAS-PRICE ; gas price
           DEFAULT-GAS-LIMIT ; gas limit
           null              ; to
@@ -553,7 +598,9 @@
           
 (: make-txn-message (-> Address bytes vm-txn))
 (define (make-txn-message to value input)
-  (vm-txn (alloc-nonce)     ; nonce
+  (when (null? to)
+    (error "make-txn-message: 'to' cannot be null"))
+  (vm-txn (alloc-txn-nonce) ; nonce
           DEFAULT-GAS-PRICE ; gas price
           DEFAULT-GAS-LIMIT ; gas limit
           to                ; to
@@ -571,7 +618,23 @@
     val))
        
 (: lookup-bytecode (-> simulator Address bytes))
-(define (lookup-bytecode sim addr) (dict-ref (vm-world-accounts (simulator-world sim)) addr))
+(define (lookup-bytecode sim addr)
+  (let* ([ account (dict-ref (simulator-accounts sim) addr)]
+         [ code-hash (vm-account-code-hash account)])
+    (dict-ref (simulator-code-db sim) code-hash)))
 
-(: install-bytecode! (-> simulator Address! bytes Void))
-(define (install-bytecode! sim addr bs) (dict-set! (vm-world-accounts (simulator-world sim)) addr bs))
+(: make-code-hash (-> Bytes CodeHash))
+(define (make-code-hash bs) (keccak-256-word bs))
+
+(: create-account! (-> simulator Address bytes Void))
+(define (create-account! sim addr bs)
+  (let* ([ hash (make-code-hash bs)]
+         [ store-root (store-get-root (simulator-store sim)) ]
+         [ account (vm-account (tick-counter! *account-nonce*) ; nonce
+                               0                               ; initial balance
+                               store-root                      ; storage root
+                               hash                            ; code hash
+                               )])
+    (dict-set! (simulator-accounts sim) addr account)
+    (dict-set! (simulator-code-db sim) hash bs)
+    ))

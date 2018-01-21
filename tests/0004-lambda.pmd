@@ -1,4 +1,4 @@
-(%-test-set-expected-result 21) ; 1 + 2 + 3 + 4 + 5 + 6
+(set-test-result! 21) ; 1 + 2 + 3 + 4 + 5 + 6
 
 (include psl "arith.pmd")
 

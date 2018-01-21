@@ -1,8 +1,0 @@
-(defmacro (test-suite . cases)
-  (set-test-suite! (make-test-suite cases))
-  '(begin))
-
-(defmacro (test-result exp)
-  (set-test-suite! (make-simple-test-suite exp))
-  '(begin))
-

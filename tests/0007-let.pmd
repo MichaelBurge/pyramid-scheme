@@ -1,4 +1,4 @@
-(%-test-set-expected-result 10)
+(set-test-result! 10)
 
 (include psl "syntax.pmd")
 (include psl "arith.pmd")

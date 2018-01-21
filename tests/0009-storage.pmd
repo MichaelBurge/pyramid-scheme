@@ -1,4 +1,3 @@
-(require psl "test-utils.pmd")
 (require psl "primitives.pmd")
 (require psl "syntax.pmd")
 (require psl "arith.pmd")

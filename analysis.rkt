@@ -67,4 +67,5 @@
                [ bs (maybe-link bs-unlinked) ])
           (verbose-section "EVM Disassembly" VERBOSITY-LOW
                            (λ () (print-disassembly bs-unlinked)))
-          (list instructions eth-instructions bs))))))
+          (full-compile-result bs instructions eth-instructions)
+          )))))
