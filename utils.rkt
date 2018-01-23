@@ -15,3 +15,11 @@
   (make-hash
    (map (lambda (x) (cons (cdr x) (car x)))
         (dict->list dict))))
+
+(: implies-f (All (A B) (-> (-> A Boolean) (-> A B) A (U B #f))))
+(define (implies-f pred on-true x)
+  (implies (pred x) (on-true x)))
+
+;; (define (bool-f pred on-true on-false x) (implies (pred x) (get x)))
+;; (define (const x) (λ (y) x))
+  

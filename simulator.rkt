@@ -8,6 +8,7 @@
 (require "storage.rkt")
 (require "crypto.rkt")
 (require "io.rkt")
+(require "accessors.rkt")
 (require binaryio/integer)
 (require json)
 
@@ -31,7 +32,7 @@
 
 (: apply-txn-create! (-> simulator vm-txn simulation-result-ex))
 (define (apply-txn-create! sim txn)
-  (let ([ vm (make-vm-exec sim (vm-txn-data txn)) ])
+  (let ([ vm (make-vm-exec sim txn (vm-txn-data txn)) ])
     (with-handlers ([ exn:evm:return? (λ (x)
                                         (let* ([ bs (exn:evm:return-result x )]
                                                [ receipt (vm->receipt vm bs) ]
@@ -47,7 +48,7 @@
 (define (apply-txn-message! sim txn)
   (store-set-account! (simulator-store sim) (vm-txn-to txn))
   (let* ([ bytecode (lookup-bytecode sim (vm-txn-to txn))]
-         [ vm (make-vm-exec sim bytecode)])
+         [ vm (make-vm-exec sim txn bytecode)])
     (with-handlers ([ exn:evm:return? (λ (x) (simulation-result vm (exn:evm:return-result x) (vm->receipt vm x)))]
                     [ exn:evm? (λ (x) x)])
       (simulate! vm MAX-ITERATIONS))))
@@ -123,15 +124,43 @@
                   )
   )
   
-(: make-vm-exec (-> simulation Bytes vm-exec))
-(define (make-vm-exec sim bytes)
+(: make-vm-exec (-> simulation vm-txn Bytes vm-exec))
+(define (make-vm-exec sim txn bytecode)
+  (define undefined null)
+  (define block (vm-block undefined ; parent-hash
+                          undefined ; ommers-hash
+                          undefined ; beneficiary
+                          undefined ; state-root
+                          undefined ; transactions-root
+                          undefined ; receipts-root
+                          undefined ; logs-bloom
+                          undefined ; difficulty
+                          undefined ; number
+                          undefined ; gas-limit
+                          undefined ; gas-used
+                          undefined ; timestamp
+                          undefined ; extra-data
+                          undefined ; mix-hash
+                          undefined ; nonce
+                          ))
+  (define env (vm-exec-environment (vm-txn-to txn)        ; contract
+                                   undefined              ; origin
+                                   (vm-txn-gas-price txn) ; gas-price
+                                   (vm-txn-data txn)      ; input-data
+                                   (txn-sender txn)       ; sender
+                                   (vm-txn-value txn)     ; value
+                                   bytecode               ; bytecode
+                                   block                  ; block header
+                                   0                      ; depth
+                                   #t                     ; writable?
+                                   ))
   (vm-exec 1     ; step
-           bytes ; bytecode
            0     ; pc
            null  ; stack
            (make-bytes MEMORY-SIZE) ; memory
            0     ; gas
            0     ; largest memory access
+           env
            sim
            ))
 
@@ -145,7 +174,7 @@
 
 (: instruction-at (-> vm-exec Fixnum EthInstruction))
 (define (instruction-at vm addr)
-  (cdr (disassemble-one (vm-exec-bytecode vm) addr)))
+    (cdr (disassemble-one (vm-exec-bytecode vm) addr)))
 
 (: next-instruction (-> vm-exec EthInstruction))
 (define (next-instruction vm)
@@ -217,8 +246,11 @@
         ((eq? sym 'RETURN) (simulate-return! vm))
         ((eq? sym 'REVERT) (simulate-revert! vm))
         ((eq? sym 'STOP)   (simulate-stop! vm))
+        ((eq? sym 'ADDRESS) (simulate-env! vm vm-exec-environment-contract))
+        ((eq? sym 'CALLER) (simulate-env! vm vm-exec-environment-sender))
+        ((eq? sym 'BALANCE) (simulate-balance! vm))
         (else
-         (error "Unimplemented vm-exec instruction found - simulate-asm:" sym))))
+         (error "simulate-asm - Unimplemented vm-exec instruction found:" sym))))
 
 (: simulate-unop! (-> vm-exec (-> Integer Integer) Void))
 (define (simulate-unop! vm f)
@@ -322,6 +354,15 @@
                         (current-continuation-marks)
                         vm
                         (bytes))))
+
+(: simulate-env! (-> vm-exec (All (A) (-> vm-exec-environment A)) Void))
+(define (simulate-env! vm f)
+  (define env (vm-exec-env vm))
+  (push-stack! vm (f env)))
+
+(: simulate-balance! (-> vm-exec Void))
+(define (simulate-balance! vm)
+  (push-stack! vm (account-balance (vm-exec-sim vm) (pop-stack! vm))))
 
 (: read-memory-word (-> vm-exec Fixnum Fixnum Integer))
 (define (read-memory-word vm addr len)
@@ -594,7 +635,7 @@
           bytecode          ; input
           ))
           
-(: make-txn-message (-> Address bytes vm-txn))
+(: make-txn-message (-> Address EthWord bytes vm-txn))
 (define (make-txn-message to value input)
   (when (null? to)
     (error "make-txn-message: 'to' cannot be null"))
@@ -621,6 +662,10 @@
          [ code-hash (vm-account-code-hash account)])
     (dict-ref (simulator-code-db sim) code-hash)))
 
+(: account-balance (-> simulator Address EthWord))
+(define (account-balance sim addr)
+  (vm-account-balance (dict-ref (simulator-accounts sim) addr (vm-account 0 0 0 0))))
+
 (: make-code-hash (-> Bytes CodeHash))
 (define (make-code-hash bs) (keccak-256-word bs))
 
@@ -636,3 +681,7 @@
     (dict-set! (simulator-accounts sim) addr account)
     (dict-set! (simulator-code-db sim) hash bs)
     ))
+
+(: account-value (-> simulator Address EthWord))
+(define (account-value sim addr)
+  (vm-account-balance (dict-ref (simulator-accounts sim) addr)))

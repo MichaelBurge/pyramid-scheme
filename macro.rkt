@@ -9,6 +9,8 @@
 (require "globals.rkt")
 (require "simulator.rkt")
 (require "crypto.rkt")
+(require "utils.rkt")
+(require "accessors.rkt")
 (require racket/match)
 
 (provide (all-defined-out))
@@ -94,7 +96,8 @@ Functions defined here are available to Pyramid programs within macros.
    "undefined" ; TODO: Use the currently-compiled filename
    (for/list ([ exp exps ])
      (match exp
-       [(list 'case name txns ...) (test-case name (map make-test-txn txns))]
+       [(list 'case name deploy-txn txns ...)
+        (test-case name (make-test-deploy deploy-txn) (map make-test-txn txns))]
        [_ (error "make-test-suite: Unexpected syntax" exp)]))))
 
 (: make-parser (-> Any (-> simulation-result-ex Any)))
@@ -103,27 +106,78 @@ Functions defined here are available to Pyramid programs within macros.
     (if (simulation-result? x)
         (parse-type (infer-type expected) (simulation-result-val x))
         x)))
+
+(: make-test-deploy (-> Pyramid test-txn))
+(define (make-test-deploy exp)
+  (match exp
+    [(list 'init modifiers ...)
+     (λ (bs)
+       (apply-modifiers! modifiers
+                         apply-init-modifier!
+                         (make-txn-create bs)))]
+    [_ (error "make-test-deploy: Unexpected syntax" exp)]))
+
   
 (: make-test-txn (-> Pyramid (-> test-txn)))
 (define (make-test-txn exp)
   (match exp
-    [(list 'txn (list 'result expected))
-     (λ ()
-       (test-txn (make-txn-message (*test-contract*) 0 (bytes))
-                 expected
-                 (make-parser expected)))
-     ]
+    [(list 'txn modifiers ...)
+           (λ (contract)
+             (apply-modifiers! modifiers
+                               apply-txn-modifier!
+                               (test-txn (make-txn-message contract 0 (bytes))
+                                         null
+                                         )))]
     [_ (error "make-test-txn: Unexpected syntax" exp)]
     ))
 
+(: apply-modifiers! (All (A) (-> Pyramids (-> Pyramid A Void) A Void)))
+(define (apply-modifiers! xs f! acc)
+  (for ([ x xs])
+    (f! x acc))
+  acc)
+
+(: apply-init-modifier! (-> Pyramid vm-txn Void))
+(define (apply-init-modifier! mod txn)
+  (match mod
+    [(list 'contract-value val) (set-vm-txn-value! txn val)]
+    [_ (error "apply-init-modifier: Unexpected syntax" exp)]))
+
+(: apply-txn-modifier! (-> Pyramid test-txn Void))
+(define (apply-txn-modifier! mod txn)
+  (match mod
+    [(list 'result expected) (add-test-expectation! txn (expectation-result expected))]
+    [(list 'txn-value val) (set-vm-txn-value! txn val)]
+    [(list 'contract-value val) (add-test-expectation! txn (expectation-contract-value val))]
+    [(list 'sender-value val) (add-test-expectation! txn (expectation-sender-value val))]
+    [_ (error "apply-txn-modifier: Unexpected syntax" exp)]))
+
+(: expectation-result (-> Any test-expectation))
+(define (expectation-result expected)
+  (test-expectation "return" expected (make-parser expected)))
+
+(: expectation-contract-value (-> Fixnum test-expectation))
+(define (expectation-contract-value expected)
+  (test-expectation "contract value(wei)" expected
+                    (λ (res) (implies-f simulation-result? simres-sender-value res))))
+
+(: expectation-sender-value (-> Fixnum test-expectation))
+(define (expectation-sender-value expected)
+  (test-expectation "sender value(wei)" expected
+                    (λ (res) (implies-f simulation-result? simres-sender-value res))))
+
+(: add-test-expectation! (-> test-txn test-expectation Void))
+(define (add-test-expectation! txn expect)
+  (set-test-txn-tests! txn (cons expect (test-txn-tests txn))))
+    
 (: make-simple-test-suite (-> Pyramid Void))
 (define (make-simple-test-suite exp)
   (test-suite
    "undefined" ; TODO: Use the currently-compiled filename
    (list (test-case "undefined"
            (match exp
-             [ expected (list (λ ()
-                                (test-txn (make-txn-message (*test-contract*) 0 (bytes))
+             [ expected (list (λ (contract)
+                                (test-txn (make-txn-message contract 0 (bytes))
                                           expected
                                           (make-parser expected))))])
            ))))

@@ -170,6 +170,7 @@
                 [ s : Integer ]
                 [ data : Bytes ])
   #:transparent
+  #:mutable
   )
 
 (define-type undefined Any)
@@ -206,13 +207,25 @@
   #:transparent
   )
 (struct vm-txn-substate ([ suicides : (Setof Address) ] [ log-series : (Setof vm-checkpoint) ] [ refund-balance : Fixnum ]) #:transparent)
+(struct vm-exec-environment ([ contract : Address ] ; Account currently executing
+                             [ origin : Address ]
+                             [ gas-price : EthWord ]
+                             [ input-data : Bytes ]
+                             [ sender : Address ]
+                             [ value : EthWord ]
+                             [ bytecode : Bytes ]
+                             [ header : vm-block ]
+                             [ depth : Fixnum ]
+                             [ writable? : Boolean ])
+  #:transparent
+  )
 (struct vm-exec ([ step : Fixnum ]
-                 [ bytecode : Bytes ]
                  [ pc : Fixnum ]
                  [ stack : (Listof EthWord) ]
                  [ memory : Bytes ]
                  [ gas : Fixnum ]
                  [ largest-accessed-memory : Fixnum ]
+                 [ env : vm-exec-environment ]
                  [ sim : simulator ]
                  )
   #:mutable
@@ -227,6 +240,7 @@
                   [ account : account-storage ])
   #:mutable)
 
-(struct test-txn ([ txn : (-> vm-txn) ] [ expected : Any ] [ actual : (-> simulation-result-ex Any) ]) #:transparent)
-(struct test-case ([ name : String ] [ txns : (Listof test-txn)]) #:transparent)
+(struct test-expectation ([ name : String ] [ expected : Any ] [ actual : (-> simulation-result-ex Any)]))
+(struct test-txn ([ txn : (-> vm-txn) ] [ tests : (Listof test-expectation) ]) #:transparent #:mutable)
+(struct test-case ([ name : String ] [ deploy-txn : test-txn ] [ txns : (Listof test-txn)]) #:transparent #:mutable)
 (struct test-suite ([ name : String ] [ cases : (Listof test-case) ]) #:transparent)

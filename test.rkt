@@ -21,6 +21,7 @@
 (require "globals.rkt")
 (require "minimize.rkt")
 (require "storage.rkt")
+(require "accessors.rkt")
 
 (provide (all-defined-out))
 
@@ -33,6 +34,12 @@
         (newline))
       (error "Test failed: " name expected actual))
   )
+
+(define (assert-expectation simres expect)
+  (assert-equal (test-expectation-name expect)
+                (test-expectation-expected expect)
+                ((test-expectation-actual expect) simres)
+                (debug-info simres)))
 
 (define (assert-equal-vm name expected actual-bs debug-info)
   (if (exn:fail? actual-bs)
@@ -97,21 +104,24 @@
   (when (verbose? VERBOSITY-LOW)
     (*on-simulate-instruction* (on-simulate-debug (invert-dict (*symbol-table*)))))
   (let* ([ sim            (make-simulator)]
-         [ deploy-txn     (make-txn-create bytecode)]
+         [ deploy-txn     ((test-case-deploy-txn cs) bytecode)]
          [ deploy-result  (apply-txn-create! sim deploy-txn)]
          [ contract       (vm-txn-receipt-contract-address (simulation-result-txn-receipt deploy-result))]
+         [ txns           (map (λ (f) (begin
+                                        (debug-print `(,f ,contract))
+                                        (f contract))) (test-case-txns cs))]
          )
     (*test-contract* contract)
+    (debug-print txns)
     (cons deploy-result
-          (for/list ([ make-txn-test (test-case-txns cs) ]
+          (for/list ([ txn txns ]
                      [ i (range (length (test-case-txns cs))) ])
-            (let* ([ txn (make-txn-test)]
-                   [ exec-result (apply-txn-message! sim (test-txn-txn txn))]
+            (let* ([ exec-result (apply-txn-message! sim (test-txn-txn txn))]
                    ;[ name (string-append (test-case-name cs) "/" (integer->string i))]
                    )
-              (assert-equal name (test-txn-expected txn) ((test-txn-actual txn) exec-result) (debug-info exec-result))
-              )))))
-
+              (for ([ expect (test-txn-tests txn) ])
+                (assert-expectation exec-result expect)))))))
+  
 (: run-test-suite (-> String Bytes test-suite Void))
 (define (run-test-suite name bytecode suite)
   (for ([ x (test-suite-cases suite) ])
