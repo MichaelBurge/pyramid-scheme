@@ -2,7 +2,6 @@
 
 (require "compiler.rkt")
 (require "types.rkt")
-(require "interpreter.rkt")
 (require "utils.rkt")
 (require "ast.rkt")
 (require "globals.rkt")
@@ -60,7 +59,6 @@ There is a standard library of primitive operations.
 -- Optimizations --
 These optimizations are currently unimplemented:
 * Values that are allocated and used within a lexical scope should not have infinite extent. Roll back the allocator pointer.
-* Refer to a single copy of primitive operations, rather than always inlining them.
 
 -- Constants --
 * Integers are converted into push instructions.

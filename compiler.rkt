@@ -2,7 +2,6 @@
 
 (require "types.rkt")
 (require "ast.rkt")
-(require "interpreter.rkt")
 (require "globals.rkt")
 (require racket/set)
 (provide (all-defined-out))
@@ -14,10 +13,6 @@
 
 ; Global variables
 (define label-counter 0)
-
-(: make-pyramid-machine (-> ControllerText Machine))
-(define (make-pyramid-machine text)
-  (make-machine all-regs '() text))
 
 (: compile-pyramid (-> Pyramid Target Linkage inst-seq))
 (define (compile-pyramid exp target linkage)
