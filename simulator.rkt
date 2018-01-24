@@ -9,6 +9,7 @@
 (require "crypto.rkt")
 (require "io.rkt")
 (require "accessors.rkt")
+(require file/sha1)
 (require binaryio/integer)
 (require json)
 
@@ -37,9 +38,10 @@
                                         (let* ([ bs (exn:evm:return-result x )]
                                                [ receipt (vm->receipt vm bs) ]
                                                [ addr (vm-txn-receipt-contract-address receipt )]
+                                               [ val (vm-txn-value txn) ]
                                                )
-                                          (create-account! sim addr bs)
-                                          (lookup-bytecode sim addr)
+                                          (create-account! sim addr val bs)
+                                          (sim-lookup-bytecode sim addr)
                                           (simulation-result vm bs receipt)))])
       (simulate! vm MAX-ITERATIONS))
     ))
@@ -47,8 +49,12 @@
 (: apply-txn-message! (-> simulator vm-txn simulation-result-ex))
 (define (apply-txn-message! sim txn)
   (store-set-account! (simulator-store sim) (vm-txn-to txn))
-  (let* ([ bytecode (lookup-bytecode sim (vm-txn-to txn))]
-         [ vm (make-vm-exec sim txn bytecode)])
+  (let* ([ bytecode (sim-lookup-bytecode sim (vm-txn-to txn))]
+         [ vm (make-vm-exec sim txn bytecode)]
+         [ val (vm-txn-value txn)]
+         [ from (txn-sender vm) ]
+         )
+    (transfer-money! vm val from (vm-txn-to txn))
     (with-handlers ([ exn:evm:return? (λ (x) (simulation-result vm (exn:evm:return-result x) (vm->receipt vm x)))]
                     [ exn:evm? (λ (x) x)])
       (simulate! vm MAX-ITERATIONS))))
@@ -249,6 +255,7 @@
         ((eq? sym 'ADDRESS) (simulate-env! vm vm-exec-environment-contract))
         ((eq? sym 'CALLER) (simulate-env! vm vm-exec-environment-sender))
         ((eq? sym 'BALANCE) (simulate-balance! vm))
+        ((eq? sym 'CALL) (simulate-call! vm))
         (else
          (error "simulate-asm - Unimplemented vm-exec instruction found:" sym))))
 
@@ -364,6 +371,25 @@
 (define (simulate-balance! vm)
   (push-stack! vm (account-balance (vm-exec-sim vm) (pop-stack! vm))))
 
+(: simulate-call! (-> vm-exec Void))
+(define (simulate-call! vm)
+  (let* ([ gas    (pop-stack! vm) ]
+         [ to     (pop-stack! vm) ]
+         [ val    (pop-stack! vm) ]
+         [ in-os  (pop-stack! vm) ]
+         [ in-sz  (pop-stack! vm) ]
+         [ out-os (pop-stack! vm) ]
+         [ out-sz (pop-stack! vm) ]
+         [ from   (vm-exec-contract vm)]
+         [ to-acc (account vm to) ]
+         )
+    (unless (equal? 0 (bytes-length (lookup-bytecode vm to)))
+      (error "simulate-call!: CALL to nonempty bytecode unsupported"))
+    (transfer-money! vm val from to) ; TODO: Change this to apply-txn-message!
+    (push-stack! vm 1) ; TODO: CALL shouldn't always succeed.
+    ))
+    
+
 (: read-memory-word (-> vm-exec Fixnum Fixnum Integer))
 (define (read-memory-word vm addr len)
   (bytes->integer (read-memory vm addr len)
@@ -439,6 +465,26 @@
 (: txn-sender (-> vm-txn Address))
 (define (txn-sender txn) 1234) ; TODO: Deduce this from v,r,s
 
+(: empty-hash Bytes)
+(define empty-hash (hex-string->bytes "C5D2460186F7233C927E7DB2DCC703C0E500B653CA82273B7BFAD8045D85A470"))
+
+(: empty? (-> vm-exec Address Boolean))
+(define (empty vm addr)
+  (let ([ acc (account vm addr) ])
+    (and
+     (equal? (vm-account-code-hash acc) empty-hash) ; No code
+     (= (vm-account-nonce acc) 0)                   ; Zero nonce
+     (= (vm-account-balance acc) 0)                 ; Zero balance
+     )))
+
+(: dead? (-> vm-exec Address Boolean))
+(define (dead? vm addr)
+  (or (not (account vm addr))
+      (empty? vm addr)))
+
+(: L (-> EthWord EthWord))
+(define (L n) (- n (floor (/ n 64))))
+
 (: instruction-gas (-> vm-exec EthInstruction Fixnum))
 (define (instruction-gas vm i)
   (define (C_sstore)
@@ -447,7 +493,22 @@
       (if (and (= (read-storage vm addr) 0) (> val 0))
           G_sset
           G_sreset)))
-  (define (C_call)    (error "C_call unimplemented"))
+  (define (C_call)
+    (let* ([ gas       (get-stack vm 0) ]
+           [ addr      (get-stack vm 1) ]
+           [ val       (get-stack vm 2) ]
+           [ gas?      (>= gas 0) ]
+           [ val?      (>= val 0) ]
+           [ u_g       (vm-exec-gas vm)]
+           [ C_xfer    (if gas? G_callvalue 0)]
+           [ C_new     (if (and (dead? vm addr) val?) G_newaccount 0)]
+           [ C_extra   (+ G_call C_xfer C_new) ]
+           [ C_gascap  (if (>= u_g C_extra)
+                           (min gas (L (- u_g C_extra)))
+                           gas)]
+           [ C_callgas (+ C_gascap (if val? G_callstipend 0))]
+           )
+      (+ C_gascap C_extra)))
   (define (C_suicide) (error "C_suicide unimplemented"))
   (define (is-asm sym) (equal? i (eth-asm sym)))
   (define (is-asms syms) (ormap is-asm syms))
@@ -655,26 +716,46 @@
   (let ([ val (x) ])
     (x (+ 1 val))
     val))
-       
-(: lookup-bytecode (-> simulator Address bytes))
-(define (lookup-bytecode sim addr)
-  (let* ([ account (dict-ref (simulator-accounts sim) addr)]
-         [ code-hash (vm-account-code-hash account)])
-    (dict-ref (simulator-code-db sim) code-hash)))
+
+(: sim-lookup-bytecode (-> simulator Address bytes))
+(define (sim-lookup-bytecode sim addr)
+  (let* ([ acc (sim-account sim addr) ])
+    (if acc
+        (dict-ref (simulator-code-db sim)
+                  (vm-account-code-hash acc)
+                  (bytes))
+        (bytes))))
+
+(: lookup-bytecode (-> vm-exec Address bytes))
+(define (lookup-bytecode vm addr)
+  (sim-lookup-bytecode (vm-exec-sim vm) addr))
+
+(: sim-account (-> simulator Address (U #f vm-account)))
+(define (sim-account sim addr)
+  (let ([ accs (simulator-accounts sim) ])
+    (dict-ref accs addr #f)))
+
+(: account (-> vm-exec Address (U #f vm-account)))
+(define (account vm addr)
+  (let ([ sim (vm-exec-sim vm) ])
+    (sim-account sim addr)))
 
 (: account-balance (-> simulator Address EthWord))
 (define (account-balance sim addr)
   (vm-account-balance (dict-ref (simulator-accounts sim) addr (vm-account 0 0 0 0))))
 
 (: make-code-hash (-> Bytes CodeHash))
-(define (make-code-hash bs) (keccak-256-word bs))
+(define (make-code-hash bs)
+  (if (equal? 0 (bytes-length bs))
+      empty-hash
+      (keccak-256-word bs)))
 
-(: create-account! (-> simulator Address bytes Void))
-(define (create-account! sim addr bs)
+(: create-account! (-> simulator Address EthWord Bytes Void))
+(define (create-account! sim addr val bs)
   (let* ([ hash (make-code-hash bs)]
          [ store-root (store-get-root (simulator-store sim)) ]
          [ account (vm-account (tick-counter! *account-nonce*) ; nonce
-                               0                               ; initial balance
+                               val                             ; initial balance
                                store-root                      ; storage root
                                hash                            ; code hash
                                )])
@@ -685,3 +766,22 @@
 (: account-value (-> simulator Address EthWord))
 (define (account-value sim addr)
   (vm-account-balance (dict-ref (simulator-accounts sim) addr)))
+
+(: transfer-money! (-> vm-exec EthWord Address Address Void))
+(define (transfer-money! vm amount from to)
+  (let* ([ from-acc (account vm from) ]
+         [ to-acc   (account vm to) ]
+         [ from-bal (if from-acc (vm-account-balance from-acc) 0)]
+         [ to-bal   (if to-acc   (vm-account-balance to-acc)   0)]
+         [ sim      (vm-exec-sim vm)]
+         )
+    (assert (>= from-bal amount))
+    (when (> amount 0)
+      (set-vm-account-balance! from-acc (- from-bal amount))
+      (if to-acc
+          (set-vm-account-balance! to-acc   (+ to-bal   amount))
+          (create-account! sim to amount (bytes))))))
+
+(: vm-exec-contract (-> vm-exec Address))
+(define (vm-exec-contract vm)
+  (vm-exec-environment-contract (vm-exec-env vm)))

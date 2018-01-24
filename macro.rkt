@@ -159,7 +159,7 @@ Functions defined here are available to Pyramid programs within macros.
 (: expectation-contract-value (-> Fixnum test-expectation))
 (define (expectation-contract-value expected)
   (test-expectation "contract value(wei)" expected
-                    (λ (res) (implies-f simulation-result? simres-sender-value res))))
+                    (λ (res) (implies-f simulation-result? simres-contract-value res))))
 
 (: expectation-sender-value (-> Fixnum test-expectation))
 (define (expectation-sender-value expected)

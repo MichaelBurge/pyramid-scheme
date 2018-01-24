@@ -11,8 +11,9 @@
 (define (simres-account-balance simres addr)
   (let* ([ receipt (simulation-result-txn-receipt simres) ]
          [ world (vm-txn-receipt-post-transaction receipt) ]
-         [ balance (dict-ref world addr 0) ])
-    balance))
+         [ acc (dict-ref world addr (vm-account 0 0 0 0)) ]
+         )
+    (vm-account-balance acc)))
 
 (: simres-sender-value (-> simulation-result EthWord))
 (define (simres-sender-value simres)

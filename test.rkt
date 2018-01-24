@@ -107,12 +107,9 @@
          [ deploy-txn     ((test-case-deploy-txn cs) bytecode)]
          [ deploy-result  (apply-txn-create! sim deploy-txn)]
          [ contract       (vm-txn-receipt-contract-address (simulation-result-txn-receipt deploy-result))]
-         [ txns           (map (λ (f) (begin
-                                        (debug-print `(,f ,contract))
-                                        (f contract))) (test-case-txns cs))]
+         [ txns           (map (λ (f) (f contract)) (test-case-txns cs))]
          )
     (*test-contract* contract)
-    (debug-print txns)
     (cons deploy-result
           (for/list ([ txn txns ]
                      [ i (range (length (test-case-txns cs))) ])
