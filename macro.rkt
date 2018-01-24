@@ -175,12 +175,12 @@ Functions defined here are available to Pyramid programs within macros.
   (test-suite
    "undefined" ; TODO: Use the currently-compiled filename
    (list (test-case "undefined"
+           (λ (bs) (make-txn-create bs))
            (match exp
              [ expected (list (λ (contract)
                                 (test-txn (make-txn-message contract 0 (bytes))
-                                          expected
-                                          (make-parser expected))))])
-           ))))
+                                          (list (test-expectation "return" expected (make-parser expected))))))]))
+         )))
 
 (define (%-selector sig) (keccak-256 (string->bytes/utf-8 (%-sig-str sig))))
 
