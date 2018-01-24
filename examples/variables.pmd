@@ -1,3 +1,0 @@
-(define x 10)
-(set! x 5)
-x

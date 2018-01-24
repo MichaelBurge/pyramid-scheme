@@ -1,7 +1,6 @@
 #lang typed/racket/no-check
 
 (require "compiler.rkt")
-(require "evaluator.rkt")
 (require "types.rkt")
 (require "interpreter.rkt")
 (require "utils.rkt")

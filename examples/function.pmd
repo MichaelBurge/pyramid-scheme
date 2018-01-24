@@ -1,3 +1,0 @@
-(begin
-  (define (id x) x)
-  (id 5))

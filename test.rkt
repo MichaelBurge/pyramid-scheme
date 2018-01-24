@@ -9,7 +9,6 @@
 (require "types.rkt")
 (require "ast.rkt")
 (require "compiler.rkt")
-(require "evaluator.rkt")
 (require "io.rkt")
 (require "codegen.rkt")
 (require "serializer.rkt")

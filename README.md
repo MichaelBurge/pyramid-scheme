@@ -1,6 +1,6 @@
 # Pyramid Scheme
 
-An EVM backend for SICP Scheme. This dialect of Scheme is named Pyramid.
+Pyramid is a dialect of the Scheme programming language targeting the Ethereum Virtual Machine(EVM).
 
 Here is an example of a Pyramid program: 
 ```scheme
@@ -19,7 +19,7 @@ Pyramid Scheme is under heavy construction. Join our [public Discord channel](ht
 After installing the prerequisites(listed below), 
 
 ```bash
-$ ./pyramid examples/factorial.pyr
+$ ./pyramid examples/factorial.pmd
 <long hex string>
 ```
 

@@ -1,9 +1,0 @@
-(begin
-  (define (+ a)
-    (lambda (b)
-      (if (eq? b 0)
-          a
-          ((+ (succ a)) (- b 1)))))
-  (define curry1 (+ 10))
-  (define curry2 (curry1 5))
-  curry2)
