@@ -1,16 +1,14 @@
-#lang errortrace typed/racket/no-check
+#lang errortrace typed/racket #:no-optimize
 
 (require "types.rkt")
 (require "utils.rkt")
 (require "globals.rkt")
-(require file/sha1)
-(require binaryio/integer)
 (require errortrace)
 
-(provide (all-defined-out))
+(require "typed/dict.rkt")
+(require "typed/binaryio.rkt")
 
-(define-type SymbolTable (Dict Fixnum))
-(define-type RelocationTable (Set relocation))
+(provide (all-defined-out))
 
 #| Concepts
 
@@ -25,10 +23,6 @@ numerical value to insert. It generates a relocation, but needs to leave a speci
 
 The relocation is generated at the data, not the PUSH instruction.
 |#
-
-; Constants
-
-(define assumed-label-size 2) ; TODO: Number of bytes to leave behind for label relocations. This makes it difficult to write programs larger than 65536 bytes.
 
 (: opcode-table (Listof opcode))
 (define opcode-table
@@ -178,26 +172,29 @@ The relocation is generated at the data, not the PUSH instruction.
     ,(opcode #xff 'SUICIDE      1 0)
     ))
 
+(: opcodes-by-sym (HashTable Symbol opcode))
 (define opcodes-by-sym
-  (make-hash (map (lambda (op)
-                    (cons (opcode-name op) op))
+  (make-hash (map (λ ([op : opcode]) : (Pairof Symbol opcode)
+                     ((inst cons Symbol opcode) (opcode-name op) op))
                   opcode-table)))
 
+(: opcodes-by-byte (HashTable Byte opcode))
 (define opcodes-by-byte
-  (make-hash (map (lambda (op)
-                    (cons (opcode-byte op) op))
-                  opcode-table)))
+  (make-hash (map (λ ([op : opcode]) : (Pairof Byte opcode)
+                     ((inst cons Byte opcode) (opcode-byte op) op)) opcode-table)))
 
-(: serialize-with-relocations (-> EthInstructions bytes))
+(: serialize-with-relocations (-> EthInstructions Bytes))
 (define (serialize-with-relocations is)
   (let* ((bs (serialize is)))
     (apply-relocations! bs (*relocation-table*) (*symbol-table*))
-    (*reverse-symbol-table* (invert-dict (*symbol-table*)))
+    (: rev-sym-tbl ReverseSymbolTable)
+    (define rev-sym-tbl (invert-hash (*symbol-table*)))
+    (*reverse-symbol-table* rev-sym-tbl)
     bs)
   )
 
 ; Consider using wrap-loader to prepend an initializer program.
-(: serialize (-> EthInstructions bytes))
+(: serialize (-> EthInstructions Bytes))
 (define (serialize is)
   (parameterize ([ *byte-offset* 0 ])
     (apply bytes-append (map serialize-one is))
@@ -207,17 +204,17 @@ The relocation is generated at the data, not the PUSH instruction.
   ;;     (bytes-append (serialize-one (car is))
   ;;                   (serialize     (cdr is)))))
 
-(: serialize-one (-> EthInstruction bytes))
+(: serialize-one (-> EthInstruction Bytes))
 (define (serialize-one i)
   (*byte-offset* (+ 1 (*byte-offset*)))
   (cond ((eth-asm?     i) (serialize-asm i))
         ((eth-push?    i) (serialize-push i))
         ((eth-unknown? i) (bytes (eth-unknown-byte i)))
-        ((label?       i) (serialize-label i))
+        ((label-definition? i) (serialize-label i))
         (else
          (error "Unknown EthInstruction - serialize-one:" i))))
 
-(: serialize-asm (-> eth-asm bytes))
+(: serialize-asm (-> eth-asm Bytes))
 (define (serialize-asm i)
   (serialize-opcode (eth-to-opcode i)))
 
@@ -229,11 +226,11 @@ The relocation is generated at the data, not the PUSH instruction.
         ((label? ethi) (lookup-opcode 'JUMPDEST))
         (else (error "eth-to-opcode: Unknown case"))))
 
-(: serialize-opcode (-> opcode bytes))
+(: serialize-opcode (-> opcode Bytes))
 (define (serialize-opcode op)
   (bytes (opcode-byte op)))
 
-(: serialize-push (-> eth-push bytes))
+(: serialize-push (-> eth-push Bytes))
 (define (serialize-push push)
   (let ((op (lookup-push-opcode push))
         (val (push-true-value push))
@@ -242,26 +239,28 @@ The relocation is generated at the data, not the PUSH instruction.
     (bytes-append (bytes (opcode-byte op))
                   (integer->bytes val size #f))))
 
-(: serialize-label (-> label bytes))
+(: serialize-label (-> label-definition Bytes))
 (define (serialize-label lbl)
   (remember-label! lbl)
   (serialize-asm (eth-asm 'JUMPDEST)))
 
 (: lookup-opcode (-> Symbol opcode))
 (define (lookup-opcode sym)
-  (dict-ref opcodes-by-sym sym))
+  (hash-ref opcodes-by-sym sym))
 
 (: lookup-push-opcode (-> eth-push opcode))
 (define (lookup-push-opcode push)
-  (dict-ref opcodes-by-byte (+ #x5f (push-true-size push))))
+  (: b Byte)
+  (define b (cast (+ #x5f (push-true-size push)) Byte))
+  (hash-ref opcodes-by-byte b))
 
 (: remember-label! (-> label-definition Void))
 (define (remember-label! lbl)
   (let ([ sym (label-name lbl) ]
         [ os  (+ (*byte-offset*) (label-definition-offset lbl))])
-    (dict-set! (*symbol-table*) sym (- os 1))))
+    (hash-set! (*symbol-table*) sym (- os 1))))
 
-(: push-true-value (-> eth-push integer))
+(: push-true-value (-> eth-push Integer))
 #| push-true-value:
 Either a label or integer can be pushed onto the stack.
 * An integer is emitted in big-endian form with the given size.
@@ -272,51 +271,32 @@ Either a label or integer can be pushed onto the stack.
   (let ((val (eth-push-value push)))
     (cond ((label? val) (begin
                           (generate-relocation! (relocation (*byte-offset*) (label-name val)))
-                          (dict-ref (*symbol-table*) (label-name val) 0)))
+                          (hash-ref (*symbol-table*) (label-name val) 0)))
           ; Symbols are unexpected: Labels are wrapped in a struct; quotes are expanded to integers in the code generator.
           ((symbol? val) (error "Unexpected symbol - push-true-val" val))
           ((integer? val) val)
           (else
            (error "Unknown value" val)))))
 
-(: push-true-size (-> eth-push Fixnum))
+(: push-true-size (-> eth-push Byte))
 (define (push-true-size push)
-  (if (eq? (eth-push-size push) 'shrink)
-      (let ([ val (push-true-value push) ])
+  (if (equal? (eth-push-size push) 'shrink)
+      (let ([ val : EthWord (push-true-value push) ])
         (if (equal? val 0)
             assumed-label-size
             (integer-bytes val)
             ))
       (eth-push-size push)))
 
-(define (print-symbol-table symbols)
-  (let ((show (lambda (sym os)
-                (display sym)
-                (write-char #\tab)
-                (display (integer->hex os))
-                (newline)))
-        (symbols-list (sort (dict->list symbols) < #:key (lambda (x) (cdr x)))))
-    (for ([ symbol symbols-list ])
-      (show (car symbol) (cdr symbol)))
-    (newline)))
-
-(define (print-relocations relocs)
-  (display "Relocations:") (newline)
-  (define relocs-lst (sort (set->list relocs) < #:key (lambda (x) (relocation-pos x))))
-  (for/set ([ reloc relocs-lst ])
-    (display `(,(integer->hex (relocation-pos reloc))
-               ,(relocation-symbol reloc)))
-    (newline)))
-    
-
-(: apply-relocations! (-> bytes RelocationTable LabelMap bytes))
+(: apply-relocations! (-> Bytes RelocationTable SymbolTable Void))
 (define (apply-relocations! bs relocs symbols)
+  (: apply-relocation! (-> relocation Void))
   (define (apply-relocation! reloc)
-    (let* ((val (dict-ref symbols (relocation-symbol reloc)))
+    (let* ((val (hash-ref symbols (relocation-symbol reloc)))
            (src (integer->bytes val assumed-label-size #f)))
       (assert (<= (bytes-length src) assumed-label-size))
       (bytes-copy! bs (relocation-pos reloc) src)))
-  (for/set ([ reloc relocs ])
+  (for ([ reloc relocs ])
     (apply-relocation! reloc)))
 
 (: generate-relocation! (-> relocation Void))
@@ -325,7 +305,7 @@ Either a label or integer can be pushed onto the stack.
 
 ; Ethereum programs must have two "modules": A program to run, and an initializer that returns it.
 ; This prepends a minimal initializer that returns a given program.
-(: wrap-loader (-> bytes bytes))
+(: wrap-loader (-> Bytes Bytes))
 (define (wrap-loader bs)
   (let* ((len (bytes-length bs))
          (offset (make-parameter 0))
@@ -352,58 +332,51 @@ Either a label or integer can be pushed onto the stack.
    (>= (opcode-byte op) #x60)
    (<= (opcode-byte op) #x7f)))
 
-(: op-extra-size (-> opcode Fixnum))
+(: op-extra-size (-> opcode Integer))
 (define (op-extra-size op)
   (if (push-op? op)
       (- (opcode-byte op) #x5f)
       0))
         
-(: instruction-size (-> EthInstruction Fixnum))
+(: instruction-size (-> EthInstruction Integer))
 (define (instruction-size i)
   (if (eth-push? i)
-      (+ 1 (eth-push-size i))
+      (+ 1 (push-true-size i))
       1))
 
-(: instructions-size (-> EthInstructions Fixnum))
+(: instructions-size (-> EthInstructions Integer))
 (define (instructions-size is)
-  (for/sum ([ i is ])
+  (for/sum : Integer ([ i is ])
     (instruction-size i)))
 
 (: reset-serializer-globals! (-> Void))
 (define (reset-serializer-globals!)
   (*byte-offset* 0)
-  (*symbol-table* (make-hash '()))
-  (*relocation-table* (set)))
+  (*symbol-table* (make-symbol-table))
+  (*relocation-table* (make-relocation-table)))
 
 ;; (remember-label (label 'derp))
 ;; (push-true-value (eth-push 5 'derp))
 
-(: integer->hex (-> Integer String))
-(define (integer->hex n)
-  (bytes->hex-string (integer->bytes n assumed-label-size #f)))
-
-(: patchpoint-injection (-> (Parameter Fixnum) (-> patchpoint EthInstructions)))
+(: patchpoint-injection (-> (Parameter UnlinkedOffset) (-> patchpoint EthInstructions)))
 (define (patchpoint-injection offset)
   (λ (pp)
     (let* ([ sym (patchpoint-symbol pp) ]
-           [ os  (dict-ref (*symbol-table*) sym (symbol-offset sym)) ]
+           [ os (symbol-offset sym) ]
            [ is (append
                  (patchpoint-initializer pp)             ; [ value ]
                  (list (eth-push assumed-label-size os ) ; [ ptr; value ]
                        (eth-asm 'MSTORE)))])             ; [ ]
       (offset (+ (instructions-size is) (offset)))
       is)))
-;(define injection-point (+ after-loader (dict-ref (*symbol-table*) (patchpoint-symbol pp))))
 
-(: symbol-offset (-> Symbol Fixnum))
+(: symbol-offset (-> Symbol UnlinkedOffset))
 (define (symbol-offset sym)
-  (dict-ref (*symbol-table*) sym))
+  (hash-ref (*symbol-table*) sym))
                         
 
-(: reverse-symbol-name (-> ReverseSymbolTable Fixnum String))
+(: reverse-symbol-name (-> ReverseSymbolTable Integer Symbol))
 (define (reverse-symbol-name reverse-symbol-table n)
-  (let ([ sym (dict-ref reverse-symbol-table n "") ])
-    (if (label? sym)
-        (label-name sym)
-        sym)))
+  (hash-ref reverse-symbol-table n (λ () '||)))
+
 

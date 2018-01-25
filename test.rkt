@@ -60,7 +60,7 @@
   ;;                 )
     (*include-directory* "tests")
     (when (verbose? VERBOSITY-LOW)
-      (*on-simulate-instruction* (on-simulate-debug (invert-dict (*symbol-table*)))))
+      (*on-simulate-instruction* (on-simulate-debug (invert-hash (*symbol-table*)))))
     (let* ([ params         (full-compile prog) ]
            [ initializer-bs (third params) ]
            [ sim            (make-simulator)]
@@ -101,7 +101,7 @@
 (: run-test-case (-> String Bytes test-case simulation-result-exs))
 (define (run-test-case name bytecode cs)
   (when (verbose? VERBOSITY-LOW)
-    (*on-simulate-instruction* (on-simulate-debug (invert-dict (*symbol-table*)))))
+    (*on-simulate-instruction* (on-simulate-debug (invert-hash (*symbol-table*)))))
   (let* ([ sim            (make-simulator)]
          [ deploy-txn     ((test-case-deploy-txn cs) bytecode)]
          [ deploy-result  (apply-txn-create! sim deploy-txn)]

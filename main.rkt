@@ -46,7 +46,7 @@
     (begin
       (newline) (display prog)
       (newline) (display "Abstract Instructions:") (newline)
-      (display-abstract-instructions instructions)
+      (display-abstract-instructions (inst-seq-statements instructions))
       
       ; (newline) (display "EVM Instructions:") (newline) (display-all eth-instructions)
       ; (print-symbol-table (*symbol-table*))

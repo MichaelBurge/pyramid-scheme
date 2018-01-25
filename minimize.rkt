@@ -3,6 +3,7 @@
 (require "types.rkt")
 (require "ast.rkt")
 (require "io.rkt")
+(require "utils.rkt")
 
 (require racket/match)
 (require racket/list)

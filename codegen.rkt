@@ -102,9 +102,9 @@ These optimizations are currently unimplemented:
 ; Top-level code generator
 (: codegen (Generator Instructions))
 (define (codegen is)
-  (*symbol-table* (make-hash '()))
+  (*symbol-table* (make-symbol-table))
   (*relocation-table* (set))
-  (*reverse-symbol-table* null)
+  (*reverse-symbol-table* (make-reverse-symbol-table))
 
   (append
    (cg-initialize-program)
