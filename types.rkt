@@ -79,7 +79,7 @@
 (struct reg ([name : RegisterName]) #:transparent)
 (struct const ([ value : RegisterValue ]) #:transparent)
 (struct boxed-const ([ value : RegisterValue ]) #:transparent)
-(struct label ([ name : LabelName ]) #:transparent)
+(struct label ([ name : Symbol ]) #:transparent)
 (struct op ([ name : Symbol] [ args : MExprs ]) #:transparent)
 (struct eth-stack () #:transparent)
 (define stack (eth-stack))
@@ -137,7 +137,9 @@
 (define-type EthWord Integer)
 
 (struct full-compile-result ([ bytecode : Bytes ] [ abstract-insts : Instructions ] [ eth-insts : EthInstructions ]) #:transparent)
-
+(struct relocation ([ pos : Fixnum ] [ symbol : Symbol ]) #:transparent)
+(struct patchpoint ([ symbol : Symbol ] [ initializer : EthInstructions ]) #:transparent)
+(struct label-definition label ([ offset : Fixnum ] [ virtual : Boolean ]) #:transparent)
 ; A VM execution state
 
 (define-type CodeHash EthWord)
@@ -149,7 +151,7 @@
 (struct exn:evm:misaligned-addr exn:evm ([ addr : EthWord ]) #:transparent)
 (struct exn:evm:throw exn:evm ([ value : Bytes ]) #:transparent)
 (struct exn:evm:did-not-halt exn:evm ([ max-iterations : Fixnum ]) #:transparent)
-(struct exn:evm:stack-underflow exn:evm ([ num-elements : Fixnum ] [ stack : (Listof EthWord )]) #:transparent)
+(struct exn:evm:stack-underflow exn:evm ([ ethi : EthInstruction ] [ num-elements : Fixnum ] [ stack : (Listof EthWord )]) #:transparent)
 (struct exn:evm:misaligned-jump exn:evm ([ addr : EthWord ]))
 
 (struct simulation-result ([ vm : vm-exec ] [ val : Bytes ] [ txn-receipt : vm-txn-receipt ]) #:transparent)

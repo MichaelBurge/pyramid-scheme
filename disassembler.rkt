@@ -40,7 +40,7 @@
     (define (loop n)
       (fprintf (current-output-port) "~x" n)
       (write-char #\tab)
-      (display (label-name (dict-ref reverse-symbol-table n (label ""))))
+      (display (reverse-symbol-name reverse-symbol-table n))
       ;; (print `(,(bytes-ref bs n)
       ;;          ,(push-op? (dict-ref opcodes-by-byte (bytes-ref bs n)))
       ;;          ,(op-extra-size (dict-ref opcodes-by-byte (bytes-ref bs n)))))

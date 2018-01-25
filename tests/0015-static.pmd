@@ -1,0 +1,13 @@
+(require psl "syntax.pmd")
+(require psl "arith.pmd")
+
+; Transactions have fresh addresses allocated for initialization and each message.
+; So the caller should be different during initialization and the test simulation.
+; (static) executes code during initialization.
+
+(static creator (asm (op 'CALLER)))
+(define sender (%-caller))
+
+(= creator sender)
+
+(set-test-result! 0)

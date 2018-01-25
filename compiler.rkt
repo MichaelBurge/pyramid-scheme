@@ -121,14 +121,17 @@
   (set! label-counter (+ 1 label-counter))
   label-counter)
 
-(: make-label (-> Symbol LabelName))
-(define (make-label name)
-  (label (string->symbol
-          (string-append (symbol->string name)
-                         "-"
-                         (number->string (*abstract-offset*))
-                         "-"
-                         (number->string (new-label-number))))))
+(: make-label (-> Symbol Fixnum LabelName))
+(define (make-label name [offset 0])
+  (label-definition (string->symbol
+                     (string-append (symbol->string name)
+                                    "-"
+                                    (number->string (*abstract-offset*))
+                                    "-"
+                                    (number->string (new-label-number))))
+                    offset
+                    #f
+                    ))
 
 (: compile-if (-> PyrIf Target Linkage inst-seq))
 (define (compile-if exp target linkage)

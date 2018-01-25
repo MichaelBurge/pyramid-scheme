@@ -6,6 +6,7 @@
 (require "ast.rkt")
 (require "globals.rkt")
 (require racket/list)
+(require binaryio/integer)
 
 (provide (all-defined-out))
 
@@ -174,10 +175,10 @@ These optimizations are currently unimplemented:
 (: cg-asm (Generator (Listof PyrAsm)))
 (define (cg-asm is)
   (parameterize ([ current-namespace *asm-namespace* ])
-    (namespace-set-variable-value! 'push  (λ (x y) (list (eth-push x y))) #t)
-    (namespace-set-variable-value! 'op    (λ (x) (list (eth-asm x)))      #t)
-    (namespace-set-variable-value! 'label (λ (x) (list (label x)))        #t)
-    (namespace-set-variable-value! 'byte  (λ (x) (list (eth-unknown x)))  #t)
+    (namespace-set-variable-value! 'push  (λ (x y) (list (eth-push x y)))    #t)
+    (namespace-set-variable-value! 'op    (λ (x) (list (eth-asm x)))         #t)
+    (namespace-set-variable-value! 'label (λ (x [os 0] [virtual #f]) (list (label-definition x os virtual))) #t)
+    (namespace-set-variable-value! 'bytes  (λ (n x) (map eth-unknown (bytes->list (integer->bytes x n #f #t)))) #t)
     ;(namespace-set-variable-value! 'block (λ (xs ...) (apply append (map parse-asm xs))))
     
     (define (parse-asm i) (eval i))

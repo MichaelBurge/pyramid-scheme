@@ -13,7 +13,10 @@
 (require "accessors.rkt")
 (require racket/match)
 
-(provide (all-defined-out))
+(provide (all-defined-out)
+         make-label
+         label-name
+         )
 #|
 This module is required into the namespace used to evaluate Pyramid macros.
 
@@ -21,10 +24,13 @@ Functions defined here are available to Pyramid programs within macros.
 |#
 
 (define (%-install-macro-library)
+  (define base-ns (current-namespace))
   (parameterize ([ current-namespace (*macro-namespace*) ])
+    (namespace-attach-module base-ns "globals.rkt" (current-namespace))
+    (namespace-attach-module base-ns "types.rkt" (current-namespace))
     (namespace-require 'racket/list)
     (namespace-require "macro.rkt")
-    (namespace-require "ast.rkt")
+    (namespace-require "ast.rkt") 
 
     ; Debug tools
     (namespace-require "io.rkt") ; debug-print
@@ -200,5 +206,9 @@ Functions defined here are available to Pyramid programs within macros.
        (if (set-member? (*required-modules*) key)
            '(begin)
            (%-include collection mod))))))
-  
 
+; A Patchpoint consists of a symbol table entry that should be replaced with the stack output of some bytecode.
+(: %-register-patchpoint! (-> Symbol Bytes Void))
+(define (%-register-patchpoint! sym bs)
+  (define pp (patchpoint sym bs))
+  (*patchpoints* (cons pp (*patchpoints*))))

@@ -13,3 +13,15 @@
                                         (wrap-args (cdr args) body))))])
     (wrap-args args body)
     ))
+
+(defmacro (static id expr)
+  (let* ([ is (minicompile expr) ]
+         [ lb (make-label id) ]
+         [ sym (label-name lb) ]
+         )
+    (%-register-patchpoint! sym is)
+    `(define ,id (asm (label (quote ,sym) ,2)
+                      (op 'PUSH32)
+                      (bytes 32 0)
+                      (label 'derp)
+                      (cg-make-fixnum stack)))))

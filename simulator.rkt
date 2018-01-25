@@ -194,7 +194,7 @@
          [ num-reads (opcode-num-reads op) ]
          [ reads (if (>= (length stk) num-reads)
                      (take stk num-reads)
-                     (raise (exn:evm:stack-underflow "simulate-one!" (current-continuation-marks) vm num-reads stk)))]
+                     (raise (exn:evm:stack-underflow "simulate-one!" (current-continuation-marks) vm i num-reads stk)))]
          )
     ((*on-simulate-instruction*) vm i reads)
     (cond ((label? i)    (simulate-nop!  vm))
@@ -610,7 +610,7 @@
 (define (vm-procedure vm x)
   (string-append
    "label-"
-   (symbol->string (label-name (dict-ref (*reverse-symbol-table*) (read-memory-word vm (+ x #x20) 32) (label 'ERROR))))))
+   (symbol->string (dict-ref (*reverse-symbol-table*) (read-memory-word vm (+ x #x20) 32) 'ERROR))))
 (define vm-compiled-procedure vm-procedure)
 (define vm-primitive-procedure vm-procedure)
 (define (vm-pair vm x) (cons (read-memory-word vm (+ x #x20) 32)
@@ -666,7 +666,7 @@
   (λ (vm i reads)
     (fprintf (current-output-port) "~a" (vm-exec-step vm))
     (write-char #\tab)
-    (display (label-name (dict-ref reverse-symbol-table (vm-exec-pc vm) (label ""))))
+    (display (reverse-symbol-name reverse-symbol-table (vm-exec-pc vm)))
     (write-char #\tab)
     (display (integer->hex (vm-exec-pc vm)))
     (write-char #\tab)

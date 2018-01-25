@@ -108,6 +108,11 @@
          [ contract       (vm-txn-receipt-contract-address (simulation-result-txn-receipt deploy-result))]
          [ txns           (map (λ (f) (f contract)) (test-case-txns cs))]
          )
+    (verbose-section "Deployed" VERBOSITY-HIGH
+                     (λ ()
+                       (define bs (simulation-result-val deploy-result))
+                       (print-disassembly bs)
+                       ))
     (*test-contract* contract)
     (cons deploy-result
           (for/list ([ txn txns ]

@@ -48,6 +48,13 @@
     (newline) (body)
     (newline)))
 
+(define (print-program-settings)
+  (define pps (*patchpoints*))
+  (unless (null? pps)
+    (displayln "Patch Points")
+    (for ([ pp pps ])
+      (displayln pp))))
+
 (: full-compile (-> Pyramid (List Instructions EthInstructions Bytes)))
 (define (full-compile prog)
   ; (reinitialize-globals!)
@@ -57,6 +64,8 @@
   (let ([ simplified (if (*simplify?*) (simplify prog) prog) ])
     (verbose-section "Simplified Program" VERBOSITY-LOW
                      (λ () (pretty-print simplified)))
+    (verbose-section "Program Settings" VERBOSITY-LOW
+                     (λ () (print-program-settings)))
     (let ([ instructions     (compile-pyramid simplified 'val 'next) ])
       (verbose-section "Abstract Machine Code" VERBOSITY-LOW
                        (λ () (display-abstract-instructions instructions)))
@@ -65,7 +74,12 @@
                          (λ () (display-all eth-instructions)))
         (let* ([ bs-unlinked (serialize-with-relocations eth-instructions) ]
                [ bs (maybe-link bs-unlinked) ])
+          (verbose-section "Symbol Table" VERBOSITY-MEDIUM
+                           (λ () (print-symbol-table (*symbol-table*))))
+          (verbose-section "Relocation Table" VERBOSITY-MEDIUM
+                           (λ () (print-relocations (*relocation-table*))))
           (verbose-section "EVM Disassembly" VERBOSITY-LOW
-                           (λ () (print-disassembly bs-unlinked)))
+                           (λ () (print-disassembly bs)))
+                           ;(λ () (print-disassembly bs-unlinked)))
           (full-compile-result bs instructions eth-instructions)
           )))))
