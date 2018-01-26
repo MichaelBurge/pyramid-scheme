@@ -8,6 +8,6 @@
 (static creator (asm (op 'CALLER)))
 (define sender (%-caller))
 
-(= creator sender)
+(%-bool->fixnum (= creator sender))
 
 (set-test-result! 0)

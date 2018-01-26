@@ -25,16 +25,19 @@
                  (asm (,uq x))
                  (asm ,@(maybe->list box-output? '(cg-make-fixnum stack)))
                  (func-return ,(equal? writes 1)))))
-  `(begin               ;                   R W BO BI
-    (defmacro (nullop x)            ,(arity 0 1 #t #t))
-    (defmacro (unop x a)            ,(arity 1 1 #t #t))
-    (defmacro (unproc x a)          ,(arity 1 0 #f #t))
-    (defmacro (binop x a b)         ,(arity 2 1 #t #t))
-    (defmacro (binop-boolean x a b) ,(arity 2 1 #f #t))
-    (defmacro (binop-unboxed x a b) ,(arity 2 1 #f #f))
-    (defmacro (biproc x a b)        ,(arity 2 0 #f #t))
-    (defmacro (triop x a b c)       ,(arity 3 1 #t #t))
-    (defmacro (triproc x a b c)     ,(arity 3 0 #f #t))))
+  `(begin               ;                    R W BO BI
+     (defmacro (nullop x)            ,(arity 0 1 #t #t))
+     (defmacro (unop x a)            ,(arity 1 1 #t #t))
+     (defmacro (unproc x a)          ,(arity 1 0 #f #t))
+     (defmacro (binop x a b)         ,(arity 2 1 #t #t))
+     (defmacro (binop-boolean x a b) ,(arity 2 1 #f #t))
+     (defmacro (binop-unboxed x a b) ,(arity 2 1 #f #f))
+     (defmacro (biproc x a b)        ,(arity 2 0 #f #t))
+     (defmacro (triop x a b c)       ,(arity 3 1 #t #t))
+     (defmacro (triproc x a b c)     ,(arity 3 0 #f #t))
+
+     (defmacro (stackop x)           ,(arity 0 0 #f #f))
+     ))
 
 (make-arities)
 
@@ -78,6 +81,12 @@
 (define (%-store-write! a b) (biproc  (op 'SSTORE) a b))
 (define (%-box a)            (unop    (cg-make-fixnum stack)   a))
 (define (%-unbox a)          (unop    (cg-unbox-integer stack) a))
+(defmacro (%-bool->fixnum a)
+  `(begin
+     ,a
+     (asm (cg-make-fixnum (reg 'val))
+          (cg-write-reg (reg 'val) stack))
+     ))
 
 (define (%-throw) (%-nullop (op 'REVERT)))
 

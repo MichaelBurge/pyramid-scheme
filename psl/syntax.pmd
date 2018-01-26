@@ -24,4 +24,5 @@
                       (op 'PUSH32)
                       (bytes 32 0)
                       (label 'derp)
-                      (cg-make-fixnum stack)))))
+                      (cg-make-fixnum stack)
+                      (cg-write-reg (reg 'val) stack)))))
