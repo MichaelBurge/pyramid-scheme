@@ -52,7 +52,7 @@
   (let* ([ bytecode (sim-lookup-bytecode sim (vm-txn-to txn))]
          [ vm (make-vm-exec sim txn bytecode)]
          [ val (vm-txn-value txn)]
-         [ from (txn-sender vm) ]
+         [ from (txn-sender txn) ]
          )
     (transfer-money! vm val from (vm-txn-to txn))
     (with-handlers ([ exn:evm:return? (λ (x) (simulation-result vm (exn:evm:return-result x) (vm->receipt vm x)))]
@@ -463,7 +463,7 @@
       (set! os (+ os (instruction-size i))))))
 
 (: txn-sender (-> vm-txn Address))
-(define (txn-sender txn) 1234) ; TODO: Deduce this from v,r,s
+(define (txn-sender txn) (+ 1234 (vm-txn-nonce txn))) ; TODO: Deduce this from v,r,s
 
 (: empty-hash Bytes)
 (define empty-hash (hex-string->bytes "C5D2460186F7233C927E7DB2DCC703C0E500B653CA82273B7BFAD8045D85A470"))

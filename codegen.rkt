@@ -178,7 +178,8 @@ These optimizations are currently unimplemented:
     (namespace-set-variable-value! 'push  (λ (x y) (list (eth-push x y)))    #t)
     (namespace-set-variable-value! 'op    (λ (x) (list (eth-asm x)))         #t)
     (namespace-set-variable-value! 'label (λ (x [os 0] [virtual #f]) (list (label-definition x os virtual))) #t)
-    (namespace-set-variable-value! 'bytes  (λ (n x) (map eth-unknown (bytes->list (integer->bytes x n #f #t)))) #t)
+    (namespace-set-variable-value! 'byte  (λ (x) (list (eth-unknown x))) #t)
+    (namespace-set-variable-value! 'bytes (λ (n x) (map eth-unknown (bytes->list (integer->bytes x n #f #t)))) #t)
     ;(namespace-set-variable-value! 'block (λ (xs ...) (apply append (map parse-asm xs))))
     
     (define (parse-asm i) (eval i))
