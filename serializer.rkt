@@ -1,4 +1,4 @@
-#lang errortrace typed/racket #:no-optimize
+#lang errortrace typed/racket
 
 (require "types.rkt")
 (require "utils.rkt")
@@ -172,16 +172,16 @@ The relocation is generated at the data, not the PUSH instruction.
     ,(opcode #xff 'SUICIDE      1 0)
     ))
 
-(: opcodes-by-sym (HashTable Symbol opcode))
+(: opcodes-by-sym (Immutable-HashTable Symbol opcode))
 (define opcodes-by-sym
-  (make-hash (map (λ ([op : opcode]) : (Pairof Symbol opcode)
-                     ((inst cons Symbol opcode) (opcode-name op) op))
-                  opcode-table)))
+  (make-immutable-hash (map (λ ([op : opcode]) : (Pairof Symbol opcode)
+                               ((inst cons Symbol opcode) (opcode-name op) op))
+                            opcode-table)))
 
-(: opcodes-by-byte (HashTable Byte opcode))
+(: opcodes-by-byte (Immutable-HashTable Byte opcode))
 (define opcodes-by-byte
-  (make-hash (map (λ ([op : opcode]) : (Pairof Byte opcode)
-                     ((inst cons Byte opcode) (opcode-byte op) op)) opcode-table)))
+  (make-immutable-hash (map (λ ([op : opcode]) : (Pairof Byte opcode)
+                               ((inst cons Byte opcode) (opcode-byte op) op)) opcode-table)))
 
 (: serialize-with-relocations (-> EthInstructions Bytes))
 (define (serialize-with-relocations is)
@@ -216,15 +216,14 @@ The relocation is generated at the data, not the PUSH instruction.
 
 (: serialize-asm (-> eth-asm Bytes))
 (define (serialize-asm i)
-  (serialize-opcode (eth-to-opcode i)))
+  (serialize-opcode (ethi->opcode i)))
 
-(: eth-to-opcode (-> EthInstruction opcode))
-(define (eth-to-opcode ethi)
+(: ethi->opcode (-> (U eth-asm eth-push label) opcode))
+(define (ethi->opcode ethi)
   (cond ((eth-asm? ethi) (lookup-opcode (eth-asm-name ethi)))
         ((eth-push? ethi) (lookup-push-opcode ethi))
-        ((eth-unknown? ethi) (error "eth-to-opcode: Attempted to look up eth-unknown opcode" ethi))
         ((label? ethi) (lookup-opcode 'JUMPDEST))
-        (else (error "eth-to-opcode: Unknown case"))))
+        (else (error "ethi->opcode: Unknown case"))))
 
 (: serialize-opcode (-> opcode Bytes))
 (define (serialize-opcode op)
@@ -269,9 +268,10 @@ Either a label or integer can be pushed onto the stack.
 |#
 (define (push-true-value push)
   (let ((val (eth-push-value push)))
-    (cond ((label? val) (begin
-                          (generate-relocation! (relocation (*byte-offset*) (label-name val)))
-                          (hash-ref (*symbol-table*) (label-name val) 0)))
+    (cond ((label? val)
+           (begin
+             (generate-relocation! (relocation (*byte-offset*) (label-name val)))
+             (hash-ref (*symbol-table*) (label-name val) (λ () 0))))
           ; Symbols are unexpected: Labels are wrapped in a struct; quotes are expanded to integers in the code generator.
           ((symbol? val) (error "Unexpected symbol - push-true-val" val))
           ((integer? val) val)
@@ -281,11 +281,10 @@ Either a label or integer can be pushed onto the stack.
 (: push-true-size (-> eth-push Byte))
 (define (push-true-size push)
   (if (equal? (eth-push-size push) 'shrink)
-      (let ([ val : EthWord (push-true-value push) ])
-        (if (equal? val 0)
-            assumed-label-size
-            (integer-bytes val)
-            ))
+      (let ([ val (eth-push-value push) ])
+        (cond ((label? val) assumed-label-size)
+              ((integer? val) (integer-bytes val))
+              (else (error "push-true-size: Unexpected case" val))))
       (eth-push-size push)))
 
 (: apply-relocations! (-> Bytes RelocationTable SymbolTable Void))
@@ -332,12 +331,18 @@ Either a label or integer can be pushed onto the stack.
    (>= (opcode-byte op) #x60)
    (<= (opcode-byte op) #x7f)))
 
-(: op-extra-size (-> opcode Integer))
+(: op-extra-size (-> opcode Byte))
 (define (op-extra-size op)
   (if (push-op? op)
-      (- (opcode-byte op) #x5f)
+      (cast (- (opcode-byte op) #x5f) Byte)
       0))
-        
+
+(: ethi-extra-size (-> EthInstruction Byte))
+(define (ethi-extra-size ethi)
+  (if (eth-unknown? ethi)
+      0
+      (op-extra-size (ethi->opcode ethi))))
+
 (: instruction-size (-> EthInstruction Integer))
 (define (instruction-size i)
   (if (eth-push? i)

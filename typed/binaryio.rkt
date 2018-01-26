@@ -6,8 +6,13 @@
 
 (require/typed binaryio/integer
   [ integer->bytes (-> Integer Integer Boolean Bytes)]
+  [ bytes->integer (case-> (-> Bytes Boolean Integer)
+                           (-> Bytes Boolean Boolean Integer)
+                           (-> Bytes Boolean Boolean Integer Integer)
+                           (-> Bytes Boolean Boolean Integer Integer Integer))]
   )
 
 (provide bytes->hex-string
          integer->bytes
+         bytes->integer
          )

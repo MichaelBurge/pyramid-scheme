@@ -180,7 +180,7 @@
 
 (: instruction-at (-> vm-exec Fixnum EthInstruction))
 (define (instruction-at vm addr)
-    (cdr (disassemble-one (vm-exec-bytecode vm) addr)))
+    (disassemble-one (vm-exec-bytecode vm) addr))
 
 (: next-instruction (-> vm-exec EthInstruction))
 (define (next-instruction vm)
@@ -189,7 +189,7 @@
 (: simulate-one! (-> vm-exec EthInstruction Void))
 (define (simulate-one! vm i)
   (let* ([ used-gas (instruction-gas vm i) ]
-         [ op       (eth-to-opcode i) ]
+         [ op       (ethi->opcode i) ]
          [ stk      (vm-exec-stack vm) ]
          [ num-reads (opcode-num-reads op) ]
          [ reads (if (>= (length stk) num-reads)

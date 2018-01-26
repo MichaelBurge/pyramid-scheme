@@ -574,8 +574,9 @@ These optimizations are currently unimplemented:
       (else
        (error "Unknown primitive op - cg-mexpr-op:" name args)))))
 
-(: cg-mexpr-label (Generator label))
-(define (cg-mexpr-label exp) (list (eth-push 'shrink exp)))
+(: cg-mexpr-label (Generator (U label-definition label)))
+(define (cg-mexpr-label exp)
+  (list (eth-push 'shrink exp)))
 
 (: cg-mexpr-stack (Generator Nothing))
 (define (cg-mexpr-stack) '())
