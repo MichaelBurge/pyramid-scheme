@@ -128,7 +128,7 @@ These optimizations are currently unimplemented:
         ((save?    i) (cg-save    i))
         ((restore? i) (cg-restore i))
         ((perform? i) (cg-perform i))
-        ((asm?     i) (cg-asm i))
+        ((pyr-asm? i) (cg-asm i))
         (else
          (error "Unknown instruction type -- codegen-one:" i))))
 
@@ -184,7 +184,7 @@ These optimizations are currently unimplemented:
     
     (define (parse-asm i) (eval i))
 
-    (apply append (map parse-asm (cdr is)))
+    (apply append (map parse-asm (pyr-asm-insts is)))
     )
   )
 

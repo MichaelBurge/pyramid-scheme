@@ -16,15 +16,15 @@
 (require "utils.rkt")
 (require "simulator.rkt")
 (require "analysis.rkt")
-(require "macro.rkt")
+(require (except-in "macro.rkt" make-label))
 (require "globals.rkt")
-(require "minimize.rkt")
+;(require "minimize.rkt")
 (require "storage.rkt")
 (require "accessors.rkt")
+(require "abi.rkt")
+(require "transaction.rkt")
 
 (provide (all-defined-out))
-
-(define MAX-ITERATIONS 1000000)
 
 (define (assert-equal name expected actual debug-info)
   (if (equal? expected actual)
@@ -76,17 +76,17 @@
   (cond [(and (exn? a) (exn? b)) (equal? (exn-message a) (exn-message b)) ]
         [else (equal? a b)]))
 
-(: minimize-test (-> String Pyramid Pyramid))
-(define (minimize-test name prog)
-  (let* ([ baseline (run-test name prog) ]
-         [ pred? (λ (candidate)
-                   (let ([ result (run-test name candidate) ])
-                     (begin
-                       ; (debug-print `(,candidate ,baseline ,result))
-                       (evm-result-equal? baseline result))))]
-         [ result (minimize pred? prog) ]
-         )
-    (pretty-print result)))
+;; (: minimize-test (-> String Pyramid Pyramid))
+;; (define (minimize-test name prog)
+;;   (let* ([ baseline (run-test name prog) ]
+;;          [ pred? (λ (candidate)
+;;                    (let ([ result (run-test name candidate) ])
+;;                      (begin
+;;                        ; (debug-print `(,candidate ,baseline ,result))
+;;                        (evm-result-equal? baseline result))))]
+;;          [ result (minimize pred? prog) ]
+;;          )
+;;     (pretty-print result)))
 
 (: debug-info (-> simulation-result Any))
 (define (debug-info result)
@@ -113,7 +113,7 @@
                        (define bs (simulation-result-val deploy-result))
                        (print-disassembly bs)
                        ))
-    (*test-contract* contract)
+    
     (cons deploy-result
           (for/list ([ txn txns ]
                      [ i (range (length (test-case-txns cs))) ])
@@ -133,10 +133,10 @@
 (: assert-test (-> String Pyramid Void))
 (define (assert-test name prog)
   (*include-directory* "tests")
-  (if (*minimize?*)
-      (minimize-test name prog)
+  ;; (if (*minimize?*)
+  ;;     (minimize-test name prog)
       (let ([ result (full-compile prog) ])
-        (run-test-suite name (full-compile-result-bytecode result) (*test-suite*)))))
+        (run-test-suite name (full-compile-result-bytecode result) (*test-suite*))))
 
 ; TODO: Turn these into unit tests.
 ; TEST 1: (cg-intros (list (const 1234) (const 4321)))

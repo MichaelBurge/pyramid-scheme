@@ -67,11 +67,14 @@
        (cg-goto (reg 'continue))) ; [ ]
   )
 
-(define (%-origin)       (nullop (op 'ORIGIN)))
-(define (%-caller)       (nullop (op 'CALLER)))
-(define (%-callvalue)    (nullop (op 'CALLVALUE)))
-(define (%-calldataload a) (unop (op 'CALLDATALOAD) a))
-(define (%-timestamp)    (nullop (op 'TIMESTAMP)))
+(define (%-origin)                (nullop (op 'ORIGIN)))
+(define (%-caller)                (nullop (op 'CALLER)))
+(define (%-callvalue)             (nullop (op 'CALLVALUE)))
+(define (%-calldataload data-ptr) (unop   (op 'CALLDATALOAD) data-ptr))
+(define (%-calldatasize)          (nullop (op 'CALLDATASIZE)))
+(define (%-calldatacopy mem-ptr data-ptr size)
+                                  (triop  (op 'CALLDATACOPY) mem-ptr data-ptr size))
+(define (%-timestamp)             (nullop (op 'TIMESTAMP)))
 
 (define (%-tag a)            (unop    (cg-tag stack) a))
 (define (%-mem-alloc a)      (unop    (cg-allocate stack) a))

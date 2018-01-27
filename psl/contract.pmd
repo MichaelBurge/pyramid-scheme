@@ -11,6 +11,7 @@
 (define **caller** (%-caller))
 (define **sender** **caller**)
 (define **sent-value** (%-callvalue))
+
 (define (assert-deposit amount)
   (assert (%->= (%-callvalue) amount)))
 

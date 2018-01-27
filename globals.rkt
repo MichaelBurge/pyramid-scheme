@@ -32,9 +32,6 @@
 (: *include-directory* (Parameterof String))
 (define *include-directory* (make-parameter "."))
 
-(: *test-contract* (Parameterof (U #f Address)))
-(define *test-contract* (make-parameter #f))
-
 (: *test-suite* (Parameterof test-suite))
 (define *test-suite* (make-parameter (test-suite "undefined" '())))
 
@@ -71,6 +68,18 @@
 (: *required-modules* (Parameterof (Setof Any)))
 (define *required-modules* (make-parameter (set)))
 
+(: *addresses-by-name* (Parameterof (HashTable Symbol Address)))
+(define *addresses-by-name* (make-parameter (make-symbol-table)))
+
+(: *txn-nonce* (Parameterof Integer))
+(define *txn-nonce* (make-parameter 0))
+
+(: *account-nonce* (Parameterof Integer))
+(define *account-nonce* (make-parameter 0))
 
 ; Constants
 (define assumed-label-size 2) ; TODO: Number of bytes to leave behind for label relocations. This makes it difficult to write programs larger than 65536 bytes.
+(define MEMORY-SIZE 200000)
+(define MAX-ITERATIONS 1000000)
+(define DEFAULT-GAS-PRICE 10)
+(define DEFAULT-GAS-LIMIT 1000000)

@@ -6,3 +6,5 @@
 (define (unsafe-cast x) x)
 
 (define unsafe-apply apply)
+
+(define unsafe-eval eval)

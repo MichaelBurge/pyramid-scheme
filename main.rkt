@@ -14,6 +14,7 @@
 (require "analysis.rkt")
 (require "globals.rkt")
 (require "parser.rkt")
+(require (except-in "macro.rkt" make-label))
 
 (define file-to-compile
   (command-line
@@ -60,6 +61,7 @@
     (newline)))
 
 (define (main)
+  (%-install-macro-library)
   (let ([ prog (read-file file-to-compile) ])
     (cond ((*test?*)  (assert-test file-to-compile prog))
           ((verbose? 1) (verbose-output prog))

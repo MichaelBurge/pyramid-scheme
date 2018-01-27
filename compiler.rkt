@@ -14,30 +14,22 @@
 ; Global variables
 (define label-counter 0)
 
-(: compile-pyramid (-> Pyramid Target Linkage inst-seq))
-(define (compile-pyramid exp target linkage)
-  (cond ((self-evaluating? exp)
-         (compile-self-evaluating exp target linkage))
-        ((quoted? exp) (compile-quoted exp target linkage))
-        ((asm? exp) (inst-seq '() '() (list exp)))
-        ((macro? exp) (compile-macro exp target linkage))
-        ((variable? exp)
-         (compile-variable exp target linkage))
-        ((assignment? exp)
-         (compile-assignment exp target linkage))
-        ((definition? exp)
-         (compile-definition exp target linkage))
-        ((if? exp) (compile-if exp target linkage))
-        ((lambda? exp) (compile-lambda exp target linkage))
-        ((begin? exp)
-         (compile-sequence (begin-actions exp)
-                           target
-                           linkage))
-        ((macro-application? exp) (compile-macro-application exp target linkage))
-        ((application? exp)
-         (compile-application exp target linkage))
-        (else
-         (error "Unknown expression type -- COMPILE" exp))))
+(: compile-pyramid (-> Target Linkage Pyramid inst-seq))
+(define (compile-pyramid target linkage exp)
+  (match exp
+    [(struct pyr-const (x))                (compile-const target linkage x)]
+    [(struct pyr-quoted (x))               (compile-quoted target linkage x)]
+    [(struct pyr-asm _)                    (inst-seq '() '() (list exp))]
+    [(struct pyr-macro-definition _)       (compile-macro-definition target linkage exp)]
+    [(struct pyr-variable (name))          (compile-variable target linkage name)]
+    [(struct pyr-assign (name val))        (compile-assignment target linkage name val )]
+    [(struct pyr-definition (name val))    (compile-definition target linkage name val )]
+    [(struct pyr-if (pred cons alt))       (compile-if target linkage pred cons alt)]
+    [(struct pyr-lambda (parameters body)) (compile-lambda target linkage parameters body)]
+    [(struct pyr-begin (actions))          (compile-sequence target linkage actions)]
+    [(struct pyr-macro-application _)      (compile-macro-application target linkage exp)]
+    [(struct pyr-application (op args))    (compile-application target linkage op args)]
+    [_ (error "compile-pyramid: Unknown expression" exp)]))
 
 (: empty-instruction-sequence (-> inst-seq))
 (define (empty-instruction-sequence)
@@ -60,21 +52,25 @@
               instruction-sequence
               (compile-linkage linkage)))
 
-(: compile-self-evaluating (-> PyrSelfEvaluating Target Linkage inst-seq))
-(define (compile-self-evaluating exp target linkage)
+(: compile-const (-> Target Linkage inst-seq))
+(define (compile-const target linkage val)
   (end-with-linkage linkage
                     (inst-seq '() (list target)
-                              (list (assign target (boxed-const exp))))))
+                              (list (assign target (boxed-const val))))))
 
-(: compile-quoted (-> PyrQuote Target Linkage inst-seq))
-(define (compile-quoted exp target linkage)
+(: compile-quoted (-> Target Linkage pyr-quoted inst-seq))
+(define (compile-quoted target linkage exp)
+  (define val
+    (match exp
+      [(struct pyr-variable (name)) name]
+      [else (error "compile-quoted: Unhandled case" exp)]))
   (end-with-linkage linkage
                     (inst-seq '() (list target)
-                              (list (assign target (boxed-const (text-of-quotation exp)))))))
+                              (list (assign target (boxed-const val))))))
   
 
-(: compile-macro (-> Pyramid Target Linkage inst-seq))
-(define (compile-macro exp target linkage)
+(: compile-macro-definition (-> Target Linkage pyr-macro-definition inst-seq))
+(define (compile-macro-definition target linkage pyr-macro-definition)
   (install-macro-exp! exp)
   (inst-seq '() '() '())
   )
@@ -88,31 +84,27 @@
                                                 `(,(const exp)
                                                   ,(reg 'env))))))))
 
-(: compile-assignment (-> PyrAssign Target Linkage inst-seq))
-(define (compile-assignment exp target linkage)
-  (let ((var (assignment-variable exp))
-        (get-value-code
-         (compile-pyramid (assignment-value exp) 'val 'next)))
+(: compile-assignment (-> Target Linkage Pyramid Pyramid inst-seq))
+(define (compile-assignment target linkage name val)
+  (let ([value-code (compile-pyramid val 'val 'next)])
     (end-with-linkage linkage
                       (preserving '(env)
-                                  get-value-code
+                                  value-code
                                   (inst-seq '(env val) (list target)
                                             (list (perform (op 'set-variable-value!
-                                                               `(,(const var)
+                                                               `(,(const name)
                                                                  ,(reg 'val)
                                                                  ,(reg 'env))))))))))
 
-(: compile-definition (-> PyrDefinition Target Linkage inst-seq))
-(define (compile-definition exp target linkage)
-  (let ((var (definition-variable exp))
-        (get-value-code
-         (compile-pyramid (definition-value exp) reg-val linkage-next)))
+(: compile-definition (-> Target Linkage VariableName Pyramid inst-seq))
+(define (compile-definition target linkage name val)
+  (let ([value-code (compile-pyramid val 'val linkage-next)])
     (end-with-linkage linkage
                       (preserving '(env)
-                                  get-value-code
+                                  value-code
                                   (inst-seq '(env val) (list target)
                                             (list (perform (op 'define-variable!
-                                                               `(,(const var)
+                                                               `(,(const name)
                                                                  ,(reg 'val)
                                                                  ,(reg 'env))))))))))
 
@@ -133,19 +125,16 @@
                     #f
                     ))
 
-(: compile-if (-> PyrIf Target Linkage inst-seq))
-(define (compile-if exp target linkage)
+(: compile-if (-> Target Linkage Pyramid Pyramid Pyramid inst-seq))
+(define (compile-if target linkage pred con alt)
   (let ((t-branch (make-label 'true-branch))
         (f-branch (make-label 'false-branch))                    
         (after-if (make-label 'after-if)))
     (let ((consequent-linkage
            (if (eq? linkage 'next) after-if linkage)))
-      (let ((p-code (compile-pyramid (if-predicate exp) 'val 'next))
-            (c-code
-             (compile-pyramid
-              (if-consequent exp) target consequent-linkage))
-            (a-code
-             (compile-pyramid (if-alternative exp) target linkage)))
+      (let ((p-code (compile-pyramid pred 'val 'next))
+            (c-code (compile-pyramid target consequent-linkage con))
+            (a-code (compile-pyramid target linkage alt)))
         (preserving '(env continue)
                     p-code
                     (append-instruction-sequences
@@ -157,13 +146,14 @@
                       (append-instruction-sequences f-branch a-code))
                      after-if))))))
 
-(: compile-sequence (-> Sequence Target Linkage inst-seq))
-(define (compile-sequence seq target linkage)
-  (cond ((null? seq)     (inst-seq '() '() '()))
-        ((last-exp? seq) (compile-pyramid (first-exp seq) target linkage))
-        (else            (preserving '(env continue)
-                                     (compile-pyramid (first-exp seq) target 'next)
-                                     (compile-sequence (rest-exps seq) target linkage)))))
+(: compile-sequence (-> Target Linkage Pyramids inst-seq))
+(define (compile-sequence target linkage seq)
+  (match seq
+    ('()              (empty-instruction-sequence))
+    (`(list ,x)       (compile-pyramid target linkage x))
+    (`(list ,x . ,xs) (preserving '(env continue)
+                                  (compile-pyramid  target 'next   x)
+                                  (compile-sequence target linkage xs)))))
 
 (: compile-lambda (-> PyrLambda Target Linkage inst-seq))
 (define (compile-lambda [exp : PyrLambda] [target : Target] linkage)
@@ -182,35 +172,34 @@
         (compile-lambda-body exp proc-entry))
        after-lambda))))
 
-(: compile-lambda-body (-> PyrLambda LabelName inst-seq))
-(define (compile-lambda-body exp proc-entry)
-  (let ((formals (lambda-parameters exp)))
-    (append-instruction-sequences
-     (inst-seq '(env proc argl) '(env)
-               (list proc-entry
-                     (assign 'env (op 'compiled-procedure-env `(,(reg 'proc))))
-                     (assign 'env (op 'extend-environment
-                                      `(,(const formals)
-                                        ,(reg 'argl)
-                                        ,(reg 'env))))))
-     (compile-sequence (lambda-body exp) 'val 'return))))
+(: compile-lambda-body (-> LabelName VariableNames Pyramid inst-seq))
+(define (compile-lambda-body proc-entry formals body)
+  (append-instruction-sequences
+   (inst-seq '(env proc argl) '(env)
+             (list proc-entry
+                   (assign 'env (op 'compiled-procedure-env `(,(reg 'proc))))
+                   (assign 'env (op 'extend-environment
+                                    `(,(const formals)
+                                      ,(reg 'argl)
+                                      ,(reg 'env))))))
+   (compile-pyramid body 'val 'return)))
 
 
-(: compile-application (-> PyrApplication Target Linkage inst-seq))
-(define (compile-application exp target linkage)
-  (let ((proc-code (compile-pyramid (operator exp) 'proc 'next))
-        (operand-codes
-         (map (lambda ([ operand : Pyramid ]) (compile-pyramid operand 'val 'next))
-              (operands exp))))
+(: compile-application (-> Target Linkage Pyramid Pyramids inst-seq))
+(define (compile-application target linkage op args)
+  (let ([proc-code (compile-pyramid op 'proc 'next)]
+        [operand-codes
+         (map (λ ([ arg : Pyramid ]) (compile-pyramid arg 'val 'next))
+              args)])
     (preserving '(env continue)
                 proc-code
                 (preserving '(proc continue)
                             (construct-arglist operand-codes)
                             (compile-procedure-call target linkage)))))  
 
-(: compile-macro-application (-> PyrApplication Target Linkage inst-seq))
-(define (compile-macro-application exp target linkage)
-    (compile-pyramid (expand-macro exp) target linkage))
+(: compile-macro-application (-> Target Linkage pyr-macro-application inst-seq))
+(define (compile-macro-application target linkage op args)
+    (compile-pyramid target linkage (expand-macro exp)))
 
 (: construct-arglist (-> (Listof inst-seq) inst-seq))
 (define (construct-arglist operand-codes)

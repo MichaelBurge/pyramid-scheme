@@ -1,7 +1,7 @@
-#lang typed/racket/no-check
+#lang typed/racket
 
 (require "types.rkt")
-
+(require "typed/dict.rkt")
 (provide (all-defined-out))
 
 (: vm-exec-bytecode (-> vm-exec Bytes))
@@ -11,9 +11,11 @@
 (define (simres-account-balance simres addr)
   (let* ([ receipt (simulation-result-txn-receipt simres) ]
          [ world (vm-txn-receipt-post-transaction receipt) ]
-         [ acc (dict-ref world addr (vm-account 0 0 0 0)) ]
+         [ acc : (U vm-account #f) (hash-ref world addr #f)]
          )
-    (vm-account-balance acc)))
+    (if acc
+        (vm-account-balance acc)
+        0)))
 
 (: simres-sender-value (-> simulation-result EthWord))
 (define (simres-sender-value simres)

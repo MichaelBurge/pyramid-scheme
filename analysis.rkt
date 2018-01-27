@@ -10,10 +10,10 @@
 (require "codegen.rkt")
 (require "disassembler.rkt")
 (require "serializer.rkt")
-(require "macro.rkt")
+(require (except-in "macro.rkt" make-label))
 (require "globals.rkt")
 (require "io.rkt")
-(require "minimize.rkt")
+; (require "minimize.rkt")
 (require "simplifier.rkt")
 
 (provide (all-defined-out))
@@ -35,12 +35,12 @@
 ;;   (reset-serializer-globals!)
 ;;   )
 
-(: minimize-pred (-> Pyramid (-> Pyramid Boolean) Pyramid))
-(define (minimize-pred exp pred?)
-  (let ([ next (memf pred? (reductions exp)) ])
-    (if (equal? next #f)
-        exp
-        next)))
+;; (: minimize-pred (-> Pyramid (-> Pyramid Boolean) Pyramid))
+;; (define (minimize-pred exp pred?)
+;;   (let ([ next (memf pred? (reductions exp)) ])
+;;     (if (equal? next #f)
+;;         exp
+;;         next)))
 
 (define (verbose-section title level body)
   (when (verbose? level)
@@ -58,7 +58,6 @@
 (: full-compile (-> Pyramid (List Instructions EthInstructions Bytes)))
 (define (full-compile prog)
   ; (reinitialize-globals!)
-  (%-install-macro-library)
   (verbose-section "Program" VERBOSITY-LOW
                    (λ () (pretty-print prog)))
   (let ([ simplified (if (*simplify?*) (simplify prog) prog) ])

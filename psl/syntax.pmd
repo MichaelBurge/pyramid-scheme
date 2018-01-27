@@ -3,10 +3,10 @@
          [exprs (map second args)])
     (cons `(lambda ,vars ,(make-begin body)) exprs)))
 
-(defmacro (let* args body)
-  (letrec ([ wrap-body (lambda (arg body)
-                         `((lambda ,(first arg) ,body) ,(second arg)))]
-           [ wrap-args (lambda (args body)
+(defmacro (let* args . body)
+  (letrec ([ wrap-body (lambda (arg . body)
+                         `((lambda ,(first arg) (begin ,@body)) ,(second arg)))]
+           [ wrap-args (lambda (args . body)
                          (if (null? args)
                              body
                              (wrap-body (first args)

@@ -10,40 +10,58 @@
 (define-type VariableName Symbol)
 (define-type VariableNames (Listof VariableName))
 
-(define-type PyrSelfEvaluating (U Number String))
-(define-type PyrVariable          Symbol)
-(define-type PyrQuote      (List 'quote  Pyramid))
-(define-type PyrAssign     (List 'set!   Target Pyramid))
-(define-type PyrDefinition (List 'define (U VariableName VariableNames) Pyramid))
-(define-type PyrIf         (List 'if     Pyramid Pyramid (U Nothing Pyramid)))
-(define-type PyrLambda     (List 'lambda VariableNames Sequence))
-(define-type PyrBegin      (List 'begin  (Listof Pyramid)))
-(define-type PyrApplication (Pairof Pyramid Sequence))
-(define-type PyrMacroApplication PyrApplication)
-(define-type PyrMacro      (List 'defmacro (U VariableName VariableNames) (Listof Racket)))
-(define-type PyrAsmPush    (List 'push (U 'shrink Fixnum) Fixnum))
-(define-type PyrAsmOp      (List 'op Symbol))
-(define-type PyrAsmByte    (List 'byte Fixnum))
-(define-type PyrAsmLabel   (List 'label Symbol))
-(define-type PyrAsm        (List 'asm (Listof (U PyrAsmPush PyrAsmOp PyrAsmByte PyrAsmLabel))))
-(define-type Pyramid (U PyrSelfEvaluating
-                        PyrVariable
-                        PyrQuote
-                        PyrAssign
-                        PyrDefinition
-                        PyrIf
-                        PyrLambda
-                        PyrBegin
-                        PyrApplication
-                        PyrMacroApplication
-                        PyrMacro
-                        PyrAsm
+(struct pyr-const ([ value : (U Number String) ]))
+(struct pyr-variable ([ name : Symbol ]))
+(struct pyr-quoted ([ exp : Pyramid ]))
+(struct pyr-assign ([ name : VariableName ] [ value : Pyramid ]))
+(struct pyr-definition ([ name : VariableName ] [ body : Pyramid ]))
+(struct pyr-if ([ predicate : Pyramid ] [ consequent : Pyramid ] [ alternative : Pyramid ]))
+(struct pyr-lambda ([ names : VariableNames ] [ body : Pyramid ]))
+(struct pyr-begin ([ body : Pyramids ]))
+(struct pyr-application ([ operator : Pyramid ] [ operands : Pyramids ]))
+(struct pyr-macro-application ([ name : VariableName ] [ operands : Pyramids ]))
+(struct pyr-macro-definition ([ name : VariableName ] [ parameters : VariableNames ] [ body : Rackets ]))
+(struct pyr-asm-push ([ size : (U 'shrink Fixnum)] [ value : EthWord]))
+(struct pyr-asm-op ([ name : Symbol ]))
+(struct pyr-asm-byte ([ value : Byte ]))
+(struct pyr-asm-label ([ name : Symbol ]))
+(define-type pyr-asm-base (U pyr-asm-push pyr-asm-op pyr-asm-byte pyr-asm-label))
+(struct pyr-asm ([ insts : (Listof pyr-asm-base)]))
+(define-type Pyramid (U pyr-const
+                        pyr-variable
+                        pyr-quoted
+                        pyr-assign
+                        pyr-definition
+                        pyr-if
+                        pyr-lambda
+                        pyr-begin
+                        pyr-application
+                        pyr-macro-application
+                        pyr-macro-definition
+                        pyr-asm
                         ))
 
 (define-type Racket Any)
+(define-type Rackets (Listof Any))
 (define-type Value Any)
-(define-type Sequence (Listof Pyramid))
+(define-type Pyramids (Listof Pyramid))
 (define-type Assertion Any)
+(define-type PyrMacro (-> Any * Any))
+
+(define-type Pass (-> Pyramid Pyramid))
+
+(define-type pyr-consts (Listof pyr-const))
+(define-type pyr-variables (Listof pyr-variable))
+(define-type pyr-quoteds (Listof pyr-quoted))
+(define-type pyr-assigns (Listof pyr-assign))
+(define-type pyr-definitions (Listof pyr-definition))
+(define-type pyr-ifs (Listof pyr-if))
+(define-type pyr-lambdas (Listof pyr-lambda))
+(define-type pyr-begins (Listof pyr-begin))
+(define-type pyr-applications (Listof pyr-application))
+(define-type pyr-macro-applications (Listof pyr-macro-application))
+(define-type pyr-macro-definitions (Listof pyr-macro-definition))
+(define-type pyr-asms (Listof pyr-asm))
 
 (define-type Linkage (U 'next 'return LabelName))
 (define-type Target RegisterName)
@@ -108,7 +126,7 @@
                             save
                             restore
                             perform
-                            PyrAsm
+                            pyr-asm
                             ))
 (define-type Instructions (Listof Instruction))
 (define-type InstructionOp (MPairof Instruction MachineOp))
@@ -120,12 +138,12 @@
 (define-type Values (Listof Value))
 
 (struct primitive ([ implementation : Procedure ]) #:transparent)
-(struct procedure ([ parameters : VariableNames ] [ body : Sequence ] [ environment : Environment ]) #:transparent)
+(struct procedure ([ parameters : VariableNames ] [ body : Pyramids ] [ environment : Environment ]) #:transparent)
 
 ; Code generator
 (struct eth-asm     ([ name : Symbol ]) #:transparent)
 (struct eth-push    ([ size : (U 'shrink Byte) ] [ value : (U Integer Symbol label) ]) #:transparent)
-(struct eth-unknown ([ byte : Fixnum ]) #:transparent)
+(struct eth-unknown ([ byte : Byte ]) #:transparent)
 (define-type EthInstruction     (U eth-asm eth-push eth-unknown label-definition))
 (define-type EthInstructions    (Listof   EthInstruction))
 (define-type (Generator  A)     (-> A     EthInstructions))
@@ -168,11 +186,11 @@
 (define-type LinkedOffset Integer)
 (define-type UnlinkedOffset Integer)
 
-(struct vm-account ([ nonce : Fixnum ] [ balance : EthWord ] [ storage-root : StorageRoot ] [ code-hash : CodeHash ]) #:mutable)
-(struct vm-txn ([ nonce : Fixnum ]
-                [ gas-price : Fixnum ]
-                [ gas-limit : Fixnum ]
-                [ to : Address ]
+(struct vm-account ([ nonce : Integer ] [ balance : EthWord ] [ storage-root : StorageRoot ] [ code-hash : CodeHash ]) #:mutable)
+(struct vm-txn ([ nonce : Integer ]
+                [ gas-price : Integer ]
+                [ gas-limit : Integer ]
+                [ to : (U 'empty Address) ]
                 [ value : Integer ]
                 [ v : Fixnum ]
                 [ r : Integer ]
@@ -185,7 +203,7 @@
 (define-type Undefined Any)
 (define-type vm-checkpoint Undefined)
 (define-type vm-log Undefined)
-(define-type vm-world (HashTable Address vm-account))
+(define-type vm-world (Mutable-HashTable Address vm-account))
 
 (struct vm-block ([ parent-hash : EthWord ]
                   [ ommers-hash : EthWord ]
@@ -244,14 +262,16 @@
 (define-type world-storage (HashTable Address account-storage)) ; All accounts' storages
 (define-type history-storage (HashTable StorageRoot world-storage)) ; All historical commit checkpoints
 
+(define-type AbiType (U "void" "uint256" "uint256[]"))
+
 (struct vm-store ([ history : history-storage ]
                   [ world : world-storage ]
                   [ account : account-storage ])
   #:mutable)
 
 (struct test-expectation ([ name : String ] [ expected : Any ] [ actual : (-> simulation-result-ex Any)]))
-(struct test-txn ([ txn : (-> vm-txn) ] [ tests : (Listof test-expectation) ]) #:transparent #:mutable)
-(struct test-case ([ name : String ] [ deploy-txn : test-txn ] [ txns : (Listof test-txn)]) #:transparent #:mutable)
+(struct test-txn ([ txn : (Promise vm-txn) ] [ tests : (Listof test-expectation) ]) #:transparent #:mutable)
+(struct test-case ([ name : String ] [ deploy-txn : (-> Bytes test-txn) ] [ txns : (Listof (-> Address test-txn))]) #:transparent #:mutable)
 (struct test-suite ([ name : String ] [ cases : (Listof test-case) ]) #:transparent)
 
 ; Constructors

@@ -9,19 +9,18 @@
 (require "crypto.rkt")
 (require "io.rkt")
 (require "accessors.rkt")
+(require "wallet.rkt")
+(require "transaction.rkt")
+(require "utils.rkt")
+
 (require file/sha1)
 (require binaryio/integer)
 (require json)
 
 (provide
  make-simulator
- make-txn-create
- make-txn-message
  apply-txn-create!
  apply-txn-message!
- ;
- infer-type
- parse-type
  ;
  *on-simulate-instruction*
  on-simulate-nop
@@ -61,13 +60,6 @@
 
 (define (on-simulate-nop vm i reads) (void))
 (define *on-simulate-instruction* (make-parameter on-simulate-nop))
-(define *txn-nonce* (make-parameter 0))
-(define *account-nonce* (make-parameter 0))
-
-(define MEMORY-SIZE 200000)
-(define MAX-ITERATIONS 1000000)
-(define DEFAULT-GAS-PRICE 10)
-(define DEFAULT-GAS-LIMIT 1000000)
 
 ; TODO: Contract address should use actual Ethereum spec rather than a counter
 (define *contract-create-counter* (make-parameter 0))
@@ -462,9 +454,6 @@
       (dict-set! os-table os i)
       (set! os (+ os (instruction-size i))))))
 
-(: txn-sender (-> vm-txn Address))
-(define (txn-sender txn) (+ 1234 (vm-txn-nonce txn))) ; TODO: Deduce this from v,r,s
-
 (: empty-hash Bytes)
 (define empty-hash (hex-string->bytes "C5D2460186F7233C927E7DB2DCC703C0E500B653CA82273B7BFAD8045D85A470"))
 
@@ -556,30 +545,6 @@
         (set! ret (cons row ret))))
     (reverse ret)))
 
-(define (parse-type type bs)
-  (cond ((null? bs) (error "parse-pyramid-result: Uninitialized value"))
-        ((equal? type "uint256")   (parse-uint256 bs))
-        ((equal? type "uint256[]") (parse-array "uint256" bs))
-        (else (error "parse-pyramid-result: Unsupported type:" type))))
-
-(define (type-size type)
-  (cond ((eq? type "uint256") 32)
-        (else (error "type-size: Unsupported type" type))))
-
-(define (parse-uint256 bs) (bytes->integer bs #f #t))
-(define (parse-array type bs)
-  (let ([ ret null ])
-    (for ([ i (in-range 0 (bytes-length bs) 32) ])
-      (let ([ bs2 (subbytes bs i (+ i 32)) ])
-        (set! ret (cons (parse-uint256 bs2) ret))))
-    ret))
-
-(define (infer-type x)
-  (cond ((fixnum? x) "uint256")
-        ((null? x) "uint256[]")
-        ((list? x) (string-append (infer-type (car x))
-                                  "[]"))
-        (else (error "infer-type: Unknown type" x))))
 
 ; TODO: Incorrect if x is a null value that isn't the shared copy of nil.
 
@@ -679,43 +644,6 @@
     (write-json (variable-environment vm))
     (newline)
     ))
-
-(: alloc-txn-nonce (-> Fixnum))
-(define (alloc-txn-nonce) (tick-counter! *txn-nonce*))
-
-(: make-txn-create (-> bytes vm-txn))
-(define (make-txn-create bytecode)
-  (vm-txn (alloc-txn-nonce) ; nonce
-          DEFAULT-GAS-PRICE ; gas price
-          DEFAULT-GAS-LIMIT ; gas limit
-          null              ; to
-          0                 ; value
-          28                ; v
-          0                 ; r
-          0                 ; s
-          bytecode          ; input
-          ))
-          
-(: make-txn-message (-> Address EthWord bytes vm-txn))
-(define (make-txn-message to value input)
-  (when (null? to)
-    (error "make-txn-message: 'to' cannot be null"))
-  (vm-txn (alloc-txn-nonce) ; nonce
-          DEFAULT-GAS-PRICE ; gas price
-          DEFAULT-GAS-LIMIT ; gas limit
-          to                ; to
-          value             ; value
-          28                ; v
-          0                 ; r
-          0                 ; s
-          input             ; input
-          ))
-
-(: tick-counter! (-> (Parameter Fixnum) Fixnum))
-(define (tick-counter! x)
-  (let ([ val (x) ])
-    (x (+ 1 val))
-    val))
 
 (: sim-lookup-bytecode (-> simulator Address bytes))
 (define (sim-lookup-bytecode sim addr)

@@ -5,7 +5,8 @@
   )
 
 (require/typed binaryio/integer
-  [ integer->bytes (-> Integer Integer Boolean Bytes)]
+  [ integer->bytes (case-> (-> Integer Integer Boolean Bytes) ; n size signed?
+                           (-> Integer Integer Boolean Boolean Bytes))] ; n size signed? big-endian?
   [ bytes->integer (case-> (-> Bytes Boolean Integer)
                            (-> Bytes Boolean Boolean Integer)
                            (-> Bytes Boolean Boolean Integer Integer)

@@ -35,6 +35,22 @@
 (define (debug-print . xs)
   (displayln xs))
 
+
+(: tick-counter! (-> (Parameter Integer) Integer))
+(define (tick-counter! x)
+  (let ([ val (x) ])
+    (x (+ 1 val))
+    val))
+
+(: listof (All (A) (-> A * (Listof A))))
+(define (listof . xs) xs)
+
+(: namespace-contains? (-> Namespace Symbol Boolean))
+(define (namespace-contains? namespace name)
+  (if (namespace-variable-value name #f (λ () #f) namespace)
+      #t
+      #f))
+
 ;; (define (bool-f pred on-true on-false x) (implies (pred x) (get x)))
 ;; (define (const x) (λ (y) x))
   
