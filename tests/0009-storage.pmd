@@ -6,9 +6,9 @@
  ; The contract is redeployed before each testcase. Transactions are applied sequentially.
  (case "counter"
    (init)
-   (txn (result 0))
-   (txn (result 1))
-   (txn (result 2))))
+   (txn (assert-return 0))
+   (txn (assert-return 1))
+   (txn (assert-return 2))))
 
 (define COUNTER 0)
 

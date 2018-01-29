@@ -16,7 +16,7 @@
 (: *verbosity* (Parameterof Fixnum))
 (define *verbosity* (make-parameter 0))
 
-(: verbose? (-> Fixnum Boolean))
+(: verbose? (-> Verbosity Boolean))
 (define (verbose? n) (>= (*verbosity*) n))
 
 (: *test?* (Parameterof Boolean))
@@ -28,6 +28,12 @@
 (: *simplify?* (Parameterof Boolean))
 (define *simplify?* (make-parameter #t))
 ; (define optimize-level (make-parameter 0))
+
+(: *link?* (Parameterof Boolean))
+(define *link?* (make-parameter #t))
+
+(: *use-debug-symbols?* (Parameterof Boolean))
+(define *use-debug-symbols?* (make-parameter #f))
 
 (: *include-directory* (Parameterof String))
 (define *include-directory* (make-parameter "."))
@@ -61,6 +67,9 @@
 
 (: *macro-namespace* (Parameterof Namespace))
 (define *macro-namespace* (make-parameter (make-base-namespace)))
+
+(: *asm-namespace* (Parameterof Namespace))
+(define *asm-namespace* (make-parameter (make-base-namespace)))
 
 (: *patchpoints* (Parameterof (Listof patchpoint)))
 (define *patchpoints* (make-parameter null))

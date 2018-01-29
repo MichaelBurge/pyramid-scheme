@@ -1,17 +1,18 @@
 (defmacro (let args . body)
   (let* ([vars (map first args)]
          [exprs (map second args)])
-    (cons `(lambda ,vars ,(make-begin body)) exprs)))
+    (cons `(λ ,vars (begin ,@body)) exprs)))
 
 (defmacro (let* args . body)
-  (letrec ([ wrap-body (lambda (arg . body)
-                         `((lambda ,(first arg) (begin ,@body)) ,(second arg)))]
-           [ wrap-args (lambda (args . body)
+  (letrec ([ wrap-body (λ (arg body)
+                         `((λ ,(first arg) ,body)
+                           ,(second arg)))]
+           [ wrap-args (λ (args body)
                          (if (null? args)
                              body
                              (wrap-body (first args)
                                         (wrap-args (cdr args) body))))])
-    (wrap-args args body)
+    (wrap-args args `(begin ,@body))
     ))
 
 (defmacro (static id expr)

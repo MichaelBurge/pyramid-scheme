@@ -10,23 +10,23 @@
 (define-type VariableName Symbol)
 (define-type VariableNames (Listof VariableName))
 
-(struct pyr-const ([ value : (U Number String) ]))
-(struct pyr-variable ([ name : Symbol ]))
-(struct pyr-quoted ([ exp : Pyramid ]))
-(struct pyr-assign ([ name : VariableName ] [ value : Pyramid ]))
-(struct pyr-definition ([ name : VariableName ] [ body : Pyramid ]))
-(struct pyr-if ([ predicate : Pyramid ] [ consequent : Pyramid ] [ alternative : Pyramid ]))
-(struct pyr-lambda ([ names : VariableNames ] [ body : Pyramid ]))
-(struct pyr-begin ([ body : Pyramids ]))
-(struct pyr-application ([ operator : Pyramid ] [ operands : Pyramids ]))
-(struct pyr-macro-application ([ name : VariableName ] [ operands : Pyramids ]))
-(struct pyr-macro-definition ([ name : VariableName ] [ parameters : VariableNames ] [ body : Rackets ]))
-(struct pyr-asm-push ([ size : (U 'shrink Fixnum)] [ value : EthWord]))
-(struct pyr-asm-op ([ name : Symbol ]))
-(struct pyr-asm-byte ([ value : Byte ]))
-(struct pyr-asm-label ([ name : Symbol ]))
-(define-type pyr-asm-base (U pyr-asm-push pyr-asm-op pyr-asm-byte pyr-asm-label))
-(struct pyr-asm ([ insts : (Listof pyr-asm-base)]))
+(struct pyr-const ([ value : RegisterValue ]) #:transparent)
+(struct pyr-variable ([ name : Symbol ]) #:transparent)
+(struct pyr-quoted ([ exp : Pyramid ]) #:transparent)
+(struct pyr-assign ([ name : VariableName ] [ value : Pyramid ]) #:transparent)
+(struct pyr-definition ([ name : VariableName ] [ body : Pyramid ]) #:transparent)
+(struct pyr-if ([ predicate : Pyramid ] [ consequent : Pyramid ] [ alternative : Pyramid ]) #:transparent)
+(struct pyr-lambda ([ names : VariableNames ] [ body : Pyramid ]) #:transparent)
+(struct pyr-begin ([ body : Pyramids ]) #:transparent)
+(struct pyr-application ([ operator : Pyramid ] [ operands : Pyramids ]) #:transparent)
+(struct pyr-macro-application ([ name : VariableName ] [ operands : Pyramids ]) #:transparent)
+(struct pyr-macro-definition ([ name : VariableName ] [ parameters : DottableParameters ] [ body : Racket ]) #:transparent)
+(struct pyr-asm-push ([ size : (U 'shrink Byte)] [ value : EthWord]) #:transparent)
+(struct pyr-asm-op ([ name : Symbol ]) #:transparent)
+(struct pyr-asm-bytes ([ value : Bytes ]) #:transparent)
+(struct pyr-asm-cg ([ exp : Any ]) #:transparent)
+(define-type pyr-asm-base (U pyr-asm-push pyr-asm-op pyr-asm-bytes pyr-asm-cg label-definition))
+(struct pyr-asm ([ insts : (Listof pyr-asm-base)]) #:transparent)
 (define-type Pyramid (U pyr-const
                         pyr-variable
                         pyr-quoted
@@ -41,12 +41,16 @@
                         pyr-asm
                         ))
 
+(define-type PyramidQ Any)
+(define-type PyramidQs (Listof Any))
+
+(define-type DottableParameters Any)
 (define-type Racket Any)
 (define-type Rackets (Listof Any))
 (define-type Value Any)
 (define-type Pyramids (Listof Pyramid))
 (define-type Assertion Any)
-(define-type PyrMacro (-> Any * Any))
+(define-type PyrMacro Procedure)
 
 (define-type Pass (-> Pyramid Pyramid))
 
@@ -63,9 +67,9 @@
 (define-type pyr-macro-definitions (Listof pyr-macro-definition))
 (define-type pyr-asms (Listof pyr-asm))
 
-(define-type Linkage (U 'next 'return LabelName))
+(define-type Linkage (U 'next 'return label))
 (define-type Target RegisterName)
-(define-type iseq-or-label (U label inst-seq))
+(define-type iseq-or-label (U label-definition inst-seq))
 (struct inst-seq ([ needs : RegisterNames ] [ modifies : RegisterNames ] [ statements : Instructions ]) #:transparent)
 
 (define-type RegisterNames (Listof RegisterName))
@@ -76,24 +80,9 @@
 (define-type Machine DispatchObject)
 (define-type Register DispatchObject)
 
-(define-type ControllerText (Listof Instruction))
 (define-type RegisterName Symbol)
-(define-type MachineOpResult Any)
-(define-type MachineOp (-> Any))
-(define-type LabelName Symbol)
-(define-type LabelVal InstructionOps)
-(define-type Label (Pairof LabelName LabelVal))
-(define-type Labels (Listof Label))
-(define-type PrimopExprHead (Pairof Symbol Symbol))
-(define-type PrimopExprTail (Listof MExpr))
-(define-type PrimopExpr (Pairof PrimopExprHead PrimopExprTail))
-(define-type PrimopImpl (-> MachineOpResult * MachineOpResult))
-(define-type Primop (List Symbol PrimopImpl))
-(define-type Primops (Listof Primop))
 
-(define-type StackInst (Pairof Symbol (Pairof RegisterName Any)))
-
-(define-type RegisterValue Any)
+(define-type RegisterValue (U Boolean Symbol Integer String (Listof Integer) (Listof Symbol) (Listof String)))
 (struct reg ([name : RegisterName]) #:transparent)
 (struct const ([ value : RegisterValue ]) #:transparent)
 (struct boxed-const ([ value : RegisterValue ]) #:transparent)
@@ -105,12 +94,14 @@
 (define-type MExpr (U reg
                       const
                       boxed-const
+                      op
+                      Symbol
                       label
-                      op))
+                      eth-stack
+                      ))
 (define-type MExprs (Listof MExpr))
 
-(define-type InstLabel         Symbol)
-(struct assign ([ reg-name : RegisterName ] [ value-exp : MExpr ]) #:transparent)
+(struct assign ([ reg-name : RegisterName ] [ value : MExpr ]) #:transparent)
 (struct test ([ condition : MExpr ]) #:transparent)
 (struct branch ([ dest : MExpr ]) #:transparent)
 (struct goto ([ dest : MExpr ]) #:transparent)
@@ -118,7 +109,7 @@
 (struct restore ([ reg-name : RegisterName ]) #:transparent)
 (struct perform ([ action : op ]) #:transparent)
 (struct am-asm ([ insts : EthInstructions ]))
-(define-type Instruction (U InstLabel
+(define-type Instruction (U label-definition
                             assign
                             test
                             branch
@@ -129,16 +120,6 @@
                             pyr-asm
                             ))
 (define-type Instructions (Listof Instruction))
-(define-type InstructionOp (MPairof Instruction MachineOp))
-(define-type InstructionOps (Listof InstructionOp))
-
-(define-type Frame (Pairof (MListof VariableName) (MListof Value)))
-(define-type Environment (MListof Frame))
-
-(define-type Values (Listof Value))
-
-(struct primitive ([ implementation : Procedure ]) #:transparent)
-(struct procedure ([ parameters : VariableNames ] [ body : Pyramids ] [ environment : Environment ]) #:transparent)
 
 ; Code generator
 (struct eth-asm     ([ name : Symbol ]) #:transparent)
@@ -146,6 +127,7 @@
 (struct eth-unknown ([ byte : Byte ]) #:transparent)
 (define-type EthInstruction     (U eth-asm eth-push eth-unknown label-definition))
 (define-type EthInstructions    (Listof   EthInstruction))
+(define-type Generator0         (->       EthInstructions))
 (define-type (Generator  A)     (-> A     EthInstructions))
 (define-type (Generator2 A B)   (-> A B   EthInstructions))
 (define-type (Generator3 A B C) (-> A B C EthInstructions))
@@ -153,12 +135,13 @@
 (struct opcode ([ byte : Byte ] [ name : Symbol ] [ num-reads : Fixnum ] [ num-writes : Fixnum ]) #:transparent)
 
 (define-type EthWord Integer)
+(define-type EthWords (Listof EthWord))
 
 (define-type SymbolTable (Mutable-HashTable Symbol Integer))
 (define-type ReverseSymbolTable (Mutable-HashTable Integer Symbol))
 (define-type RelocationTable (Setof relocation))
 
-(struct full-compile-result ([ bytecode : Bytes ] [ abstract-insts : Instructions ] [ eth-insts : EthInstructions ]) #:transparent)
+(struct full-compile-result ([ bytes : Bytes ] [ abstract-insts : Instructions ] [ eth-insts : EthInstructions ]) #:transparent)
 (struct relocation ([ pos : Integer ] [ symbol : Symbol ]) #:transparent)
 (struct patchpoint ([ symbol : Symbol ] [ initializer : EthInstructions ]) #:transparent)
 (struct label-definition label ([ offset : Integer ] [ virtual : Boolean ]) #:transparent)
@@ -182,6 +165,7 @@
 (define-type simulation-result-exs (Listof simulation-result-ex))
 
 (define-type Address Integer) ; Ethereum addresses
+(define-type AddressEx (U Null Address))
 (define-type StorageRoot EthWord)
 (define-type LinkedOffset Integer)
 (define-type UnlinkedOffset Integer)
@@ -229,7 +213,7 @@
                         [ log-bloom : Undefined ]
                         [ logs : (Listof vm-log) ]
                         ; Additional fields
-                        [ contract-address : (U Null Address) ]
+                        [ contract-address : AddressEx ]
                         )
   #:transparent
   )
@@ -269,10 +253,22 @@
                   [ account : account-storage ])
   #:mutable)
 
+(define-type test-mod (-> test-txn Void))
+(define-type test-mods (Listof test-mod))
+
 (struct test-expectation ([ name : String ] [ expected : Any ] [ actual : (-> simulation-result-ex Any)]))
-(struct test-txn ([ txn : (Promise vm-txn) ] [ tests : (Listof test-expectation) ]) #:transparent #:mutable)
-(struct test-case ([ name : String ] [ deploy-txn : (-> Bytes test-txn) ] [ txns : (Listof (-> Address test-txn))]) #:transparent #:mutable)
+(struct test-txn ([ mods : PyramidQs ] [ tests : (Listof test-expectation) ]) #:transparent #:mutable)
+(struct test-account ([ name : Symbol ] [ balance : EthWord ]))
+(struct test-case ([ name : String ] [ accounts : test-accounts ] [ deploy-txn : test-txn ][ msg-txns : test-txns]) #:transparent #:mutable)
 (struct test-suite ([ name : String ] [ cases : (Listof test-case) ]) #:transparent)
+
+(define-type test-expectations (Listof test-expectation))
+(define-type test-txns (Listof test-txn))
+(define-type test-accounts (Listof test-account))
+(define-type test-cases (Listof test-case))
+(define-type Verbosity Fixnum)
+
+(define-type OnSimulateCallback (-> vm-exec EthInstruction EthWords Void))
 
 ; Constructors
 

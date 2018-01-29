@@ -1,10 +1,7 @@
-#lang errortrace typed/racket/no-check
+#lang typed/racket
 
 ; (require test-engine/racket-tests)
-(require racket/cmdline)
-(require binaryio/integer)
-(require lazy/force)
-(require racket/pretty)
+;(require racket/cmdline)
 
 (require "types.rkt")
 (require "ast.rkt")
@@ -23,9 +20,23 @@
 (require "accessors.rkt")
 (require "abi.rkt")
 (require "transaction.rkt")
+(require "wallet.rkt")
+
+(require "typed/binaryio.rkt")
+
+(require/typed "simulator.rkt"
+  [ make-simulator (-> simulator)]
+  [ apply-txn-create! (-> simulator vm-txn simulation-result-ex)]
+  [ apply-txn-message! (-> simulator vm-txn simulation-result-ex)]
+  [ mint-ether! (-> simulator Symbol EthWord Void)]
+  [ *on-simulate-instruction* (Parameterof OnSimulateCallback)]
+  [ on-simulate-debug (-> ReverseSymbolTable OnSimulateCallback)]
+  [ on-simulate-nop   OnSimulateCallback ]
+  )
 
 (provide (all-defined-out))
 
+(: assert-equal (-> String Any Any Any Void))
 (define (assert-equal name expected actual debug-info)
   (if (equal? expected actual)
       (begin
@@ -34,17 +45,20 @@
       (error "Test failed: " name expected actual))
   )
 
+(: assert-expectation (-> simulation-result-ex test-expectation Void))
 (define (assert-expectation simres expect)
-  (assert-equal (test-expectation-name expect)
-                (test-expectation-expected expect)
-                ((test-expectation-actual expect) simres)
-                (debug-info simres)))
+  (if (simulation-result? simres)
+      (assert-equal (test-expectation-name expect)
+                    (test-expectation-expected expect)
+                    ((test-expectation-actual expect) simres)
+                    (debug-info simres))
+      (error "Test failed: " (test-expectation-name expect) simres)))
 
-(define (assert-equal-vm name expected actual-bs debug-info)
-  (if (exn:fail? actual-bs)
-      (error "assert-equal-vm: Caught error" actual-bs)
-      (let ([ actual (parse-type (infer-type expected) actual-bs) ])
-        (assert-equal name expected actual debug-info))))
+;; (define (assert-equal-vm name expected actual-bs debug-info)
+;;   (if (exn:fail? actual-bs)
+;;       (error "assert-equal-vm: Caught error" actual-bs)
+;;       (let ([ actual (parse-type (infer-type expected) actual-bs) ])
+;;         (assert-equal name expected actual debug-info))))
 
 (define (on-error-throw vm)
   (error "Test Failure - exception thrown")
@@ -62,12 +76,12 @@
     (when (verbose? VERBOSITY-LOW)
       (*on-simulate-instruction* (on-simulate-debug (invert-hash (*symbol-table*)))))
     (let* ([ params         (full-compile prog) ]
-           [ initializer-bs (third params) ]
+           [ initializer-bs (full-compile-result-bytes params)]
            [ sim            (make-simulator)]
            [ deploy-txn     (make-txn-create initializer-bs)]
-           [ deploy-result  (apply-txn-create! sim deploy-txn)]
+           [ deploy-result  (cast (apply-txn-create! sim deploy-txn) simulation-result)]
            [ contract       (vm-txn-receipt-contract-address (simulation-result-txn-receipt deploy-result))]
-           [ program-txn    (make-txn-message contract 0 (bytes)) ]
+           [ program-txn    (make-txn-message (cast contract Address) 0 (bytes)) ]
            [ exec-result    (apply-txn-message! sim program-txn)]
            )
       (cons deploy-result exec-result)))
@@ -103,25 +117,32 @@
   (when (verbose? VERBOSITY-LOW)
     (*on-simulate-instruction* (on-simulate-debug (invert-hash (*symbol-table*)))))
   (let* ([ sim            (make-simulator)]
-         [ deploy-txn     ((test-case-deploy-txn cs) bytecode)]
-         [ deploy-result  (apply-txn-create! sim deploy-txn)]
-         [ contract       (vm-txn-receipt-contract-address (simulation-result-txn-receipt deploy-result))]
-         [ txns           (map (λ (f) (f contract)) (test-case-txns cs))]
+         [ deploy-txn     (second (test-case-deploy-txn->vm-txn cs bytecode))]
+         [ deploy-result  (cast (apply-txn-create! sim deploy-txn) simulation-result)]
+         [ contract?      (vm-txn-receipt-contract-address (simulation-result-txn-receipt deploy-result))]
+         [ contract       (if (null? contract?) (error "Unable to deploy contract" deploy-result) contract?)]
+         [ expect-txns    (test-case-msg-txns->vm-txns cs contract)]
          )
     (verbose-section "Deployed" VERBOSITY-HIGH
                      (λ ()
                        (define bs (simulation-result-val deploy-result))
                        (print-disassembly bs)
                        ))
-    
+    (register-addr-name! 'contract contract)
+    (mint-accounts! sim cs)
     (cons deploy-result
-          (for/list ([ txn txns ]
-                     [ i (range (length (test-case-txns cs))) ])
-            (let* ([ exec-result (apply-txn-message! sim (test-txn-txn txn))]
-                   ;[ name (string-append (test-case-name cs) "/" (integer->string i))]
-                   )
-              (for ([ expect (test-txn-tests txn) ])
-                (assert-expectation exec-result expect)))))))
+          (for/list : simulation-result-exs
+              ([ expect-txn : (List test-expectations vm-txn) expect-txns ])
+            (match expect-txn
+              [(list expects msg-txn)
+               (force-txn-sender! msg-txn 'sender)
+               (find-or-create-addr-name! 'sender)
+               (let* ([ exec-result (apply-txn-message! sim msg-txn)])
+                 (for ([ expect : test-expectation expects ])
+                   (assert-expectation exec-result expect))
+                 exec-result
+                 )]
+              [x (error "run-test-case: Unexpected item" x)])))))
   
 (: run-test-suite (-> String Bytes test-suite Void))
 (define (run-test-suite name bytecode suite)
@@ -130,13 +151,114 @@
     ))
 
 ; A test is a regular Pyramid program that uses special test macros to communicate with the compiler.
-(: assert-test (-> String Pyramid Void))
+(: assert-test (-> String PyramidQ Void))
 (define (assert-test name prog)
   (*include-directory* "tests")
   ;; (if (*minimize?*)
   ;;     (minimize-test name prog)
       (let ([ result (full-compile prog) ])
-        (run-test-suite name (full-compile-result-bytecode result) (*test-suite*))))
+        (run-test-suite name (full-compile-result-bytes result) (*test-suite*))))
+
+(: test-case-deploy-txn->vm-txn (-> test-case Bytes (List test-expectations vm-txn)))
+(define (test-case-deploy-txn->vm-txn cs bs)
+  (: expectations test-expectations)
+  (define expectations null)
+  (: txn vm-txn)
+  (define txn (make-txn-create bs))
+  (set! expectations
+        (append expectations
+                (apply-modifiers! (test-txn-mods (test-case-deploy-txn cs))
+                                  apply-init-modifier!
+                                  txn)))
+  (list expectations txn))
+
+(: test-case-msg-txns->vm-txns (-> test-case Address (Listof (List test-expectations vm-txn))))
+(define (test-case-msg-txns->vm-txns cs addr)
+  (: ttxns test-txns)
+  (define ttxns (test-case-msg-txns cs))
+  (: make-msg-txn (-> test-txn (List test-expectations vm-txn)))
+  (define (make-msg-txn ttxn)
+    (: expectations test-expectations)
+    (define expectations null)
+    (: txn vm-txn)
+    (define txn (make-txn-message addr 0 (bytes)))
+    (set! expectations
+          (append expectations
+                  (apply-modifiers! (test-txn-mods ttxn) apply-txn-modifier! txn)))
+    (list expectations txn))
+  (map make-msg-txn ttxns))
+
+(: apply-modifiers! (All (A B) (-> PyramidQs (-> PyramidQ A (Listof B)) A (Listof B))))
+(define (apply-modifiers! xs f! acc)
+  (: ret (Listof (Listof B)))
+  (define ret (map (λ ([ x : PyramidQ ])
+                     (f! x acc))
+                   xs))
+  (apply append ret)
+  )
+
+(: apply-init-modifier! (-> PyramidQ vm-txn test-expectations))
+(define (apply-init-modifier! exp txn)
+  (match exp
+    [(list 'value val)
+     (begin (assert val exact-integer?)
+            (set-vm-txn-value! txn val)
+            null)]
+    [(list 'sender (list 'quote name))
+     (begin (assert name symbol?)
+            (force-txn-sender! txn name)
+            null)]
+    [_ (error "apply-init-modifier: Unexpected syntax" exp)]))
+
+(: apply-txn-modifier! (-> PyramidQ vm-txn test-expectations))
+(define (apply-txn-modifier! exp txn)
+  (match exp
+    [(list 'value val)
+     (begin (assert val exact-integer?)
+            (set-vm-txn-value! txn val)
+            null)]
+    [(list 'sender (list 'quote name))
+     (begin (assert name symbol?)
+            (force-txn-sender! txn name)
+            null)]
+    [(list 'data (list 'sender (list 'quote name)))
+     (begin (assert name symbol?)
+            (let ([ addr (find-addr-name name)])
+              (set-vm-txn-data! txn (integer->bytes addr 32 #f #t)))
+            null)]
+    [(list 'assert-balance (list 'quote addr-name) val)
+     (begin (assert val exact-integer?)
+            (assert addr-name symbol?)
+            (list (expectation-account-value addr-name val)))]
+    [(list 'assert-return expected)
+     (list (expectation-result expected))]
+    [_ (error "apply-txn-modifier: Unexpected syntax" exp)]))
+
+(: add-test-expectation! (-> test-txn test-expectation Void))
+(define (add-test-expectation! txn expect)
+  (set-test-txn-tests! txn (cons expect (test-txn-tests txn))))
+
+
+(: expectation-result (-> Any test-expectation))
+(define (expectation-result expected)
+  (test-expectation "return" expected (make-parser expected)))
+
+(: expectation-account-value (-> Symbol Integer test-expectation))
+(define (expectation-account-value sym expected)
+  (test-expectation (string-append (symbol->string sym) " account value(wei)")
+                    expected
+                    (λ (res)
+                      (if (simulation-result? res)
+                          (simres-account-balance res (find-addr-name sym))
+                          res))))
+
+(: mint-accounts! (-> simulator test-case Void))
+(define (mint-accounts! sim cs)
+  (for ([ acc : test-account (test-case-accounts cs)])
+    (debug-print 'mint-accounts! acc)
+    (mint-ether! sim
+                 (test-account-name acc)
+                 (test-account-balance acc))))
 
 ; TODO: Turn these into unit tests.
 ; TEST 1: (cg-intros (list (const 1234) (const 4321)))

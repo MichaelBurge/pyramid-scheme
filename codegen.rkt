@@ -1,4 +1,4 @@
-#lang typed/racket/no-check
+#lang typed/racket
 
 (require "compiler.rkt")
 (require "types.rkt")
@@ -6,7 +6,8 @@
 (require "ast.rkt")
 (require "globals.rkt")
 (require racket/list)
-(require binaryio/integer)
+
+(require "typed/binaryio.rkt")
 
 (provide (all-defined-out))
 
@@ -68,10 +69,7 @@ These optimizations are currently unimplemented:
 * Lists emits a series of (cons) calls corresponding to the elements.
 |#
 
-; Global variables
-(define *use-debug-symbols?* (make-parameter #f))
 (define-namespace-anchor *asm-anchor*)
-(define *asm-namespace* (namespace-anchor->namespace *asm-anchor*))
 
 ; To avoid excessive inlining, a single copy of these is emitted.
 (define *label-op-lookup-variable-value* (make-label 'op-lookup-variable-value))
@@ -103,9 +101,10 @@ These optimizations are currently unimplemented:
 (: codegen (Generator Instructions))
 (define (codegen is)
   (*symbol-table* (make-symbol-table))
-  (*relocation-table* (set))
+  (*relocation-table* (make-relocation-table))
   (*reverse-symbol-table* (make-reverse-symbol-table))
-
+  (*asm-namespace*) (namespace-anchor->namespace *asm-anchor*)
+  
   (append
    (cg-initialize-program)
    (cg-define-primops)
@@ -132,82 +131,84 @@ These optimizations are currently unimplemented:
         (else
          (error "Unknown instruction type -- codegen-one:" i))))
 
-(: cg-label   (Generator InstLabel))
+(: cg-label (Generator label-definition))
 (define (cg-label i) (list i))
 
-(: cg-assign  (Generator InstAssign))
+(: cg-assign  (Generator assign))
 (define (cg-assign i)
-  (let ((value   (assign-value-exp i))
-        (target (assign-reg-name i)))
+  (let ((value : MExpr (assign-value i))
+        (target : VariableName (assign-reg-name i)))
     (append
      (debug-label 'cg-assign)
      (cg-write-reg (reg target) value)
      (debug-label 'cg-assign-end))))
 
-(: cg-test    (Generator InstTest))
+(: cg-test    (Generator test))
 (define (cg-test i)
   (append
    (debug-label 'cg-test)
    (cg-mexpr (test-condition i))
    (debug-label 'cg-test-end)))
 
-(: cg-save    (Generator InstSave))
+(: cg-save    (Generator save))
 (define (cg-save i)
   (append
    (debug-label 'cg-save)
    (cg-write-stack (reg (save-reg-name i)))
    (debug-label 'cg-save-end)))
 
-(: cg-restore (Generator InstRestore))
+(: cg-restore (Generator restore))
 (define (cg-restore i)
   (append
    (debug-label 'cg-restore)
    (cg-write-reg (reg (restore-reg-name i)) stack)
    (debug-label 'cg-restore-end)))
 
-(: cg-perform (Generator InstPerform))
+(: cg-perform (Generator perform))
 (define (cg-perform i)
   (append
    (debug-label 'cg-perform)
    (cg-mexpr-op (perform-action i))
    (debug-label 'cg-perform-end)))
 
-(: cg-asm (Generator (Listof PyrAsm)))
-(define (cg-asm is)
-  (parameterize ([ current-namespace *asm-namespace* ])
-    (namespace-set-variable-value! 'push  (λ (x y) (list (eth-push x y)))    #t)
-    (namespace-set-variable-value! 'op    (λ (x) (list (eth-asm x)))         #t)
-    (namespace-set-variable-value! 'label (λ (x [os 0] [virtual #f]) (list (label-definition x os virtual))) #t)
-    (namespace-set-variable-value! 'byte  (λ (x) (list (eth-unknown x))) #t)
-    (namespace-set-variable-value! 'bytes (λ (n x) (map eth-unknown (bytes->list (integer->bytes x n #f #t)))) #t)
-    ;(namespace-set-variable-value! 'block (λ (xs ...) (apply append (map parse-asm xs))))
-    
-    (define (parse-asm i) (eval i))
-
-    (apply append (map parse-asm (pyr-asm-insts is)))
-    )
+(module asm-unsafe typed/racket/no-check
+  (require "types.rkt")
+  (provide eval-asm-cg)
+  (define (eval-asm-cg anchor i) (eval i (namespace-anchor->namespace anchor)))
   )
+  
+
+(require/typed 'asm-unsafe
+  [ eval-asm-cg (Generator2 Namespace-Anchor Any)])
+
+(: eval-asm (Generator pyr-asm-base))
+(define (eval-asm i)
+  (match i
+    [(struct pyr-asm-push  (size n)) (listof (eth-push size n))]
+    [(struct pyr-asm-op    (op))     (listof (eth-asm op))]
+    [(struct pyr-asm-bytes (value))  (map eth-unknown (bytes->list value))]
+    [(struct label-definition _)     (listof i)]
+    [(struct pyr-asm-cg (exp))       (eval-asm-cg *asm-anchor* exp)]))
+
+(: cg-asm (Generator pyr-asm))
+(define (cg-asm is)
+  (apply append (map eval-asm (pyr-asm-insts is))))
 
 ;;; Primitive operations emitted by the abstract compiler
 
+(: op-lookup-variable-value (Generator2 MExpr MExpr))
 (define (op-lookup-variable-value name env)     (cg-invoke-primop *label-op-lookup-variable-value* name env))
+
+(: op-define-variable! (Generator3 MExpr MExpr MExpr))
 (define (op-define-variable! name value env)    (cg-invoke-primop *label-op-define-variable!* name value env))
+
+(: op-set-variable-value! (Generator3 MExpr MExpr MExpr))
 (define (op-set-variable-value! name value env) (cg-invoke-primop *label-op-set-variable-value!* name value env))
+
+(: op-return (Generator MExpr))
 (define (op-return value)                       (cg-invoke-primop *label-op-return* value))
 
 (: cg-op-box                       (Generator  MExpr))       ; Creates a boxed integer or symbol.
-(: cg-op-extend-environment        (Generator3 MExpr MExpr MExpr)) ; Adds a frame to the environment.
-(: cg-op-make-compiled-procedure   (Generator2 MExpr MExpr)) ; A lambda creates a runtime value from a code pointer & closure.
-(: cg-op-compiled-procedure-entry  (Generator  MExpr))       ; The code pointer from a make-compiled-procedure object.
-(: cg-op-compiled-procedure-env    (Generator  MExpr))       ; The environment address from a make-compiled-procedure object.
-(: cg-op-primitive-procedure?      (Generator  MExpr))       ; Is the object at an address a primitive procedure?
-(: cg-op-apply-primitive-procedure (Generator2 MExpr MExpr)) ; Calls the primitive procedure with a code pointer and argument list.
-(: cg-op-lookup-variable-value     (Generator2 MExpr MExpr)) ; Returns the object with the given name in the given environment.
-(: cg-op-define-variable!          (Generator3 MExpr MExpr MExpr)) ; Creates an object with a given name and value in the given environment
-(: cg-op-false?                    (Generator  MExpr))       ; Evaluates to 1 if the expression is 0
-(: cg-op-list                      (Generator  MExpr))       ; Creates a 1-element vector with the given object.
-(: cg-op-cons                      (Generator2 MExpr MExpr))
-
 (define (cg-op-box exp)
   (append
    (debug-label 'cg-op-box)
@@ -218,6 +219,7 @@ These optimizations are currently unimplemented:
               (error "Unsupported boxed constant -- cg-op-box:" exp)))
        (error "Can only box constants -- cg-op-box: " exp))))
 
+(: cg-op-extend-environment        (Generator3 MExpr MExpr MExpr)) ; Adds a frame to the environment.
 (define (cg-op-extend-environment vars vals env)
   (append
    (debug-label 'cg-op-extend-environment)
@@ -225,32 +227,38 @@ These optimizations are currently unimplemented:
    (cg-make-pair stack stack)       ; [ frame; env ]
    (cg-make-pair stack stack)))     ; [ env' ]
 
+(: cg-op-make-compiled-procedure   (Generator2 MExpr MExpr)) ; A lambda creates a runtime value from a code pointer & closure.
 (define (cg-op-make-compiled-procedure code env)
   (append
    (debug-label 'cg-op-make-compiled-procedure)
    (cg-make-compiled-procedure code env)))
 
+(: cg-op-compiled-procedure-entry  (Generator  MExpr))       ; The code pointer from a make-compiled-procedure object.
 (define (cg-op-compiled-procedure-entry obj)
   (append
    (debug-label 'cg-op-compiled-procedure-entry)
    (cg-read-address-offset obj (const 1))))
 
+(: cg-op-compiled-procedure-env    (Generator  MExpr))       ; The environment address from a make-compiled-procedure object.
 (define (cg-op-compiled-procedure-env obj)
   (append
    (debug-label 'cg-op-compiled-procedure-env)
    (cg-read-address-offset obj (const 2))))
-  
+
+(: cg-op-primitive-procedure?      (Generator  MExpr))       ; Is the object at an address a primitive procedure?
 (define (cg-op-primitive-procedure? obj)
   (append
    (debug-label 'cg-op-primitive-procedure?)
    (cg-tag obj)
    (cg-eq? (const TAG-PRIMITIVE-PROCEDURE) stack)))
 
+(: cg-op-primitive-procedure-entry (Generator MExpr))
 (define (cg-op-primitive-procedure-entry obj)
   (append
    (debug-label 'cg-op-primitive-procedure-entry)
    (cg-read-address-offset obj (const 1))))
 
+(: cg-op-apply-primitive-procedure (Generator2 MExpr MExpr)) ; Calls the primitive procedure with a code pointer and argument list.
 (define (cg-op-apply-primitive-procedure proc argl)
   (let ((after-op (make-label 'after-op)))
     (append
@@ -261,7 +269,7 @@ These optimizations are currently unimplemented:
      (asm 'JUMP)
      `(,after-op))))
 
-
+(: cg-op-cons                      (Generator2 MExpr MExpr))
 (define (cg-op-cons a b)
   (append (debug-label 'cg-op-cons)
           (cg-cons a b)))
@@ -285,6 +293,7 @@ These optimizations are currently unimplemented:
                 (cdr frame)))))
   (env-loop env))
 |#
+(: cg-op-lookup-variable-value (Generator2 MExpr MExpr))
 (define (cg-op-lookup-variable-value name env)
   (let ((env-loop    (make-label 'lookup-variable-value-env-loop))
         (scan        (make-label 'lookup-variable-value-scan))
@@ -357,6 +366,7 @@ These optimizations are currently unimplemented:
                 (cdr frame)))))
   (env-loop env))
 |#
+(: cg-op-set-variable-value! (Generator3 MExpr MExpr MExpr))
 (define (cg-op-set-variable-value! name value env)
   (let ([env-loop    (make-label 'set-variable-value-env-loop)]
         [scan        (make-label 'set-variable-value-scan)]
@@ -425,6 +435,7 @@ These optimizations are currently unimplemented:
 ;;               (scan (cdr vars) (cdr vals)))))))
 ;;     (scan (car frame)
 ;;           (cdr frame))))
+(: cg-op-define-variable! (Generator3 MExpr MExpr MExpr))
 (define (cg-op-define-variable! name value env)
   (let ((scan        (make-label 'define-variable!-scan))
         (scan-else-1 (make-label 'define-variable!-scan-else-1))
@@ -478,12 +489,14 @@ These optimizations are currently unimplemented:
      (cg-goto scan)       ; [ fvars'; fvals'; name; value; env ]
      `(,term))))
 
+(: cg-op-false?                    (Generator  MExpr))       ; Evaluates to 1 if the expression is 0
 (define (cg-op-false? exp)
   (append
    (debug-label 'cg-op-false?)
    (cg-mexpr exp)
    (asm 'ISZERO)))
 
+(: cg-op-list                      (Generator  MExpr))       ; Creates a 1-element vector with the given object.
 (define (cg-op-list exp)
   (append
    (debug-label 'cg-op-list)
@@ -540,16 +553,15 @@ These optimizations are currently unimplemented:
              (error "Unsupported constant - cg-mexpr-const" exp))))))
           
 
-(: cg-mexpr-boxed-const (Generator unboxed-const))
+(: cg-mexpr-boxed-const (Generator boxed-const))
 (define (cg-mexpr-boxed-const exp)
   (let ([ val (boxed-const-value exp) ])
-    (cond ((symbol? val)
-           (let ((int (symbol->integer val)))
-             (cg-make-symbol (const (integer-bytes int)))))
-          ((integer? val) (cg-make-fixnum (const val)))
-          ((list? val)    (cg-make-list (map const val) #t))
-          (else
-           (error "Unsupported constant - cg-mexpr-const" exp)))))
+    (cond [(symbol? val)
+           (let ((int (symbol->integer (cast val Symbol))))
+             (cg-make-symbol (const (integer-bytes int))))]
+          [(integer? val) (cg-make-fixnum (const val))]
+          [(list? val)    (cg-make-list (map const val) #t)]
+          [else           (error "Unsupported constant - cg-mexpr-const" exp)])))
       
 
 (: cg-mexpr-op    (Generator op))
@@ -579,38 +591,23 @@ These optimizations are currently unimplemented:
 (define (cg-mexpr-label exp)
   (list (eth-push 'shrink exp)))
 
-(: cg-mexpr-stack (Generator Nothing))
+(: cg-mexpr-stack Generator0)
 (define (cg-mexpr-stack) '())
 
 (: cg-write-stack (Generator MExpr))
 (define (cg-write-stack exp) (cg-mexpr exp))
 
-(: cg-goto                 (Generator  MExpr))
-(: cg-branch               (Generator2 MExpr MExpr))
-(: cg-reverse              (Generator  Fixnum))
-(: cg-pop                  (Generator  Fixnum))
-(: cg-swap                 (Generator  FixNum))
-(: cg-read-address         (Generator  MExpr))
-(: cg-read-address-offset  (Generator2 MExpr MExpr))
-(: cg-write-address        (Generator2 MExpr MExpr))
-(: cg-write-address-offset (Generator3 MExpr MExpr MExpr))
-(: cg-intros               (Generator MExprs)) ; Use at start of a primitive op. Ensures all arguments are on the stack first-to-last.
-(: cg-insert               (Generator2 Fixnum MExpr)) ;
-(: cg-invoke-primop        (Generator MExpr MExprs))
-(: symbol->integer         (-> Symbol Integer)) ; TODO: I think the "official" ABI uses a Keccak hash for this.
-(: integer->string         (-> Integer String))
-(: asm                     (-> Symbol EthInstructions))
-(: stack                   MExpr)
-(: stack-write?            (-> MExpr Boolean))
-
+(: cg-goto (Generator  MExpr))
 (define (cg-goto dest)
   (append (cg-mexpr dest)
           (asm 'JUMP)))
 
+(: cg-branch (Generator2 MExpr MExpr))
 (define (cg-branch dest pred)
   (append (cg-intros (list dest pred))
           (asm 'JUMPI)))
 
+(: cg-reverse (Generator Integer))
 (define (cg-reverse size)
   (cond ((eq? size 2) (asm 'SWAP1))
         ((eq? size 3)  ; [ x1; x2; x3 ]
@@ -625,12 +622,14 @@ These optimizations are currently unimplemented:
         (else
          (error "Unsupported size -- cg-reverse" size))))
 
+(: cg-pop                  (Generator  Integer))
 (define (cg-pop size)
   (if (eq? size 0)
       '()
       (cons (eth-asm 'POP)
             (cg-pop (- size 1)))))
 
+(: cg-swap                 (Generator  Integer))
 (define (cg-swap size)
   (cond ((eq? size  1) (asm 'SWAP1))
         ((eq? size  2) (asm 'SWAP2))
@@ -650,12 +649,14 @@ These optimizations are currently unimplemented:
         ((eq? size 0)  '())
         (else (error "Unknown swap size -- cg-swap" size))))
 
+(: cg-read-address         (Generator  MExpr))
 (define (cg-read-address addr)
   (append
    (debug-label 'cg-read-address)
    (cg-mexpr addr)
    (asm 'MLOAD)))
 
+(: cg-read-address-offset  (Generator2 MExpr MExpr))
 (define (cg-read-address-offset addr os)
   (append
    (debug-label 'cg-read-address-offset)
@@ -665,12 +666,14 @@ These optimizations are currently unimplemented:
    (cg-add stack stack)        ; [ addr' ]
    (cg-read-address stack)))   ; [ val ]
 
+(: cg-write-address        (Generator2 MExpr MExpr))
 (define (cg-write-address dest val)
   (append
    (debug-label 'cg-write-address)
    (cg-intros (list dest val))
    (asm 'MSTORE)))
 
+(: cg-write-address-offset (Generator3 MExpr MExpr MExpr))
 (define (cg-write-address-offset dest os val)
   (append
    (debug-label 'cg-write-address-offset)
@@ -680,10 +683,10 @@ These optimizations are currently unimplemented:
    (cg-add stack stack)             ; [ addr'; val ]
    (cg-write-address stack stack))) ; [ ]
 
-
-
+(: symbol->integer (-> Symbol Integer)) ; TODO: I think the "official" ABI uses a Keccak hash for this.
 (define (symbol->integer sym)
   (let ((lst (string->list (symbol->string sym))))
+    (: loop (-> (Listof Char) Integer Integer))
     (define (loop lst i)
       (if (null? lst)
           i
@@ -692,7 +695,9 @@ These optimizations are currently unimplemented:
                    (* 256 i)))))
     (loop lst 0)))
 
+(: integer->string (-> Integer String))
 (define (integer->string n)
+  (: integer->char-list (-> Integer (Listof Char)))
   (define (integer->char-list n)
     (if (equal? n 0)
         null
@@ -701,7 +706,7 @@ These optimizations are currently unimplemented:
                 (integer->char-list q)))))
   (list->string (reverse (integer->char-list n))))
     
-
+(: asm                     (-> Symbol EthInstructions))
 (define (asm sym) (list (eth-asm sym)))
 
 ;;; Lists
@@ -712,13 +717,10 @@ These optimizations are currently unimplemented:
 (: cg-cdr          (Generator  MExpr))
 (: cg-list->stack  (Generator  MExpr))
 (: cg-list->vector (Generator  MExpr))
-(: cg-cons         (Generator2 MExpr Mexpr))
+(: cg-cons         (Generator2 MExpr MExpr))
 (: cg-set-car!     (Generator2 MExpr MExpr))
-(: cg-set-cdr!     (Generator2 MExpr Mexpr))
+(: cg-set-cdr!     (Generator2 MExpr MExpr))
 (: cg-list-length  (Generator  MExpr))
-(: cg-unroll-args1 (Generator  MExpr))
-(: cg-unroll-args2 (Generator  MExpr))
-(: cg-unroll-args3 (Generator  MExpr))
 
 (define (cg-null? exp)
   (append
@@ -843,6 +845,7 @@ These optimizations are currently unimplemented:
      `(,terminate)
      (cg-pop 1))))            ; [ len ]
 
+(: cg-unroll-args1 (Generator  MExpr))
 (define (cg-unroll-args1 exp)
   (append
    (debug-label 'cg-unroll-args1)
@@ -852,6 +855,7 @@ These optimizations are currently unimplemented:
    (cg-unbox-integer stack) ; [ x1' ]
    ))
 
+(: cg-unroll-args2 (Generator  MExpr))
 (define (cg-unroll-args2 exp)
   (append
    (debug-label 'cg-unroll-args2)
@@ -863,6 +867,7 @@ These optimizations are currently unimplemented:
    (cg-swap 1)              ; [ x1'; x2' ]
    ))
 
+(: cg-unroll-args3 (Generator  MExpr))
 (define (cg-unroll-args3 exp)
   (append
    (debug-label 'cg-unroll-args3)
@@ -879,13 +884,6 @@ These optimizations are currently unimplemented:
 
 ;;; Vectors
 
-(: cg-vector->stack (Generator MExpr))
-(: cg-vector-len (Generator MExpr))
-(: cg-vector-write (Generator3 MExpr MExpr MExpr)) ; vector -> offset -> value
-(: cg-vector-read (Generator2 MExpr MExpr)) ; vector -> offset
-(: cg-vector-unbox! (Generator MExpr))
-(: cg-vector-set-length! (Generator2 MExpr MExpr)) ; vector -> value
-
 ; PSEUDOCODE
 
 #|
@@ -899,7 +897,7 @@ These optimizations are currently unimplemented:
             (loop i))))
     (loop i)))
 |#
-
+(: cg-vector->stack (Generator MExpr))
 (define (cg-vector->stack vec)
   (let ((loop (make-label 'loop))
         (term (make-label 'term)))
@@ -922,14 +920,17 @@ These optimizations are currently unimplemented:
      `(,term)
      (cg-pop 2))))                ; [ xs ]
 
+(: cg-vector-data (Generator MExpr))
 (define (cg-vector-data vec)
   (cg-add vec (const (* 3 WORD))))
 
+(: cg-vector-len (Generator MExpr))
 (define (cg-vector-len vec)
   (append
    (debug-label 'cg-vector-len)
    (cg-read-address-offset vec (const 2))))
 
+(: cg-vector-write (Generator3 MExpr MExpr MExpr)) ; vector -> offset -> value
 (define (cg-vector-write vec os val)
   (append
    (debug-label 'cg-vector-write)
@@ -938,7 +939,8 @@ These optimizations are currently unimplemented:
    (cg-add (const 3) stack) ; [ os'; vec; val ]
    (asm 'SWAP1)             ; [ vec; os'; val ]
    (cg-write-address-offset stack stack stack))) ; [ ]
-   
+
+(: cg-vector-read (Generator2 MExpr MExpr)) ; vector -> offset
 (define (cg-vector-read vec os)
   (append
    (debug-label 'cg-vector-read)
@@ -948,6 +950,7 @@ These optimizations are currently unimplemented:
    (asm 'SWAP1)                  ; [ vec; os' ]
    (cg-read-address-offset stack stack))) ; [ x ]
 
+(: cg-vector-set-length! (Generator2 MExpr MExpr)) ; vector -> value
 (define (cg-vector-set-length! vec len)
   (append
    (debug-label 'cg-vector-set-length!)
@@ -963,7 +966,8 @@ These optimizations are currently unimplemented:
       (let (i (- len 1))
         (write-vector vec i (unbox-integer (read-vector vec i)))
         (loop i)))))
-|# 
+|#
+(: cg-vector-unbox! (Generator MExpr))
 (define (cg-vector-unbox! vec)
   (let ([ loop (make-label 'cg-vector-unbox-loop) ]
         [ term (make-label 'cg-vector-unbox-term) ]
@@ -995,6 +999,7 @@ These optimizations are currently unimplemented:
 ;; (define (add-binding-to-frame! var val frame)
 ;;  (set-car! frame (cons var (car frame)))
 ;;  (set-cdr! frame (cons val (cdr frame))))
+(: cg-add-binding-to-frame     (Generator3 MExpr MExpr MExpr))
 (define (cg-add-binding-to-frame name value frame)
   (append
    (debug-label 'cg-add-binding-to-frame)
@@ -1022,16 +1027,8 @@ These optimizations are currently unimplemented:
 (: cg-make-primitive-procedure (Generator  MExpr))
 (: cg-make-pair                (Generator2 MExpr MExpr))
 (: cg-make-vector              (Generator2 MExpr MExprs))
-(: cg-make-nil                 (Generator  Nothing))
-(: cg-make-list                (Generator2 MExprs Boolean))
-(: cg-add-binding-to-frame     (Generator3 MExpr MExpr Mexpr))
 (: cg-allocate                 (Generator MExpr))              ; Returns a pointer to a newly-allocated block of 256-bit words.
 (: cg-allocate-initialize      (Generator2 MExpr MExprs))      ; Allocates memory and initializes each word from the argument list.
-(: cg-initialize-program       (Generator Nothing))
-(: cg-define-primops           (Generator Nothing))
-(: cg-make-environment         (Generator Nothing))
-(: cg-make-frame               (Generator Nothing))
-(: cg-return                   (Generator MExpr))              ; Ends the program with a boxed value as the output.
 (define (cg-tag exp) (append (cg-read-address exp)))
 
 
@@ -1074,12 +1071,15 @@ These optimizations are currently unimplemented:
                                          (const (length exps)))
                                    exps))))
 
+(: cg-make-nil Generator0)
 (define (cg-make-nil) (list (eth-push 1 MEM-NIL)))
 ;  (cg-allocate-initialize (const 1) (list (const TAG-NIL))))
 
 ; NOTE: It is currently only valid to call cg-make-list on non-stack items.
 ; Currently only used to create constant lists, so box the items as we make them.
+(: cg-make-list (Generator2 MExprs Boolean))
 (define (cg-make-list lst [box? #t])
+  (: loop (Generator Integer))
   (define (loop n)
     (if (eq? n 0) ; [ lst; *vals ]
         '()
@@ -1110,6 +1110,7 @@ These optimizations are currently unimplemented:
    ))
 
 (define (cg-allocate-initialize size inits)
+  (: loop (Generator MExprs))
   (define (loop exps)
     (if (null? exps)
         '()
@@ -1130,7 +1131,7 @@ These optimizations are currently unimplemented:
    (cg-pop 1)                           ; [ optr ]
    ))
 
-            
+(: cg-initialize-program Generator0)
 (define (cg-initialize-program)
   (append
    (debug-label 'cg-initialize-program)
@@ -1149,6 +1150,7 @@ These optimizations are currently unimplemented:
    (cg-write-address (const MEM-NIL) (const TAG-NIL))
    ))
 
+(: cg-define-primops Generator0)
 (define (cg-define-primops)
   (let ((label-skip (make-label 'cg-define-primops-skip)))
     (append
@@ -1175,6 +1177,7 @@ These optimizations are currently unimplemented:
      )))
                                   
 
+(: cg-make-environment Generator0)
 (define (cg-make-environment)
   (append
    (debug-label 'cg-make-environment)
@@ -1183,13 +1186,15 @@ These optimizations are currently unimplemented:
    (cg-cons stack stack)
    ))
 
+(: cg-make-frame Generator0)
 (define (cg-make-frame)
   (append
    (debug-label 'cg-make-frame)
    (cg-make-nil)
    (cg-make-nil)
    (cg-cons stack stack)))
-    
+
+(: cg-return (Generator MExpr))              ; Ends the program with a boxed value as the output.
 (define (cg-return exp)
   (let ([ label-uint256 (make-label 'cg-return-ty-uint256-)]
         [ label-list    (make-label 'cg-return-ty-list-)]
@@ -1234,6 +1239,7 @@ These optimizations are currently unimplemented:
      (cg-return-uint256 stack)
      )))
 
+(: cg-return-uint256 (Generator MExpr))
 (define (cg-return-uint256 exp)
   (append
    (debug-label 'cg-return-uint256) ; [ n ]
@@ -1242,6 +1248,7 @@ These optimizations are currently unimplemented:
    (cg-reverse 2)                   ; [ &val; 1 ]
    (asm 'RETURN)))                  ; [ ]
 
+(: cg-return-vector (Generator MExpr))
 (define (cg-return-vector exp)
   (append
    (debug-label 'cg-return-vector) ; [ vec ]
@@ -1253,6 +1260,7 @@ These optimizations are currently unimplemented:
    (asm 'RETURN)
    ))
 
+(: cg-return-list-uint256 (Generator MExpr))
 (define (cg-return-list-uint256 exp)
   (append
    (debug-label 'cg-return-list-uint256)
@@ -1264,8 +1272,9 @@ These optimizations are currently unimplemented:
 (define cg-return-compiled-procedure cg-return-uint256)
 
 ; Leaves [ x1; x2; ... ; xn; remaining list ] on the stack.
-(: cg-unroll-list (Generator2 Fixnum MExpr))
+(: cg-unroll-list (Generator2 Integer MExpr))
 (define (cg-unroll-list num exp)
+  (: loop (Generator Integer))
   (define (loop n)
     (if (eq? n 0)
         '()
@@ -1371,7 +1380,9 @@ stk is a no-op, so immediately recurse: [ stk, stk, stk, 5 ]
 5 inserted at 3: [ x1,x2,x3,5,x4,10]
 Remaining 3 stk arguments ignored. 
 |#
+(: cg-intros               (Generator MExprs)) ; Use at start of a primitive op. Ensures all arguments are on the stack first-to-last.
 (define (cg-intros exprs)
+  (: loop (Generator2 MExprs Integer))
   (define (loop exprs n)
     (if (null? exprs)
         '()
@@ -1400,7 +1411,9 @@ SWAP3 -> [ x3; x1; x2; c ]
 SWAP2 -> [ x2; x1; x3; c ]
 SWAP1 -> [ x1; x2; x3; c ]
 |#
+(: cg-insert (Generator2 MExpr Integer)) ;
 (define (cg-insert expr pos)
+  (: loop (Generator Integer))
   (define (loop n)
     (cond ((eq? n 0) '())
           ;((eq? n 1) '())
@@ -1409,6 +1422,7 @@ SWAP1 -> [ x1; x2; x3; c ]
   (append (cg-mexpr expr)
           (loop pos)))
 
+(: cg-invoke-primop (-> MExpr MExpr * EthInstructions))
 (define (cg-invoke-primop target . args)
   (let ([ ret (make-label 'cg-invoke-primop-ret) ])
     (append
@@ -1420,6 +1434,7 @@ SWAP1 -> [ x1; x2; x3; c ]
 ; (: cg-move-front (Generator Fixnum))
 
 ; The only expressions that don't affect the stack are reads from the stack-aliased registers.
+(: stack-write?            (-> MExpr Boolean))
 (define (stack-write? exp) (not (stack? exp)))
 
 (define (stack-read? exp)
@@ -1432,7 +1447,8 @@ SWAP1 -> [ x1; x2; x3; c ]
 ; Debug labels are not used for flow control. They generate entries in the relocation table that
 ; help locate the code that generated an assembly fragment. They have 1 byte of overhead for a
 ; JUMPDEST instruction, but even that could be eliminated if necessary.
-(define (debug-label sym . verbosity)
+(: debug-label (Generator Symbol))
+(define (debug-label sym)
   (if (*use-debug-symbols?*)
       (list (make-label sym))
       '()))

@@ -4,6 +4,9 @@
 
 (provide (all-defined-out))
 
+(: maybe->list (All (A) (-> Boolean A (Listof A))))
+(define (maybe->list pred? x) (if pred? (list x) '()))
+
 (: integer-bytes (-> Integer Byte))
 (define (integer-bytes n)
   (cond ((< n 256)        1)

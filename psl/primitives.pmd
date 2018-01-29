@@ -76,14 +76,14 @@
                                   (triop  (op 'CALLDATACOPY) mem-ptr data-ptr size))
 (define (%-timestamp)             (nullop (op 'TIMESTAMP)))
 
-(define (%-tag a)            (unop    (cg-tag stack) a))
-(define (%-mem-alloc a)      (unop    (cg-allocate stack) a))
-(define (%-mem-read a b)     (binop   (cg-read-address-offset stack stack) a b))
-(define (%-mem-write! a b c) (triproc (cg-write-address-offset stack stack stack) a b c))
+(define (%-tag a)            (unop    (cg tag stack) a))
+(define (%-mem-alloc a)      (unop    (cg allocate stack) a))
+(define (%-mem-read a b)     (binop   (cg read-address-offset stack stack) a b))
+(define (%-mem-write! a b c) (triproc (cg write-address-offset stack stack stack) a b c))
 (define (%-store-read a)     (unop    (op 'SLOAD) a))
 (define (%-store-write! a b) (biproc  (op 'SSTORE) a b))
-(define (%-box a)            (unop    (cg-make-fixnum stack)   a))
-(define (%-unbox a)          (unop    (cg-unbox-integer stack) a))
+(define (%-box a)            (unop    (cg make-fixnum stack)   a))
+(define (%-unbox a)          (unop    (cg unbox-integer stack) a))
 (defmacro (%-bool->fixnum a)
   `(begin
      ,a

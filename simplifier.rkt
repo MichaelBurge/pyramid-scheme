@@ -1,4 +1,4 @@
-#lang errortrace typed/racket
+#lang typed/racket
 
 (require "types.rkt")
 (require "ast.rkt")
@@ -8,7 +8,8 @@
 (require typed/racket/unsafe)
 
 (unsafe-require/typed racket/set
-  [ set-add! (All (A) (-> (Setof A) A Void))])
+   [ set-add! (All (A) (-> (Setof A) A Void))]
+   [ mutable-set (All (A) (-> (Setof A)))])
 
 ; (require "typed/set.rkt")
 
@@ -41,7 +42,8 @@
                  (λ (x)
                    (transform-ast-descendants-on x pyr-macro-application? expand-macro))
                  prog2))
-  prog3
+  (define prog4 (pass-deduce-macros prog3))
+  prog4
   )
 
 (: pass-remove-unused-definitions Pass)
@@ -55,7 +57,7 @@
     (if (set-empty? undefineds)
         prog
         (begin
-          (pretty-print prog)
+          (print-ast prog)
           (error "Undefined variables" undefineds)))))
 
 (: pass-collapse-nested-begins Pass)
@@ -64,7 +66,7 @@
    prog
    pyr-begin?
    (λ ([ x : pyr-begin ])
-     (pyr-begin
+     (sequence->exp
       (apply append
              (map (λ ([y : Pyramid])
                     (if (pyr-begin? y)
@@ -75,7 +77,7 @@
 (: pass-inline-simple-definitions Pass)
 (define (pass-inline-simple-definitions prog)
   (: nonsimple-definitions (Setof Symbol))
-  (define nonsimple-definitions (set))
+  (define nonsimple-definitions (mutable-set))
   (: simple-definitions (HashTable Symbol Pyramid))
   (define simple-definitions (make-hash))
   (: simple-definition? (-> Pyramid Boolean : #:+ pyr-definition))
@@ -128,6 +130,15 @@
         (pyr-begin '())
         x))
   (transform-ast-descendants prog transform))
+
+(: pass-deduce-macros Pass)
+(define (pass-deduce-macros ast)
+  (transform-ast-descendants-on ast pyr-application?
+                                (λ ([ x : pyr-application ])
+                                  (match (pyr-application-operator x)
+                                    [ (struct pyr-variable ((? macro? name)))
+                                      (application->macro-application x)]
+                                    [ _ x]))))                                
 
 (: defined-vars (-> Pyramid (Setof VariableName)))
 (define (defined-vars prog)

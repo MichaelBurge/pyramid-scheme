@@ -1,4 +1,4 @@
-#lang errortrace typed/racket/no-check
+#lang typed/racket/no-check
 
 (require "types.rkt")
 (require "disassembler.rkt")
@@ -21,6 +21,7 @@
  make-simulator
  apply-txn-create!
  apply-txn-message!
+ mint-ether!
  ;
  *on-simulate-instruction*
  on-simulate-nop
@@ -58,6 +59,7 @@
                     [ exn:evm? (λ (x) x)])
       (simulate! vm MAX-ITERATIONS))))
 
+(: on-simulate-nop (-> vm-exec EthInstruction Integer Void))
 (define (on-simulate-nop vm i reads) (void))
 (define *on-simulate-instruction* (make-parameter on-simulate-nop))
 
@@ -627,6 +629,7 @@
                                         vm
                                         addr)))))
 
+(: on-simulate-debug (-> ReverseSymbolTable OnSimulateCallback))
 (define (on-simulate-debug reverse-symbol-table)
   (λ (vm i reads)
     (fprintf (current-output-port) "~a" (vm-exec-step vm))
@@ -667,6 +670,15 @@
 (define (account vm addr)
   (let ([ sim (vm-exec-sim vm) ])
     (sim-account sim addr)))
+
+; TODO: Implement by mining a block
+(: mint-ether! (-> simulator Symbol EthWord Void))
+(define (mint-ether! sim name amount)
+  (: acc vm-account)
+  (define acc (sim-account sim (find-or-create-addr-name! name)))
+  (match acc
+    [ #f (error "mint-money!: Unknown account" name)]
+    [ acc (set-vm-account-balance! acc (+ amount (vm-account-balance acc)))]))
 
 (: account-balance (-> simulator Address EthWord))
 (define (account-balance sim addr)

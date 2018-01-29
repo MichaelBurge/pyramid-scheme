@@ -4,65 +4,93 @@
 (require "utils.rkt")
 (require "globals.rkt")
 
+(require "typed/binaryio.rkt")
+
+(require/typed racket/pretty
+  [ pretty-print (-> Any Void)])
+
 (provide (all-defined-out))
 
-(: expand-pyramid (-> Any Pyramid))
+(: expand-pyramid (-> PyramidQ Pyramid))
 (define (expand-pyramid x)
   (match x
-    ((? number?) (pyr-const x))
+    ((? boolean?) (pyr-const x))
+    ((? exact-integer?) (pyr-const x))
     ((? string?) (pyr-const x))
     ((? symbol?) (pyr-variable x))
     (`(quote ,exp) (pyr-quoted (expand-pyramid exp)))
-    ((list 'set! `(quote ,(? symbol? name)) body)
+    (`(set! ,(? symbol? name) ,body)
      (pyr-assign name (expand-pyramid body)))
     (`(define ,(? symbol? name) . ,(? list? body))
-     (pyr-definition name (pyr-begin (map expand-pyramid body))))
-    (`(define `(,(? symbol? name) . ,(? list? parameters)) . ,(? list? body))
+     (pyr-definition name (sequence->exp (map expand-pyramid body))))
+    (`(define (,(? symbol? name) . ,(? list? parameters)) . ,(? list? body))
      (pyr-definition name
                      (pyr-lambda (cast parameters (Listof VariableName))
-                                 (pyr-begin (map expand-pyramid body)))))
+                                 (sequence->exp (map expand-pyramid body)))))
+    (`(,(or 'λ 'lambda) ,body) (pyr-lambda '() (expand-pyramid body)))
     (`(,(or 'λ 'lambda) ,parameters . ,(? list? body))
-     (pyr-lambda (cast parameters (Listof VariableName))
-                 (pyr-begin (map expand-pyramid body))))
+     (let ([ ex-body (sequence->exp (map expand-pyramid body))])
+       (if (list? parameters)
+           (pyr-lambda (cast parameters (Listof VariableName))
+                       ex-body)
+           (pyr-lambda (list (cast parameters Symbol))
+                       ex-body))))
     (`(,(or 'λ 'lambda) . ,(? list? body))
-     (pyr-lambda '() (pyr-begin (map expand-pyramid body))))
+     (pyr-lambda '() (sequence->exp (map expand-pyramid body))))
     (`(if ,pred ,cons ,alt)
      (pyr-if (expand-pyramid pred)
              (expand-pyramid cons)
              (expand-pyramid alt)))
     (`(begin . ,(? list? body))
-     (pyr-begin (map expand-pyramid body)))
+     (sequence->exp (map expand-pyramid body)))
     ((list-rest 'asm ops)
      (pyr-asm (map parse-asm (cast ops (Listof Any)))))
     (`(defmacro ,(? pyr-identifier? name) . ,(? list? body))
      (pyr-macro-definition name '() body))
-    (`(defmacro `(,(? pyr-identifier? name) . ,params) . ,(? list? body))
-     (pyr-macro-definition name (cast params (Listof Symbol)) body))
-    (`(,(? defined-macro? head) . ,tail)
-     (assert tail list?)
+    (`(defmacro (,name . ,args) . ,body)
+     (assert (pyr-identifier? name))
+     (assert (list? body))
+     (pyr-macro-definition name args `(begin ,@body)))
+    (`(,(? defined-macro? head) . ,(? list? tail))
      (pyr-macro-application head (map expand-pyramid tail)))
-    (`(,(? pyr-identifier? head) . ,(? list? tail))
-     (assert tail list?)
+    (`(,head . ,(? list? tail))
      (pyr-application (expand-pyramid head) (map expand-pyramid tail)))
-    (_ (error "expand-pyramid: Unexpected form" x))))
+    (_ (begin
+         (pretty-print x)
+         (error "expand-pyramid: Unexpected form")))))
 
-(: shrink-pyramid (-> Pyramid Any))
+(: shrink-pyramid (-> Pyramid PyramidQ))
 (define (shrink-pyramid x)
   (match x
     [(struct pyr-const (v))                         v]
     [(struct pyr-variable (v))                      v]
-    [(struct pyr-quoted (exp))                      `(quote ,exp)]
+    [(struct pyr-quoted (exp))                      `(quote ,(shrink-pyramid exp))]
     [(struct pyr-assign (name value))               `(set! ,name ,(shrink-pyramid value))]
     [(struct pyr-definition (name body))            `(define ,name ,(shrink-pyramid body))]
     [(struct pyr-lambda (vars body))                `(λ ,vars ,(shrink-pyramid body))]
-    [(struct pyr-if (pred cons alt))                `(if ,pred ,cons ,alt)]
+    [(struct pyr-if (pred cons alt))                `(if ,(shrink-pyramid pred) ,(shrink-pyramid cons) ,(shrink-pyramid alt))]
     [(struct pyr-begin (actions))                   `(begin ,@(map shrink-pyramid actions))]
-    [(struct pyr-macro-definition (name args body)) `(defmacro ,name ,args ,@body)]
-    [(struct pyr-macro-application (name args))     `(,name ,@args)]
-    [(struct pyr-asm (ops))                         `(asm ,@ops)]
-    [(struct pyr-application (op xs))               `(,op ,@xs)]
-    [_ (error "transform-ast-children: Unknown syntax" x)]
+    [(struct pyr-macro-definition (name args body)) `(defmacro (,name ,@args) ,body)]
+    [(struct pyr-macro-application (name args))     `(,name ,@(map shrink-pyramid args))]
+    [(struct pyr-asm (ops))                         `(asm ,@(map shrink-asm ops))]
+    [(struct pyr-application (op xs))               `(,(shrink-pyramid op) ,@(map shrink-pyramid xs))]
+    [_ (error "shrink-pyramid: Unknown syntax" x)]
     ))
+
+(: shrink-asm (-> pyr-asm-base PyramidQ))
+(define (shrink-asm asm)
+  (match asm
+    [(struct pyr-asm-push ('shrink value))       `(push 'shrink ,value)]
+    [(struct pyr-asm-push (size value))          `(push ,size ,value)]
+    [(struct pyr-asm-op   (sym))                 `(op (quote ,sym))]
+    [(struct pyr-asm-bytes (bs)) (match (bytes-length bs)
+                                   [ 0           `(byte ,(first (bytes->list bs)))]
+                                   [ n           `(bytes ,(bytes->integer bs #f))])]
+    [(struct pyr-asm-cg (exp))                   exp]
+    [(struct label-definition (name 0  #f))      `(label (quote ,name))]
+    [(struct label-definition (name os #f))      `(label (quote ,name) ,os)]
+    [(struct label-definition (name os virtual)) `(label (quote ,name) ,os ,virtual)]
+    [_ (error "shrink-asm: Unknown syntax" asm)]))
 
 (: syntaxes (Setof Symbol))
 (define syntaxes (apply set '(quote set! define if lambda begin defmacro push op byte label asm)))
@@ -80,14 +108,21 @@
 (: parse-asm (-> Any pyr-asm-base))
 (define (parse-asm x)
   (match x
-    [(list 'push 'shrink val)     (pyr-asm-push 'shrink           (cast val EthWord))]
-    [(list 'push size val)        (pyr-asm-push  (cast size Byte) (cast val EthWord))]
-    [(list 'op   (list 'quote x)) (pyr-asm-op    (cast x Symbol))]
-    [(list 'byte val)             (pyr-asm-byte  (cast val Byte))]
-    [(list 'label name)           (pyr-asm-label (cast name Symbol))]
+    [`(push  'shrink         ,val) (pyr-asm-push 'shrink           (cast val EthWord))]
+    [`(push  ,(? byte? size) ,val) (pyr-asm-push  (cast size Byte) (cast val EthWord))]
+    [`(op    (quote ,x))           (pyr-asm-op    (cast x Symbol))]
+    [`(byte  ,(? byte? val))       (pyr-asm-bytes (bytes (cast val Byte)))]
+    [`(bytes ,(? exact-integer? size)
+             ,(? exact-integer? val))
+     (pyr-asm-bytes (integer->bytes val size #f))]
+    [`(label (quote ,(? symbol? name))) (label-definition (cast name Symbol) 0  #f)]
+    [`(label (quote ,(? symbol? name))
+             ,(? exact-integer? os))    (label-definition (cast name Symbol) os #f)]
+    [`(,(? symbol? name) . ,(? list? args))
+     (pyr-asm-cg `(,name ,@args))]
     [_ (error "parse-asm: Unknown syntax" x)]))
 
-(: read-statements (-> String Pyramids))
+(: read-statements (-> String (Listof Any)))
 (define (read-statements filename)
   (let loop ([fh (open-input-file filename) ])
     (let ([ x (read fh) ])
@@ -96,9 +131,20 @@
       ;(displayln (continuation-mark-set->list* (current-continuation-marks) '(line)))
       (if (eof-object? x)
           null
-          (cons (expand-pyramid x)
+          (cons x
                 (loop fh))))))
 
-(: read-file (-> String Pyramid))
+(: read-file (-> String (Listof Any)))
 (define (read-file filename)
-  (pyr-begin (read-statements filename)))
+  `(begin ,@(read-statements filename)))
+
+(: parse-file (-> String Pyramid))
+(define (parse-file filename)
+  (expand-pyramid (read-file filename)))
+
+(: sequence->exp (-> Pyramids Pyramid))
+(define (sequence->exp seq)
+  (match seq
+    (`() (pyr-begin '()))
+    ((list x) x)
+    (xs (pyr-begin xs))))

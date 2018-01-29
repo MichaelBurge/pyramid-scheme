@@ -3,20 +3,21 @@
 (require "types.rkt")
 (require "globals.rkt")
 (require "transaction.rkt")
+(require "utils.rkt")
 
 (provide (all-defined-out))
 
 ; TODO: Remove this after properly implementing v,r,s
 (: force-txn-sender! (-> vm-txn Symbol Void))
 (define (force-txn-sender! txn sym)
-  (set-vm-txn-r! txn (find-or-create-addr-name! sym txn)))
+  (set-vm-txn-r! txn (find-or-create-addr-name! sym)))
 
-(: find-or-create-addr-name! (-> Symbol vm-txn Address))
-(define (find-or-create-addr-name! sym txn)
+(: find-or-create-addr-name! (-> Symbol Address))
+(define (find-or-create-addr-name! sym)
   (hash-ref (*addresses-by-name*)
             sym
             (λ ()
-              (define addr (txn-sender txn))
+              (define addr (tick-counter! *account-nonce*))
               (register-addr-name! sym addr)
               addr)))
 

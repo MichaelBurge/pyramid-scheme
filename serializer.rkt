@@ -1,4 +1,4 @@
-#lang errortrace typed/racket
+#lang typed/racket
 
 (require "types.rkt")
 (require "utils.rkt")

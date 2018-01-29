@@ -1,4 +1,4 @@
-#lang errortrace typed/racket/no-check
+#lang typed/racket/no-check
 
 (require "types.rkt")
 (require "ast.rkt")

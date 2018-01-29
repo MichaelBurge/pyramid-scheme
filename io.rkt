@@ -2,6 +2,7 @@
 
 (require "types.rkt")
 (require "globals.rkt")
+(require "parser.rkt")
 
 (require "typed/binaryio.rkt")
 (require "typed/dict.rkt")
@@ -10,8 +11,11 @@
 
 (: display-abstract-instruction (-> Instruction Void))
 (define (display-abstract-instruction i)
-  (display `(,(*abstract-offset*) ,i)))
-
+  (match i
+    [(struct pyr-asm _) (print-ast i)]
+    [_                  (display `(,(*abstract-offset*) ,i))]))
+                 
+  
 (: display-abstract-instructions (-> (U inst-seq Instructions) Void))
 (define (display-abstract-instructions is)
   (parameterize ([ *abstract-offset* 0])
@@ -69,3 +73,7 @@
   (: sort-lst (-> (Listof relocation) (Listof relocation)))
   (define (sort-lst lst) ((inst sort relocation Integer) lst < #:key sort-key))
   (sort-lst (set->list relocs)))
+
+(: print-ast (-> Pyramid Void))
+(define (print-ast ast)
+  (pretty-print (shrink-pyramid ast)))

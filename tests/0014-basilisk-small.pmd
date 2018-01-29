@@ -30,6 +30,8 @@
  ; Case 1: If someone deposits money, this should be recorded and their new balance returned.
  ; Case 2: If the incoming transaction has data, it should be interpreted as an address to read the balance from. This lets a future contract measure people's balances.
  (case "Deposits"
+   (accounts ('bob 250)
+             ('charlie 200))
    (init (sender 'alice)  (value 0))
    ; Bob's deposits are given to Alice, the creator.
    (txn (sender 'bob)     (value 100) (assert-balance 'alice 100) (assert-return 100))

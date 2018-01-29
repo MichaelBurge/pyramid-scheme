@@ -2,7 +2,7 @@
 
 (test-suite
  (case "withdraw-amounts"
-   (init (contract-value 100))
-   (txn  (contract-value 0) (sender-value 100))))
+   (init (value 100))
+   (txn  (assert-balance 'contract 0) (assert-balance 'sender 100))))
 
 (withdraw-all! **sender**)

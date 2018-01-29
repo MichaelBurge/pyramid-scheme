@@ -1,4 +1,4 @@
-#lang typed/racket/no-check
+#lang typed/racket
 
 ; "Analysis" refers to the layer that handles the full compilation pipeline from Pyramid to Bytecode.
 
@@ -15,10 +15,9 @@
 (require "io.rkt")
 ; (require "minimize.rkt")
 (require "simplifier.rkt")
+(require "parser.rkt")
 
 (provide (all-defined-out))
-
-(define *link?* (make-parameter #t))
 
 (: maybe-link (-> Bytes Bytes))
 (define (maybe-link bs)
@@ -42,12 +41,14 @@
 ;;         exp
 ;;         next)))
 
+(: verbose-section (-> String Verbosity (-> Void) Void))
 (define (verbose-section title level body)
   (when (verbose? level)
     (display title)
     (newline) (body)
     (newline)))
 
+(: print-program-settings (-> Void))
 (define (print-program-settings)
   (define pps (*patchpoints*))
   (unless (null? pps)
@@ -55,30 +56,35 @@
     (for ([ pp pps ])
       (displayln pp))))
 
-(: full-compile (-> Pyramid (List Instructions EthInstructions Bytes)))
+(: full-compile (-> PyramidQ full-compile-result))
 (define (full-compile prog)
   ; (reinitialize-globals!)
   (verbose-section "Program" VERBOSITY-LOW
                    (λ () (pretty-print prog)))
-  (let ([ simplified (if (*simplify?*) (simplify prog) prog) ])
-    (verbose-section "Simplified Program" VERBOSITY-LOW
-                     (λ () (pretty-print simplified)))
-    (verbose-section "Program Settings" VERBOSITY-LOW
-                     (λ () (print-program-settings)))
-    (let ([ instructions     (compile-pyramid simplified 'val 'next) ])
-      (verbose-section "Abstract Machine Code" VERBOSITY-LOW
-                       (λ () (display-abstract-instructions instructions)))
-      (let ([ eth-instructions (codegen (inst-seq-statements instructions)) ])
-        (verbose-section "EVM Instructions" VERBOSITY-HIGH
-                         (λ () (display-all eth-instructions)))
-        (let* ([ bs-unlinked (serialize-with-relocations eth-instructions) ]
-               [ bs (maybe-link bs-unlinked) ])
-          (verbose-section "Symbol Table" VERBOSITY-MEDIUM
-                           (λ () (print-symbol-table (*symbol-table*))))
-          (verbose-section "Relocation Table" VERBOSITY-MEDIUM
-                           (λ () (print-relocations (*relocation-table*))))
-          (verbose-section "EVM Disassembly" VERBOSITY-LOW
-                           (λ () (print-disassembly bs)))
-                           ;(λ () (print-disassembly bs-unlinked)))
-          (full-compile-result bs instructions eth-instructions)
-          )))))
+  (let ([ expanded (expand-pyramid prog)])
+    (verbose-section "Expanded" VERBOSITY-MEDIUM
+                     (λ () (pretty-print expanded)))
+    (verbose-section "Reshrunk" VERBOSITY-HIGH
+                     (λ () (pretty-print (shrink-pyramid expanded))))
+    (let ([ simplified (if (*simplify?*) (simplify expanded) expanded) ])
+      (verbose-section "Simplified" VERBOSITY-LOW
+                       (λ () (print-ast simplified)))
+      (verbose-section "Settings" VERBOSITY-LOW
+                       (λ () (print-program-settings)))
+      (let ([ instructions     (compile-pyramid 'val 'next simplified) ])
+        (verbose-section "Abstract Machine Code" VERBOSITY-LOW
+                         (λ () (display-abstract-instructions instructions)))
+        (let ([ eth-instructions (codegen (inst-seq-statements instructions)) ])
+          (verbose-section "EVM Instructions" VERBOSITY-HIGH
+                           (λ () (display-all eth-instructions)))
+          (let* ([ bs-unlinked (serialize-with-relocations eth-instructions) ]
+                 [ bs (maybe-link bs-unlinked) ])
+            (verbose-section "Symbol Table" VERBOSITY-MEDIUM
+                             (λ () (print-symbol-table (*symbol-table*))))
+            (verbose-section "Relocation Table" VERBOSITY-MEDIUM
+                             (λ () (print-relocations (*relocation-table*))))
+            (verbose-section "EVM Disassembly" VERBOSITY-LOW
+                             (λ () (print-disassembly bs)))
+            ;(λ () (print-disassembly bs-unlinked)))
+            (full-compile-result bs (inst-seq-statements instructions) eth-instructions)
+            ))))))

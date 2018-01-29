@@ -2,6 +2,7 @@
 
 (require/typed file/sha1
   [ bytes->hex-string (-> Bytes String)]
+  [ hex-string->bytes (-> String Bytes)]
   )
 
 (require/typed binaryio/integer
@@ -14,6 +15,7 @@
   )
 
 (provide bytes->hex-string
+         hex-string->bytes
          integer->bytes
          bytes->integer
          )
