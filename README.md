@@ -19,7 +19,7 @@ Pyramid Scheme is under heavy construction. Join our [public Discord channel](ht
 After installing the prerequisites(listed below), 
 
 ```bash
-$ ./pyramid examples/factorial.pmd
+$ ./pyramid tests/0001-factorial.pmd
 <long hex string>
 ```
 
@@ -37,6 +37,8 @@ You can see advanced command line options using `pyramid --help`.
 * Install necessary packages using "raco pkg install <name>". The packages are:
   * [binaryio-lib](https://docs.racket-lang.org/binaryio/index.html)
   * [errortrace-lib](https://docs.racket-lang.org/errortrace/using-errortrace.html)
+* Ensure the `keccak-256sum` tool is available on your PATH
+  * https://github.com/maandree/sha3sum
   
 ### Editor
 
