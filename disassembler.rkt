@@ -9,15 +9,9 @@
 (require "typed/dict.rkt")
 (provide (all-defined-out))
 
-(: byte-or-zero (-> Bytes Integer Byte))
-(define (byte-or-zero bs i)
-  (if (>= i (bytes-length bs))
-      0
-      (bytes-ref bs i)))
-
 (: disassemble-one (-> Bytes Integer EthInstruction))
 (define (disassemble-one bs i)
-  (let* ([ byte (byte-or-zero bs i) ])
+  (let* ([ byte (cast (bytes-or-zero bs i 1) Byte)])
     (if (hash-has-key? opcodes-by-byte byte)
         (disassemble-opcode bs i (hash-ref opcodes-by-byte byte))
         (eth-unknown byte))))

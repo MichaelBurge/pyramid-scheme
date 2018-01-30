@@ -3,15 +3,7 @@
 (require psl "contract.pmd")
 (require psl "primitives.pmd")
 
-; Main contract
-
-(static BASILISK-WALLET (asm (op 'CALLER)))
-
-(withdraw-all! BASILISK-WALLET)
-(define sender-balance (update-sender-balance!))
-(fetch-requested-balance sender-balance)
-
-; Functions
+; Procedures
 
 (define (update-sender-balance!)
   (let* ([ old-balance (%-store-read  **sender**)]
@@ -20,28 +12,39 @@
     new-balance))
 
 (define (fetch-requested-balance sender-balance)
-  (let ([ account (%-calldataload) ])
+  (let ([ account (%-calldataload 0) ])
     (if (= account 0)
         sender-balance
         (%-store-read account))
     ))
+
+; Main contract
+
+(static BASILISK-WALLET (asm (op 'CALLER)))
+
+(withdraw-all! BASILISK-WALLET)
+(define sender-balance (update-sender-balance!))
+(fetch-requested-balance sender-balance)
+
+; Tests
 
 (test-suite
  ; Case 1: If someone deposits money, this should be recorded and their new balance returned.
  ; Case 2: If the incoming transaction has data, it should be interpreted as an address to read the balance from. This lets a future contract measure people's balances.
  (case "Deposits"
    (accounts ('bob 250)
-             ('charlie 200))
+             ('charlie 200)
+             ('alice 0))
    (init (sender 'alice)  (value 0))
    ; Bob's deposits are given to Alice, the creator.
-   (txn (sender 'bob)     (value 100) (assert-balance 'alice 100) (assert-return 100))
-   (txn (sender 'bob)     (value 150) (assert-balance 'alice 250) (assert-return 250))
+   (txn (sender 'bob)     (value 100) (assert-balance 'contract 100) (assert-balance 'alice 0) (assert-return 100))
+   (txn (sender 'bob)     (value 150) (assert-balance 'contract 150) (assert-balance 'alice 100) (assert-return 250))
    ; Charlie can query deposits
-   (txn (sender 'charlie) (value 0)   (data (sender 'charlie))    (assert-return 0))
-   (txn (sender 'charlie) (value 0)   (data (sender 'bob))        (assert-return 250))
+   (txn (sender 'charlie) (value 0)   (data (sender 'charlie))    (assert-balance 'alice 250) (assert-return 0))
+   (txn (sender 'charlie) (value 0)   (data (sender 'bob))        (assert-balance 'alice 250) (assert-return 250))
    ; Charlie can query deposits, while also depositing.
-   (txn (sender 'charlie) (value 100) (data (sender 'bob))        (assert-return 250))
-   (txn (sender 'charlie) (value 100) (data (sender 'charlie))    (assert-return 200))
+   (txn (sender 'charlie) (value 100) (data (sender 'bob))        (assert-balance 'contract 100) (assert-balance 'alice 250) (assert-return 250))
+   (txn (sender 'charlie) (value 100) (data (sender 'charlie))    (assert-balance 'contract 100) (assert-balance 'alice 350) (assert-return 200))
    ; Charlie can query deposits, if his own balance is nonzero
-   (txn (sender 'charlie) (value 0)   (assert-balance 'alice 450) (assert-return 200))
+   (txn (sender 'charlie) (value 0)   (assert-balance 'alice 450) (assert-balance 'contract 0) (assert-return 200))
    ))

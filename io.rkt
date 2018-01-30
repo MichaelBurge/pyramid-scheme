@@ -3,6 +3,7 @@
 (require "types.rkt")
 (require "globals.rkt")
 (require "parser.rkt")
+(require "wallet.rkt")
 
 (require "typed/binaryio.rkt")
 (require "typed/dict.rkt")
@@ -77,3 +78,26 @@
 (: print-ast (-> Pyramid Void))
 (define (print-ast ast)
   (pretty-print (shrink-pyramid ast)))
+
+(: print-account (-> Address vm-account Void))
+(define (print-account addr acc)
+  (match acc
+    [(struct vm-account (nonce balance root hash))
+     (match (find-addr-name addr)
+       [ #f   (displayln `(,addr ,nonce ,balance ,root))]
+       [ name (displayln `(,name ,nonce ,balance ,root))]
+       )]))
+
+(: print-account-balances-sim (-> simulator Void))
+(define (print-account-balances-sim sim)
+  (displayln "Accounts")
+  (: accs (Listof (Pairof Address vm-account)))
+  (define accs (hash->list (simulator-accounts sim)))
+  (for ([ addr-acc : (Pairof Address vm-account) accs ])
+    (match addr-acc
+      [ (cons addr acc) (print-account addr acc)])))
+
+
+(: print-account-balances (-> vm-exec Void))
+(define (print-account-balances vm)
+  (print-account-balances-sim (vm-exec-sim vm)))

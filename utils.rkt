@@ -1,5 +1,6 @@
 #lang typed/racket
 
+(require "typed/binaryio.rkt")
 (require "typed/dict.rkt")
 
 (provide (all-defined-out))
@@ -53,6 +54,18 @@
   (if (namespace-variable-value name #f (λ () #f) namespace)
       #t
       #f))
+
+(: bytes-or-zero (-> Bytes Integer Integer Integer))
+(define (bytes-or-zero bs i len)
+  (if (>= i (bytes-length bs))
+      0
+      (bytes->integer bs #f #t i
+                      (min (+ i len)
+                           (bytes-length bs)))))
+  
+;; (if (>= i (bytes-length bs))
+  ;;     0
+  ;;     (bytes->integer (subbytes(bytes-ref bs i)))
 
 ;; (define (bool-f pred on-true on-false x) (implies (pred x) (get x)))
 ;; (define (const x) (λ (y) x))

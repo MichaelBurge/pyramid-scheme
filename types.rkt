@@ -153,10 +153,10 @@
 (define-type CodeHash EthWord)
 (struct simulator ([ accounts : vm-world ] [ store : vm-store ] [ code-db : (HashTable CodeHash Bytes) ] ) #:transparent)
 
-(struct vm-frame ([ vars : VariableNames ] [ vals : Rackets ]))
-(define-type Environment (Listof vm-frame))
+(define-type Frame (List (Listof String) Rackets))
+(define-type Environment (Listof Frame))
 
-(define-type vm-frames (Listof vm-frame))
+(define-type Frames (Listof Frame))
 
 ; Exception types
 (struct exn:evm exn:fail ([ vm : vm-exec ]) #:transparent)
@@ -165,23 +165,23 @@
 (struct exn:evm:throw exn:evm ([ value : Bytes ]) #:transparent)
 (struct exn:evm:did-not-halt exn:evm ([ max-iterations : Integer ]) #:transparent)
 (struct exn:evm:stack-underflow exn:evm ([ ethi : EthInstruction ] [ num-elements : Integer ] [ stack : (Listof EthWord )]) #:transparent)
-(struct exn:evm:misaligned-jump exn:evm ([ addr : EthWord ]))
+(struct exn:evm:misaligned-jump exn:evm ([ addr : EthWord ]) #:transparent)
 
 (struct simulation-result ([ vm : vm-exec ] [ val : Bytes ] [ txn-receipt : vm-txn-receipt ]) #:transparent)
 (define-type simulation-result-ex (U simulation-result exn:evm))
 (define-type simulation-result-exs (Listof simulation-result-ex))
 
 (define-type Address Integer) ; Ethereum addresses
-(define-type AddressEx (U Null Address))
+(define-type AddressEx (U #f Address))
 (define-type StorageRoot EthWord)
 (define-type LinkedOffset Integer)
 (define-type UnlinkedOffset Integer)
 
-(struct vm-account ([ nonce : Integer ] [ balance : EthWord ] [ storage-root : StorageRoot ] [ code-hash : CodeHash ]) #:mutable)
+(struct vm-account ([ nonce : Integer ] [ balance : EthWord ] [ storage-root : StorageRoot ] [ code-hash : CodeHash ]) #:mutable #:transparent)
 (struct vm-txn ([ nonce : Integer ]
                 [ gas-price : Integer ]
                 [ gas-limit : Integer ]
-                [ to : (U 'empty Address) ]
+                [ to : AddressEx ]
                 [ value : Integer ]
                 [ v : Fixnum ]
                 [ r : Integer ]

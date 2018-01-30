@@ -21,18 +21,9 @@
 (require "abi.rkt")
 (require "transaction.rkt")
 (require "wallet.rkt")
+(require "simulator.rkt")
 
 (require "typed/binaryio.rkt")
-
-(require/typed "simulator.rkt"
-  [ make-simulator (-> simulator)]
-  [ apply-txn-create! (-> simulator vm-txn simulation-result-ex)]
-  [ apply-txn-message! (-> simulator vm-txn simulation-result-ex)]
-  [ mint-ether! (-> simulator Symbol EthWord Void)]
-  [ *on-simulate-instruction* (Parameterof OnSimulateCallback)]
-  [ on-simulate-debug (-> ReverseSymbolTable OnSimulateCallback)]
-  [ on-simulate-nop   OnSimulateCallback ]
-  )
 
 (provide (all-defined-out))
 
@@ -120,7 +111,7 @@
          [ deploy-txn     (second (test-case-deploy-txn->vm-txn cs bytecode))]
          [ deploy-result  (cast (apply-txn-create! sim deploy-txn) simulation-result)]
          [ contract?      (vm-txn-receipt-contract-address (simulation-result-txn-receipt deploy-result))]
-         [ contract       (if (null? contract?) (error "Unable to deploy contract" deploy-result) contract?)]
+         [ contract       (if contract? contract? (error "Unable to deploy contract" deploy-result))]
          [ expect-txns    (test-case-msg-txns->vm-txns cs contract)]
          )
     (verbose-section "Deployed" VERBOSITY-HIGH
@@ -135,8 +126,7 @@
               ([ expect-txn : (List test-expectations vm-txn) expect-txns ])
             (match expect-txn
               [(list expects msg-txn)
-               (force-txn-sender! msg-txn 'sender)
-               (find-or-create-addr-name! 'sender)
+               (register-addr-name! 'sender (txn-sender msg-txn))
                (let* ([ exec-result (apply-txn-message! sim msg-txn)])
                  (for ([ expect : test-expectation expects ])
                    (assert-expectation exec-result expect))
@@ -255,9 +245,8 @@
 (: mint-accounts! (-> simulator test-case Void))
 (define (mint-accounts! sim cs)
   (for ([ acc : test-account (test-case-accounts cs)])
-    (debug-print 'mint-accounts! acc)
     (mint-ether! sim
-                 (test-account-name acc)
+                 (find-or-create-addr-name! (test-account-name acc))
                  (test-account-balance acc))))
 
 ; TODO: Turn these into unit tests.

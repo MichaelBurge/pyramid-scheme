@@ -14,7 +14,7 @@
   (vm-txn (alloc-txn-nonce) ; nonce
           DEFAULT-GAS-PRICE ; gas price
           DEFAULT-GAS-LIMIT ; gas limit
-          'empty            ; to
+          #f                ; to
           0                 ; value
           28                ; v
           0                 ; r
@@ -40,5 +40,11 @@
 (: alloc-txn-nonce (-> Integer))
 (define (alloc-txn-nonce) (tick-counter! *txn-nonce*))
 
+; TODO: Deduce this from v,r,s
 (: txn-sender (-> vm-txn Address))
-(define (txn-sender txn) (+ 1234 (vm-txn-nonce txn))) ; TODO: Deduce this from v,r,s
+(define (txn-sender txn)
+  (: r Address)
+  (define r (vm-txn-r txn))
+  (if (> r 0)
+      r
+      (+ 1234 (vm-txn-nonce txn))))

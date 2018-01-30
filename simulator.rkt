@@ -63,17 +63,23 @@
   (store-set-account! (simulator-store sim) to)
   (let* ([ bytecode (sim-lookup-bytecode sim to)]
          [ vm (make-vm-exec sim txn bytecode)]
-         [ val (vm-txn-value txn)]
-         [ from (txn-sender txn) ]
          )
-    (transfer-money! vm val from to)
     (with-handlers ([ exn:evm:return? (λ ([ x : exn:evm:return ])
+                                        (finalize-sim! vm txn)
                                         (let ([ bs : Bytes (exn:evm:return-result x) ])
                                           (simulation-result vm bs (vm->receipt vm bs))))]
                     [ exn:evm? (λ ([ x : exn:evm ]) x)])
       (simulate! vm MAX-ITERATIONS)
       (error "apply-txn-message!: Reached end of function without explicit termination")
       )))
+
+(: finalize-sim! (-> vm-exec vm-txn Void))
+(define (finalize-sim! vm txn)
+  (let ([ to    (cast (vm-txn-to txn) Address) ]
+        [ from (txn-sender txn)]
+        )
+    (transfer-money! vm (vm-txn-value txn) from to)
+    ))
   
 
 (: on-simulate-nop (-> vm-exec EthInstruction EthWords Void))
@@ -158,9 +164,9 @@
                           (undefined) ; mix-hash
                           (undefined) ; nonce
                           ))
-  (: to Address)
-  (define to (implies (vm-txn-to txn) 0))
-  (define env (vm-exec-environment to                     ; contract
+  (: to AddressEx)
+  (define to (vm-txn-to txn))
+  (define env (vm-exec-environment (if (integer? to) to 0); contract
                                    (undefined)            ; origin
                                    (vm-txn-gas-price txn) ; gas-price
                                    (vm-txn-data txn)      ; input-data
@@ -231,49 +237,53 @@
 
 (: simulate-asm! (-> vm-exec Symbol Void))
 (define (simulate-asm! vm sym)
-  (cond ((eq? sym 'ISZERO)   (simulate-unop!  vm (λ (a) (if (= a 0) 1 0))))
-        ((eq? sym 'ADD)      (simulate-binop! vm (λ (a b) (+ a b))))
-        ((eq? sym 'SUB)      (simulate-binop! vm (λ (a b) (- a b))))
-        ((eq? sym 'MUL)      (simulate-binop! vm (λ (a b) (* a b))))
-        ((eq? sym 'DIV)      (simulate-binop! vm (λ (a b) (if (equal? 0 b) 0 (floori (/ a b))))))
-        ((eq? sym 'MOD)      (simulate-binop! vm (λ (a b) (if (equal? 0 b) 0 (modulo a b)))))
-        ((eq? sym 'EQ)       (simulate-binop! vm (λ (a b) (if (= a b) 1 0))))
-        ((eq? sym 'LT)       (simulate-binop! vm (λ (a b) (if (< a b) 1 0))))
-        ((eq? sym 'GT)       (simulate-binop! vm (λ (a b) (if (> a b) 1 0))))
-        ((eq? sym 'POP)      (simulate-pop!   vm))
-        ((eq? sym 'DUP1)     (simulate-dup!   vm 1))
-        ((eq? sym 'DUP2)     (simulate-dup!   vm 2))
-        ((eq? sym 'DUP3)     (simulate-dup!   vm 3))
-        ((eq? sym 'DUP4)     (simulate-dup!   vm 4))
-        ((eq? sym 'DUP5)     (simulate-dup!   vm 5))
-        ((eq? sym 'DUP6)     (simulate-dup!   vm 6))
-        ((eq? sym 'DUP7)     (simulate-dup!   vm 7))
-        ((eq? sym 'DUP8)     (simulate-dup!   vm 8))
-        ((eq? sym 'DUP9)     (simulate-dup!   vm 9))
-        ((eq? sym 'SWAP1)    (simulate-swap!  vm 1))
-        ((eq? sym 'SWAP2)    (simulate-swap!  vm 2))
-        ((eq? sym 'SWAP3)    (simulate-swap!  vm 3))
-        ((eq? sym 'SWAP4)    (simulate-swap!  vm 4))
-        ((eq? sym 'SWAP5)    (simulate-swap!  vm 5))
-        ((eq? sym 'SWAP6)    (simulate-swap!  vm 6))
-        ((eq? sym 'SWAP7)    (simulate-swap!  vm 7))
-        ((eq? sym 'MSTORE)   (simulate-mstore! vm))
-        ((eq? sym 'MLOAD)    (simulate-mload! vm))
-        ((eq? sym 'SLOAD)    (simulate-sload! vm))
-        ((eq? sym 'SSTORE)   (simulate-sstore! vm))
-        ((eq? sym 'JUMP)     (simulate-jump! vm))
-        ((eq? sym 'JUMPI)    (simulate-jumpi! vm))
-        ((eq? sym 'JUMPDEST) (simulate-nop! vm))
-        ((eq? sym 'CODECOPY) (simulate-codecopy! vm))
-        ((eq? sym 'RETURN)   (simulate-return! vm))
-        ((eq? sym 'REVERT)   (simulate-revert! vm))
-        ((eq? sym 'STOP)     (simulate-stop! vm))
-        ((eq? sym 'ADDRESS)  (simulate-env! vm vm-exec-environment-contract))
-        ((eq? sym 'CALLER)   (simulate-env! vm vm-exec-environment-sender))
-        ((eq? sym 'BALANCE)  (simulate-balance! vm))
-        ((eq? sym 'CALL)     (simulate-call! vm))
-        (else
-         (error "simulate-asm - Unimplemented vm-exec instruction found:" sym))))
+  (match sym
+    [ 'ISZERO    (simulate-unop!  vm (λ (a) (if (= a 0) 1 0)))]
+    [ 'ADD       (simulate-binop! vm (λ (a b) (+ a b)))]
+    [ 'SUB       (simulate-binop! vm (λ (a b) (- a b)))]
+    [ 'MUL       (simulate-binop! vm (λ (a b) (* a b)))]
+    [ 'DIV       (simulate-binop! vm (λ (a b) (if (equal? 0 b) 0 (floori (/ a b)))))]
+    [ 'MOD       (simulate-binop! vm (λ (a b) (if (equal? 0 b) 0 (modulo a b))))]
+    [ 'EQ        (simulate-binop! vm (λ (a b) (if (= a b) 1 0)))]
+    [ 'LT        (simulate-binop! vm (λ (a b) (if (< a b) 1 0)))]
+    [ 'GT        (simulate-binop! vm (λ (a b) (if (> a b) 1 0)))]
+    [ 'POP       (simulate-pop!   vm)]
+    [ 'DUP1      (simulate-dup!   vm 1)]
+    [ 'DUP2      (simulate-dup!   vm 2)]
+    [ 'DUP3      (simulate-dup!   vm 3)]
+    [ 'DUP4      (simulate-dup!   vm 4)]
+    [ 'DUP5      (simulate-dup!   vm 5)]
+    [ 'DUP6      (simulate-dup!   vm 6)]
+    [ 'DUP7      (simulate-dup!   vm 7)]
+    [ 'DUP8      (simulate-dup!   vm 8)]
+    [ 'DUP9      (simulate-dup!   vm 9)]
+    [ 'SWAP1     (simulate-swap!  vm 1)]
+    [ 'SWAP2     (simulate-swap!  vm 2)]
+    [ 'SWAP3     (simulate-swap!  vm 3)]
+    [ 'SWAP4     (simulate-swap!  vm 4)]
+    [ 'SWAP5     (simulate-swap!  vm 5)]
+    [ 'SWAP6     (simulate-swap!  vm 6)]
+    [ 'SWAP7     (simulate-swap!  vm 7)]
+    [ 'MSTORE    (simulate-mstore! vm)]
+    [ 'MLOAD     (simulate-mload! vm)]
+    [ 'SLOAD     (simulate-sload! vm)]
+    [ 'SSTORE    (simulate-sstore! vm)]
+    [ 'JUMP      (simulate-jump! vm)]
+    [ 'JUMPI     (simulate-jumpi! vm)]
+    [ 'JUMPDEST  (simulate-nop! vm)]
+    [ 'CODECOPY  (simulate-codecopy! vm)]
+    [ 'RETURN    (simulate-return! vm)]
+    [ 'REVERT    (simulate-revert! vm)]
+    [ 'STOP      (simulate-stop! vm)]
+    [ 'ADDRESS   (simulate-env! vm vm-exec-environment-contract)]
+    [ 'CALLER    (simulate-env! vm vm-exec-environment-sender)]
+    [ 'CALLVALUE (simulate-env! vm vm-exec-environment-value)]
+    [ 'CALLDATASIZE (simulate-env! vm (compose bytes-length vm-exec-environment-input-data))]
+    [ 'CALLDATALOAD (simulate-calldataload! vm)]
+    [ 'BALANCE   (simulate-balance! vm)]
+    [ 'CALL      (simulate-call! vm)]
+    [ _          (error "simulate-asm - Unimplemented vm-exec instruction found:" sym)]
+    ))
 
 (: simulate-unop! (-> vm-exec (-> Integer Integer) Void))
 (define (simulate-unop! vm f)
@@ -385,7 +395,9 @@
 
 (: simulate-balance! (-> vm-exec Void))
 (define (simulate-balance! vm)
-  (push-stack! vm (account-balance (vm-exec-sim vm) (pop-stack! vm))))
+  (define addr (pop-stack! vm))
+  (define bal (account-balance (vm-exec-sim vm) addr))
+  (push-stack! vm bal))
 
 (: simulate-call! (-> vm-exec Void))
 (define (simulate-call! vm)
@@ -405,6 +417,13 @@
     (push-stack! vm 1) ; TODO: CALL shouldn't always succeed.
     ))
     
+(: simulate-calldataload! (-> vm-exec Void))
+(define (simulate-calldataload! vm)
+  (let* ([ i (pop-stack! vm)]
+         [ env (vm-exec-env vm)]
+         [ bs (vm-exec-environment-input-data env)]
+         [ val (bytes-or-zero bs i 32)])
+    (push-stack! vm val)))
 
 (: read-memory-word (-> vm-exec EthWord EthWord Integer))
 (define (read-memory-word vm addr len)
@@ -573,9 +592,9 @@
 
 (: memory-dict (-> vm-exec (Listof (List UnlinkedOffset EthWord))))
 (define (memory-dict vm)
-  (reverse (for/list : (Listof (List UnlinkedOffset EthWord))
-               ([ i (in-range 0 (vm-exec-largest-accessed-memory vm) 32) ])
-             (list i (read-memory-word vm i 32)))))
+  (for/list : (Listof (List UnlinkedOffset EthWord))
+      ([ i (in-range 0 (vm-exec-largest-accessed-memory vm) 32) ])
+    (list i (read-memory-word vm i 32))))
 
 ; TODO: Incorrect if x is a null value that isn't the shared copy of nil.
 
@@ -664,7 +683,7 @@
 (: variable-environment (-> vm-exec Environment))
 (define (variable-environment vm)
   (let ([ frames : EthWords (vm-list vm (read-memory-word vm MEM-ENV 32))])
-    (: parse-frame (-> EthWord vm-frame))
+    (: parse-frame (-> EthWord Frame))
     (define (parse-frame frame-ptr)
       (let* ([ frame (vm-pair vm frame-ptr) ]
              [ vars (vm-list vm (car frame) )]
@@ -674,11 +693,11 @@
              [ sz (min sz1 sz2) ]
              )
         (if (> sz 0)
-            (vm-frame
-             (map (compose string->symbol integer->string) (take vars sz))
+            (list
+             (map integer->string (take vars sz))
              (map (λ ([ ptr : EthWord ]) (vm-value vm ptr)) (take vals sz))
              )
-            (vm-frame null null))))
+            (list null null))))
     (map parse-frame frames)))
 
 (: assert-landing-pad (-> vm-exec Address Void))
@@ -788,10 +807,12 @@
          [ to-bal   (if to-acc   (vm-account-balance to-acc)   0)]
          [ sim      (vm-exec-sim vm)]
          )
-    (unless from-acc (error "transfer-money!: Invalid sender" from (*addresses-by-name*)))
     (unless (>= from-bal amount)
       (error "transfer-money!: Insufficient balance" (find-addr-name from)))
     (when (> amount 0)
+      (unless from-acc
+        (print-account-balances vm)
+        (error "transfer-money!: Invalid sender" from amount (*addresses-by-name*)))
       (set-vm-account-balance! from-acc (- from-bal amount))
       (if to-acc
           (set-vm-account-balance! to-acc   (+ to-bal   amount))
