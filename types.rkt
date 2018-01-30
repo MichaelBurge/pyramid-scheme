@@ -7,6 +7,8 @@
 ; Types should be in individual modules, but they aren't exported when using typed/racket/no-check
 ; So I put them here so I can freely no-check the other modules as needed.
 
+(define-type Symbols (Listof Symbol))
+
 (define-type VariableName Symbol)
 (define-type VariableNames (Listof VariableName))
 
@@ -132,7 +134,7 @@
 (define-type (Generator2 A B)   (-> A B   EthInstructions))
 (define-type (Generator3 A B C) (-> A B C EthInstructions))
 
-(struct opcode ([ byte : Byte ] [ name : Symbol ] [ num-reads : Fixnum ] [ num-writes : Fixnum ]) #:transparent)
+(struct opcode ([ byte : Byte ] [ name : Symbol ] [ num-reads : Integer ] [ num-writes : Integer ]) #:transparent)
 
 (define-type EthWord Integer)
 (define-type EthWords (Listof EthWord))
@@ -151,13 +153,18 @@
 (define-type CodeHash EthWord)
 (struct simulator ([ accounts : vm-world ] [ store : vm-store ] [ code-db : (HashTable CodeHash Bytes) ] ) #:transparent)
 
+(struct vm-frame ([ vars : VariableNames ] [ vals : Rackets ]))
+(define-type Environment (Listof vm-frame))
+
+(define-type vm-frames (Listof vm-frame))
+
 ; Exception types
 (struct exn:evm exn:fail ([ vm : vm-exec ]) #:transparent)
 (struct exn:evm:return exn:evm ([ result : Bytes ]) #:transparent)
 (struct exn:evm:misaligned-addr exn:evm ([ addr : EthWord ]) #:transparent)
 (struct exn:evm:throw exn:evm ([ value : Bytes ]) #:transparent)
-(struct exn:evm:did-not-halt exn:evm ([ max-iterations : Fixnum ]) #:transparent)
-(struct exn:evm:stack-underflow exn:evm ([ ethi : EthInstruction ] [ num-elements : Fixnum ] [ stack : (Listof EthWord )]) #:transparent)
+(struct exn:evm:did-not-halt exn:evm ([ max-iterations : Integer ]) #:transparent)
+(struct exn:evm:stack-underflow exn:evm ([ ethi : EthInstruction ] [ num-elements : Integer ] [ stack : (Listof EthWord )]) #:transparent)
 (struct exn:evm:misaligned-jump exn:evm ([ addr : EthWord ]))
 
 (struct simulation-result ([ vm : vm-exec ] [ val : Bytes ] [ txn-receipt : vm-txn-receipt ]) #:transparent)
@@ -226,16 +233,16 @@
                              [ value : EthWord ]
                              [ bytecode : Bytes ]
                              [ header : vm-block ]
-                             [ depth : Fixnum ]
+                             [ depth : Integer ]
                              [ writable? : Boolean ])
   #:transparent
   )
-(struct vm-exec ([ step : Fixnum ]
-                 [ pc : Fixnum ]
+(struct vm-exec ([ step : Integer ]
+                 [ pc : Integer ]
                  [ stack : (Listof EthWord) ]
                  [ memory : Bytes ]
-                 [ gas : Fixnum ]
-                 [ largest-accessed-memory : Fixnum ]
+                 [ gas : Integer ]
+                 [ largest-accessed-memory : Integer ]
                  [ env : vm-exec-environment ]
                  [ sim : simulator ]
                  )
@@ -256,9 +263,9 @@
 (define-type test-mod (-> test-txn Void))
 (define-type test-mods (Listof test-mod))
 
-(struct test-expectation ([ name : String ] [ expected : Any ] [ actual : (-> simulation-result-ex Any)]))
+(struct test-expectation ([ name : String ] [ expected : Any ] [ actual : (-> simulation-result-ex Any)]) #:transparent)
 (struct test-txn ([ mods : PyramidQs ] [ tests : (Listof test-expectation) ]) #:transparent #:mutable)
-(struct test-account ([ name : Symbol ] [ balance : EthWord ]))
+(struct test-account ([ name : Symbol ] [ balance : EthWord ]) #:transparent)
 (struct test-case ([ name : String ] [ accounts : test-accounts ] [ deploy-txn : test-txn ][ msg-txns : test-txns]) #:transparent #:mutable)
 (struct test-suite ([ name : String ] [ cases : (Listof test-case) ]) #:transparent)
 

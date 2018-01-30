@@ -223,7 +223,7 @@
             null)]
     [(list 'data (list 'sender (list 'quote name)))
      (begin (assert name symbol?)
-            (let ([ addr (find-addr-name name)])
+            (let ([ addr (find-name name)])
               (set-vm-txn-data! txn (integer->bytes addr 32 #f #t)))
             null)]
     [(list 'assert-balance (list 'quote addr-name) val)
@@ -249,7 +249,7 @@
                     expected
                     (λ (res)
                       (if (simulation-result? res)
-                          (simres-account-balance res (find-addr-name sym))
+                          (simres-account-balance res (find-name sym))
                           res))))
 
 (: mint-accounts! (-> simulator test-case Void))

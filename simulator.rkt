@@ -1,4 +1,4 @@
-#lang typed/racket/no-check
+#lang typed/racket
 
 (require "types.rkt")
 (require "disassembler.rkt")
@@ -12,10 +12,17 @@
 (require "wallet.rkt")
 (require "transaction.rkt")
 (require "utils.rkt")
+(require typed/racket/unsafe)
 
-(require file/sha1)
-(require binaryio/integer)
-(require json)
+(unsafe-require/typed "unsafe.rkt"
+                     [ unsafe-cast (All (A B) (-> A B))])
+
+
+(require/typed json
+  [ write-json (-> Any Void)])
+
+(require "typed/binaryio.rkt")
+(require "typed/dict.rkt")
 
 (provide
  make-simulator
@@ -34,37 +41,44 @@
 (: apply-txn-create! (-> simulator vm-txn simulation-result-ex))
 (define (apply-txn-create! sim txn)
   (let ([ vm (make-vm-exec sim txn (vm-txn-data txn)) ])
-    (with-handlers ([ exn:evm:return? (λ (x)
+    (with-handlers ([ exn:evm:return? (λ ([ x : exn:evm:return ])
                                         (let* ([ bs (exn:evm:return-result x )]
                                                [ receipt (vm->receipt vm bs) ]
-                                               [ addr (vm-txn-receipt-contract-address receipt )]
+                                               [ addr : AddressEx (vm-txn-receipt-contract-address receipt )]
                                                [ val (vm-txn-value txn) ]
                                                )
+                                          (assert addr integer?)
                                           (create-account! sim addr val bs)
                                           (sim-lookup-bytecode sim addr)
                                           (simulation-result vm bs receipt)))])
-      (simulate! vm MAX-ITERATIONS))
-    ))
+      (simulate! vm MAX-ITERATIONS)
+      (error "apply-txn-create!: Reached end of function without explicit termination")
+    )))
+  
 
 (: apply-txn-message! (-> simulator vm-txn simulation-result-ex))
 (define (apply-txn-message! sim txn)
-  (store-set-account! (simulator-store sim) (vm-txn-to txn))
-  (let* ([ bytecode (sim-lookup-bytecode sim (vm-txn-to txn))]
+  (: to Address)
+  (define to (cast (vm-txn-to txn) Address))
+  (store-set-account! (simulator-store sim) to)
+  (let* ([ bytecode (sim-lookup-bytecode sim to)]
          [ vm (make-vm-exec sim txn bytecode)]
          [ val (vm-txn-value txn)]
          [ from (txn-sender txn) ]
          )
-    (transfer-money! vm val from (vm-txn-to txn))
-    (with-handlers ([ exn:evm:return? (λ (x) (simulation-result vm (exn:evm:return-result x) (vm->receipt vm x)))]
-                    [ exn:evm? (λ (x) x)])
-      (simulate! vm MAX-ITERATIONS))))
+    (transfer-money! vm val from to)
+    (with-handlers ([ exn:evm:return? (λ ([ x : exn:evm:return ])
+                                        (let ([ bs : Bytes (exn:evm:return-result x) ])
+                                          (simulation-result vm bs (vm->receipt vm bs))))]
+                    [ exn:evm? (λ ([ x : exn:evm ]) x)])
+      (simulate! vm MAX-ITERATIONS)
+      (error "apply-txn-message!: Reached end of function without explicit termination")
+      )))
+  
 
-(: on-simulate-nop (-> vm-exec EthInstruction Integer Void))
+(: on-simulate-nop (-> vm-exec EthInstruction EthWords Void))
 (define (on-simulate-nop vm i reads) (void))
 (define *on-simulate-instruction* (make-parameter on-simulate-nop))
-
-; TODO: Contract address should use actual Ethereum spec rather than a counter
-(define *contract-create-counter* (make-parameter 0))
 
 ; Appendix G in Ethereum Yellow Paper: http://gavwood.com/paper.pdf
 (define G_zero          0)
@@ -114,7 +128,7 @@
 (define W_high '(JUMPI))
 (define W_extcode '(EXTCODESIZE))
                     
-(: vm->receipt (-> vm-exec Bytes txn-receipt))
+(: vm->receipt (-> vm-exec Bytes vm-txn-receipt))
 (define (vm->receipt vm bs) 
   (vm-txn-receipt (simulator-accounts (vm-exec-sim vm)) ; post-transaction world
                   (vm-exec-gas vm)                   ; cumulative gas
@@ -123,28 +137,31 @@
                   (tick-counter! *contract-create-counter*) ; contract address
                   )
   )
-  
-(: make-vm-exec (-> simulation vm-txn Bytes vm-exec))
+
+(: make-vm-exec (-> simulator vm-txn Bytes vm-exec))
 (define (make-vm-exec sim txn bytecode)
-  (define undefined null)
-  (define block (vm-block undefined ; parent-hash
-                          undefined ; ommers-hash
-                          undefined ; beneficiary
-                          undefined ; state-root
-                          undefined ; transactions-root
-                          undefined ; receipts-root
-                          undefined ; logs-bloom
-                          undefined ; difficulty
-                          undefined ; number
-                          undefined ; gas-limit
-                          undefined ; gas-used
-                          undefined ; timestamp
-                          undefined ; extra-data
-                          undefined ; mix-hash
-                          undefined ; nonce
+  (: undefined (All (A) (-> A)))
+  (define (undefined) (unsafe-cast null))
+  (define block (vm-block (undefined) ; parent-hash
+                          (undefined) ; ommers-hash
+                          (undefined) ; beneficiary
+                          (undefined) ; state-root
+                          (undefined) ; transactions-root
+                          (undefined) ; receipts-root
+                          (undefined) ; logs-bloom
+                          (undefined) ; difficulty
+                          (undefined) ; number
+                          (undefined) ; gas-limit
+                          (undefined) ; gas-used
+                          (undefined) ; timestamp
+                          (undefined) ; extra-data
+                          (undefined) ; mix-hash
+                          (undefined) ; nonce
                           ))
-  (define env (vm-exec-environment (vm-txn-to txn)        ; contract
-                                   undefined              ; origin
+  (: to Address)
+  (define to (implies (vm-txn-to txn) 0))
+  (define env (vm-exec-environment to                     ; contract
+                                   (undefined)            ; origin
                                    (vm-txn-gas-price txn) ; gas-price
                                    (vm-txn-data txn)      ; input-data
                                    (txn-sender txn)       ; sender
@@ -164,7 +181,7 @@
            sim
            ))
 
-(: simulate! (-> vm-exec Fixnum Void))
+(: simulate! (-> vm-exec Integer Void))
 (define (simulate! vm max-iterations)
   (if (<= max-iterations 0)
       (raise (exn:evm:did-not-halt "run-until-return" (current-continuation-marks) vm max-iterations))
@@ -172,7 +189,7 @@
         (simulate-one! vm (next-instruction vm))
         (simulate! vm (- max-iterations 1)))))
 
-(: instruction-at (-> vm-exec Fixnum EthInstruction))
+(: instruction-at (-> vm-exec Integer EthInstruction))
 (define (instruction-at vm addr)
     (disassemble-one (vm-exec-bytecode vm) addr))
 
@@ -182,6 +199,8 @@
   
 (: simulate-one! (-> vm-exec EthInstruction Void))
 (define (simulate-one! vm i)
+  (when (eth-unknown? i)
+    (error "Unknown opcode found - simulate-one:" i))
   (let* ([ used-gas (instruction-gas vm i) ]
          [ op       (ethi->opcode i) ]
          [ stk      (vm-exec-stack vm) ]
@@ -191,11 +210,14 @@
                      (raise (exn:evm:stack-underflow "simulate-one!" (current-continuation-marks) vm i num-reads stk)))]
          )
     ((*on-simulate-instruction*) vm i reads)
-    (cond ((label? i)    (simulate-nop!  vm))
-          ((eth-push? i) (simulate-push! vm (eth-push-size i) (eth-push-value i)))
-          ((eth-asm? i)  (simulate-asm!  vm (eth-asm-name i)))
-          (else
-           (error "Unknown opcode found - simulate-one:" i)))
+    (match i
+      [(struct label-definition _)          (simulate-nop!  vm)]
+      [(struct eth-push ((? byte? size)
+                         (? integer? val))) (simulate-push! vm size val)]
+      [(struct eth-push _)                  (error "simulate-one!: Can only push integers" i)]
+      [(struct eth-asm (sym))               (simulate-asm!  vm (eth-asm-name i))]
+      [_                                    (error "Unknown opcode found - simulate-one:" i)]
+      )
     (set-vm-exec-pc!   vm (+ (vm-exec-pc   vm) (instruction-size i)))
     (set-vm-exec-gas!  vm (+ (vm-exec-gas  vm) used-gas))
     (set-vm-exec-step! vm (+ (vm-exec-step vm) 1))
@@ -204,52 +226,52 @@
 (: simulate-nop! (-> vm-exec Void))
 (define (simulate-nop! vm) (void))
 
-(: simulate-push! (-> vm-exec Fixnum Integer))
+(: simulate-push! (-> vm-exec Integer EthWord Void))
 (define (simulate-push! vm size n) (push-stack! vm n))
 
-(: simulate-asm! (-> vm-exec Symbol vm-exec))
+(: simulate-asm! (-> vm-exec Symbol Void))
 (define (simulate-asm! vm sym)
-  (cond ((eq? sym 'ISZERO) (simulate-unop!  vm (λ (a) (if (= a 0) 1 0))))
-        ((eq? sym 'ADD)    (simulate-binop! vm (λ (a b) (+ a b))))
-        ((eq? sym 'SUB)    (simulate-binop! vm (λ (a b) (- a b))))
-        ((eq? sym 'MUL)    (simulate-binop! vm (λ (a b) (* a b))))
-        ((eq? sym 'DIV)    (simulate-binop! vm (λ (a b) (if (equal? 0 b) 0 (/ a b)))))
-        ((eq? sym 'MOD)    (simulate-binop! vm (λ (a b) (if (equal? 0 b) 0 (modulo a b)))))
-        ((eq? sym 'EQ)     (simulate-binop! vm (λ (a b) (if (= a b) 1 0))))
-        ((eq? sym 'LT)     (simulate-binop! vm (λ (a b) (if (< a b) 1 0))))
-        ((eq? sym 'GT)     (simulate-binop! vm (λ (a b) (if (> a b) 1 0))))
-        ((eq? sym 'POP)    (simulate-pop!   vm))
-        ((eq? sym 'DUP1)   (simulate-dup!   vm 1))
-        ((eq? sym 'DUP2)   (simulate-dup!   vm 2))
-        ((eq? sym 'DUP3)   (simulate-dup!   vm 3))
-        ((eq? sym 'DUP4)   (simulate-dup!   vm 4))
-        ((eq? sym 'DUP5)   (simulate-dup!   vm 5))
-        ((eq? sym 'DUP6)   (simulate-dup!   vm 6))
-        ((eq? sym 'DUP7)   (simulate-dup!   vm 7))
-        ((eq? sym 'DUP8)   (simulate-dup!   vm 8))
-        ((eq? sym 'DUP9)   (simulate-dup!   vm 9))
-        ((eq? sym 'SWAP1)  (simulate-swap!  vm 1))
-        ((eq? sym 'SWAP2)  (simulate-swap!  vm 2))
-        ((eq? sym 'SWAP3)  (simulate-swap!  vm 3))
-        ((eq? sym 'SWAP4)  (simulate-swap!  vm 4))
-        ((eq? sym 'SWAP5)  (simulate-swap!  vm 5))
-        ((eq? sym 'SWAP6)  (simulate-swap!  vm 6))
-        ((eq? sym 'SWAP7)  (simulate-swap!  vm 7))
-        ((eq? sym 'MSTORE) (simulate-mstore! vm))
-        ((eq? sym 'MLOAD)  (simulate-mload! vm))
-        ((eq? sym 'SLOAD)  (simulate-sload! vm))
-        ((eq? sym 'SSTORE) (simulate-sstore! vm))
-        ((eq? sym 'JUMP)   (simulate-jump! vm))
-        ((eq? sym 'JUMPI)  (simulate-jumpi! vm))
+  (cond ((eq? sym 'ISZERO)   (simulate-unop!  vm (λ (a) (if (= a 0) 1 0))))
+        ((eq? sym 'ADD)      (simulate-binop! vm (λ (a b) (+ a b))))
+        ((eq? sym 'SUB)      (simulate-binop! vm (λ (a b) (- a b))))
+        ((eq? sym 'MUL)      (simulate-binop! vm (λ (a b) (* a b))))
+        ((eq? sym 'DIV)      (simulate-binop! vm (λ (a b) (if (equal? 0 b) 0 (floori (/ a b))))))
+        ((eq? sym 'MOD)      (simulate-binop! vm (λ (a b) (if (equal? 0 b) 0 (modulo a b)))))
+        ((eq? sym 'EQ)       (simulate-binop! vm (λ (a b) (if (= a b) 1 0))))
+        ((eq? sym 'LT)       (simulate-binop! vm (λ (a b) (if (< a b) 1 0))))
+        ((eq? sym 'GT)       (simulate-binop! vm (λ (a b) (if (> a b) 1 0))))
+        ((eq? sym 'POP)      (simulate-pop!   vm))
+        ((eq? sym 'DUP1)     (simulate-dup!   vm 1))
+        ((eq? sym 'DUP2)     (simulate-dup!   vm 2))
+        ((eq? sym 'DUP3)     (simulate-dup!   vm 3))
+        ((eq? sym 'DUP4)     (simulate-dup!   vm 4))
+        ((eq? sym 'DUP5)     (simulate-dup!   vm 5))
+        ((eq? sym 'DUP6)     (simulate-dup!   vm 6))
+        ((eq? sym 'DUP7)     (simulate-dup!   vm 7))
+        ((eq? sym 'DUP8)     (simulate-dup!   vm 8))
+        ((eq? sym 'DUP9)     (simulate-dup!   vm 9))
+        ((eq? sym 'SWAP1)    (simulate-swap!  vm 1))
+        ((eq? sym 'SWAP2)    (simulate-swap!  vm 2))
+        ((eq? sym 'SWAP3)    (simulate-swap!  vm 3))
+        ((eq? sym 'SWAP4)    (simulate-swap!  vm 4))
+        ((eq? sym 'SWAP5)    (simulate-swap!  vm 5))
+        ((eq? sym 'SWAP6)    (simulate-swap!  vm 6))
+        ((eq? sym 'SWAP7)    (simulate-swap!  vm 7))
+        ((eq? sym 'MSTORE)   (simulate-mstore! vm))
+        ((eq? sym 'MLOAD)    (simulate-mload! vm))
+        ((eq? sym 'SLOAD)    (simulate-sload! vm))
+        ((eq? sym 'SSTORE)   (simulate-sstore! vm))
+        ((eq? sym 'JUMP)     (simulate-jump! vm))
+        ((eq? sym 'JUMPI)    (simulate-jumpi! vm))
         ((eq? sym 'JUMPDEST) (simulate-nop! vm))
         ((eq? sym 'CODECOPY) (simulate-codecopy! vm))
-        ((eq? sym 'RETURN) (simulate-return! vm))
-        ((eq? sym 'REVERT) (simulate-revert! vm))
-        ((eq? sym 'STOP)   (simulate-stop! vm))
-        ((eq? sym 'ADDRESS) (simulate-env! vm vm-exec-environment-contract))
-        ((eq? sym 'CALLER) (simulate-env! vm vm-exec-environment-sender))
-        ((eq? sym 'BALANCE) (simulate-balance! vm))
-        ((eq? sym 'CALL) (simulate-call! vm))
+        ((eq? sym 'RETURN)   (simulate-return! vm))
+        ((eq? sym 'REVERT)   (simulate-revert! vm))
+        ((eq? sym 'STOP)     (simulate-stop! vm))
+        ((eq? sym 'ADDRESS)  (simulate-env! vm vm-exec-environment-contract))
+        ((eq? sym 'CALLER)   (simulate-env! vm vm-exec-environment-sender))
+        ((eq? sym 'BALANCE)  (simulate-balance! vm))
+        ((eq? sym 'CALL)     (simulate-call! vm))
         (else
          (error "simulate-asm - Unimplemented vm-exec instruction found:" sym))))
 
@@ -265,14 +287,14 @@
     (push-stack! vm (f x1 x2))))
 
 (: simulate-pop! (-> vm-exec Void))
-(define (simulate-pop! vm) (pop-stack! vm))
+(define (simulate-pop! vm) (void (pop-stack! vm)))
 
-(: simulate-dup! (-> vm-exec Fixnum Void))
+(: simulate-dup! (-> vm-exec Integer Void))
 (define (simulate-dup! vm amount)
   (let ([ x (get-stack vm (- amount 1)) ])
     (push-stack! vm x)))
 
-(: simulate-swap! (-> vm-exec Fixnum Void))
+(: simulate-swap! (-> vm-exec Integer Void))
 (define (simulate-swap! vm amount)
   (let* ([x1 (get-stack vm 0)]
          [x2 (get-stack vm amount)]
@@ -317,7 +339,7 @@
     (unless (eq? 0 pred)
       (set-vm-exec-pc! vm addr))))
 
-(: simulate-codecopy! (-> vm-exec void))
+(: simulate-codecopy! (-> vm-exec Void))
 (define (simulate-codecopy! vm)
   (let* ([ dest-addr (pop-stack! vm) ]
          [ src-addr  (pop-stack! vm) ]
@@ -356,7 +378,7 @@
                         vm
                         (bytes))))
 
-(: simulate-env! (-> vm-exec (All (A) (-> vm-exec-environment A)) Void))
+(: simulate-env! (-> vm-exec (-> vm-exec-environment EthWord) Void))
 (define (simulate-env! vm f)
   (define env (vm-exec-env vm))
   (push-stack! vm (f env)))
@@ -384,12 +406,12 @@
     ))
     
 
-(: read-memory-word (-> vm-exec Fixnum Fixnum Integer))
+(: read-memory-word (-> vm-exec EthWord EthWord Integer))
 (define (read-memory-word vm addr len)
   (bytes->integer (read-memory vm addr len)
                   #f))
 
-(: read-memory (-> vm-exec Fixnum Fixnum Bytes))
+(: read-memory (-> vm-exec EthWord EthWord Bytes))
 (define (read-memory vm addr len)
   (if (>= addr (bytes-length (vm-exec-memory vm)))
       (make-bytes len 0)
@@ -397,30 +419,30 @@
       )
   )
 
-(: write-memory-word! (-> vm-exec Fixnum Fixnum Integer Void))
+(: write-memory-word! (-> vm-exec EthWord EthWord EthWord Void))
 (define (write-memory-word! vm addr len val)
   (write-memory! vm addr (integer->bytes val len #f)))
 
-(: write-memory! (-> vm-exec Fixnum Bytes Void))
+(: write-memory! (-> vm-exec EthWord Bytes Void))
 (define (write-memory! vm addr val)
   (touch-memory! vm (+ addr (bytes-length val)))
   (bytes-copy! (vm-exec-memory vm) addr val))
 
 (: read-storage (-> vm-exec EthWord EthWord))
 (define (read-storage vm addr)
-  (store-get-value (vm-store vm) addr))
+  (store-get-value (vm-get-store vm) addr))
 
 (: write-storage! (-> vm-exec EthWord EthWord Void))
 (define (write-storage! vm addr val)
-  (store-set-value! (vm-store vm) addr val))
+  (store-set-value! (vm-get-store vm) addr val))
 
-(: vm-store (-> vm-exec vm-store))
-(define (vm-store vm)
+(: vm-get-store (-> vm-exec vm-store))
+(define (vm-get-store vm)
   (let* ([ sim (vm-exec-sim vm) ]
          [ store (simulator-store sim) ])
     store))
 
-(: check-addr (-> vm-exec Fixnum Fixnum))
+(: check-addr (-> vm-exec EthWord EthWord))
 (define (check-addr vm addr)
   (if (equal? (modulo addr 32) 0)
       addr
@@ -429,7 +451,7 @@
                                       vm
                                       addr))))
 
-(: push-stack! (-> vm-exec Integer Void))
+(: push-stack! (-> vm-exec EthWord Void))
 (define (push-stack! vm val)
   (set-vm-exec-stack! vm (cons val (vm-exec-stack vm))))
 
@@ -439,30 +461,34 @@
     (set-vm-exec-stack! vm (cdr (vm-exec-stack vm)))
     val))
 
-(: touch-memory! (-> vm-exec Fixnum Void))
+(: touch-memory! (-> vm-exec EthWord Void))
 (define (touch-memory! vm addr)
   (let ([ old (vm-exec-largest-accessed-memory vm) ])
     (set-vm-exec-largest-accessed-memory! vm (max old addr))))
 
-(: get-stack (-> vm-exec Fixnum EthWord))
+(: get-stack (-> vm-exec Integer EthWord))
 (define (get-stack vm amount)
   (list-ref (vm-exec-stack vm) amount))
 
-(: make-instruction-dict (-> EthInstructions (Dict EthInstruction)))
-(define (make-instruction-dict is)
-  (let ((os-table (make-hash))
-        (os 0))
-    (for ([ i is ])
-      (dict-set! os-table os i)
-      (set! os (+ os (instruction-size i))))))
+;; (: make-instruction-dict (-> EthInstructions (HashTable UnlinkedOffset EthInstruction)))
+;; (define (make-instruction-dict is)
+;;   (let ((os-table (make-hash))
+;;         (os 0))
+;;     (for ([ i is ])
+;;       (hash-set! os-table os i)
+;;       (set! os (+ os (instruction-size i))))))
 
 (: empty-hash Bytes)
 (define empty-hash (hex-string->bytes "C5D2460186F7233C927E7DB2DCC703C0E500B653CA82273B7BFAD8045D85A470"))
 
+(: empty-hash-word EthWord)
+(define empty-hash-word (bytes->integer empty-hash #f #t))
+
 (: empty? (-> vm-exec Address Boolean))
-(define (empty vm addr)
+(define (empty? vm addr)
   (let ([ acc (account vm addr) ])
     (and
+     acc
      (equal? (vm-account-code-hash acc) empty-hash) ; No code
      (= (vm-account-nonce acc) 0)                   ; Zero nonce
      (= (vm-account-balance acc) 0)                 ; Zero balance
@@ -476,7 +502,13 @@
 (: L (-> EthWord EthWord))
 (define (L n) (- n (floor (/ n 64))))
 
-(: instruction-gas (-> vm-exec EthInstruction Fixnum))
+(: logb (-> Number Number Real))
+(define (logb b x) (cast (/ (log x) (log b)) Real))
+
+(: floori (-> Real Integer))
+(define (floori x) (cast (floor x) Integer))
+
+(: instruction-gas (-> vm-exec EthInstruction Integer))
 (define (instruction-gas vm i)
   (define (C_sstore)
     (let ([ addr ( get-stack vm 0) ]
@@ -501,20 +533,22 @@
            )
       (+ C_gascap C_extra)))
   (define (C_suicide) (error "C_suicide unimplemented"))
+  (: is-asm (-> Symbol Boolean))
   (define (is-asm sym) (equal? i (eth-asm sym)))
+  (: is-asms (-> Symbols Boolean))
   (define (is-asms syms) (ormap is-asm syms))
   (cond ((is-asm 'SSTORE) (C_sstore))
         ((is-asm 'EXP)
          (if (eq? 0 (get-stack vm 1))
              G_exp
-             (+ G_exp (* G_expbyte (+ 1 (floor (log (get-stack vm 1) 256)))))))
+             (+ G_exp (* G_expbyte (+ 1 (floori (logb 256 (get-stack vm 1))))))))
         ((is-asms '(CALLDATACOPY CODECOPY)) (+ G_verylow (* G_copy (ceiling (/ (get-stack vm 2) 32)))))
         ((is-asm 'EXTCODECOPY) (+ G_extcode (* G_copy (ceiling (/ (get-stack vm 3) 32)))))
-        ((is-asm 'LOG0) (+ G_log (* G_logdata (get-stack vm 1)) + (* 0 G_logtopic)))
-        ((is-asm 'LOG1) (+ G_log (* G_logdata (get-stack vm 1)) + (* 1 G_logtopic)))
-        ((is-asm 'LOG2) (+ G_log (* G_logdata (get-stack vm 1)) + (* 2 G_logtopic)))
-        ((is-asm 'LOG3) (+ G_log (* G_logdata (get-stack vm 1)) + (* 3 G_logtopic)))
-        ((is-asm 'LOG4) (+ G_log (* G_logdata (get-stack vm 1)) + (* 4 G_logtopic)))
+        ((is-asm 'LOG0) (+ G_log (* G_logdata (get-stack vm 1)) (* 0 G_logtopic)))
+        ((is-asm 'LOG1) (+ G_log (* G_logdata (get-stack vm 1)) (* 1 G_logtopic)))
+        ((is-asm 'LOG2) (+ G_log (* G_logdata (get-stack vm 1)) (* 2 G_logtopic)))
+        ((is-asm 'LOG3) (+ G_log (* G_logdata (get-stack vm 1)) (* 3 G_logtopic)))
+        ((is-asm 'LOG4) (+ G_log (* G_logdata (get-stack vm 1)) (* 4 G_logtopic)))
         ((is-asms '(CALL CALLCODE DELEGATECALL)) (C_call))
         ((is-asm 'SUICIDE)   (C_suicide))
         ((is-asm 'CREATE)    G_create)
@@ -537,58 +571,84 @@
         (else
          (error "Unknown instruction - instruction-gas:" i))))
 
-        
-                     
-(: memory-dict (-> vm-exec (HashRef Symbol EthWord)))
+(: memory-dict (-> vm-exec (Listof (List UnlinkedOffset EthWord))))
 (define (memory-dict vm)
-  (let ([ ret null ])
-    (for ([ i (in-range 0 (vm-exec-largest-accessed-memory vm) 32) ])
-      (let ([ row (list i (read-memory-word vm i 32)) ])
-        (set! ret (cons row ret))))
-    (reverse ret)))
-
+  (reverse (for/list : (Listof (List UnlinkedOffset EthWord))
+               ([ i (in-range 0 (vm-exec-largest-accessed-memory vm) 32) ])
+             (list i (read-memory-word vm i 32)))))
 
 ; TODO: Incorrect if x is a null value that isn't the shared copy of nil.
 
-(define (vm-tag vm x) (read-memory-word vm x 32))
+(: vm-tag (-> vm-exec EthWord EthWord))
+(define (vm-tag vm ptr) (read-memory-word vm ptr 32))
 
-(define (vm-value vm x)
-  (cond ((vm-fixnum? vm x)              (vm-fixnum vm x))
-        ((vm-symbol? vm x)              (vm-symbol vm x))
-        ((vm-compiled-procedure? vm x)  (vm-compiled-procedure vm x))
-        ((vm-primitive-procedure? vm x) (vm-primitive-procedure vm x))
-        ((vm-pair? vm x)                (vm-pair vm x))
-        ((vm-vector? vm x)              (vm-vector vm x))
-        ((vm-null? vm x)                null)
-        (else (cons 'unboxed x))))
+(: vm-value (-> vm-exec EthWord Any))
+(define (vm-value vm ptr)
+  (cond
+    [ (vm-fixnum? vm ptr)              (vm-fixnum vm ptr)]
+    [ (vm-symbol? vm ptr)              (vm-symbol vm ptr)]
+    [ (vm-compiled-procedure? vm ptr)  (vm-compiled-procedure vm ptr)]
+    [ (vm-primitive-procedure? vm ptr) (vm-primitive-procedure vm ptr)]
+    [ (vm-pair? vm ptr)                (vm-pair vm ptr)]
+    [ (vm-vector? vm ptr)              (vm-vector vm ptr)]
+    [ (vm-null? vm ptr)                null]
+    [ else                             (cons 'unboxed ptr)]))
 
-(define (vm-tag-checker tag) (λ (vm x) (equal? tag (vm-tag vm x))))
+(define-type TagChecker (-> vm-exec EthWord Boolean))
 
-(define vm-fixnum? (vm-tag-checker TAG-FIXNUM))
-(define vm-symbol? (vm-tag-checker TAG-SYMBOL))
-(define vm-compiled-procedure? (vm-tag-checker TAG-COMPILED-PROCEDURE))
-(define vm-primitive-procedure? (vm-tag-checker TAG-PRIMITIVE-PROCEDURE))
-(define vm-pair? (vm-tag-checker TAG-PAIR))
-(define vm-vector? (vm-tag-checker TAG-VECTOR))
-(define vm-null? (vm-tag-checker TAG-NIL))
+(: make-tag-checker (-> EthWord TagChecker))
+(define (make-tag-checker tag) (λ (vm ptr) (equal? tag (vm-tag vm ptr))))
 
-(define (vm-fixnum vm x) (read-memory-word vm (+ x #x20) 32))
-(define (vm-symbol vm x) (integer->string (read-memory-word vm (+ x #x20) 32)))
+(: vm-fixnum? TagChecker)
+(define vm-fixnum? (make-tag-checker TAG-FIXNUM))
+
+(: vm-symbol? TagChecker)
+(define vm-symbol? (make-tag-checker TAG-SYMBOL))
+
+(: vm-compiled-procedure? TagChecker)
+(define vm-compiled-procedure? (make-tag-checker TAG-COMPILED-PROCEDURE))
+
+(: vm-primitive-procedure? TagChecker)
+(define vm-primitive-procedure? (make-tag-checker TAG-PRIMITIVE-PROCEDURE))
+
+(: vm-pair? TagChecker)
+(define vm-pair? (make-tag-checker TAG-PAIR))
+
+(: vm-vector? TagChecker)
+(define vm-vector? (make-tag-checker TAG-VECTOR))
+
+(: vm-null? TagChecker)
+(define vm-null? (make-tag-checker TAG-NIL))
+
+(: vm-fixnum (-> vm-exec EthWord EthWord))
+(define (vm-fixnum vm ptr) (read-memory-word vm (+ ptr #x20) 32))
+
+(: vm-symbol (-> vm-exec EthWord String))
+(define (vm-symbol vm ptr) (integer->string (read-memory-word vm (+ ptr #x20) 32)))
+
+(: vm-procedure (-> vm-exec EthWord String))
 (define (vm-procedure vm x)
   (string-append
    "label-"
-   (symbol->string (dict-ref (*reverse-symbol-table*) (read-memory-word vm (+ x #x20) 32) 'ERROR))))
+   (symbol->string (hash-ref (*reverse-symbol-table*)
+                             (read-memory-word vm (+ x #x20) 32)
+                             (λ () 'ERROR)))))
 (define vm-compiled-procedure vm-procedure)
 (define vm-primitive-procedure vm-procedure)
-(define (vm-pair vm x) (cons (read-memory-word vm (+ x #x20) 32)
-                             (read-memory-word vm (+ x #x40) 32)))
+
+(: vm-pair (-> vm-exec EthWord (Pairof EthWord EthWord)))
+(define (vm-pair vm ptr) (cons (read-memory-word vm (+ ptr #x20) 32)
+                               (read-memory-word vm (+ ptr #x40) 32)))
+
+(: vm-vector (-> vm-exec EthWord Bytes))
 (define (vm-vector vm x)
-  (let ([ addr (read-memory-word vm (+ x #x60))]
-        [ len  (read-memory-word vm (+ x #x40))]
+  (let ([ addr (read-memory-word vm (+ x #x60) 32)]
+        [ len  (read-memory-word vm (+ x #x40) 32)]
         )
     (subbytes (vm-exec-memory vm) addr (+ addr len))))
                                    
-
+(: vm-list (case-> (-> vm-exec EthWord EthWords)
+                   (-> vm-exec EthWord Integer EthWords)))
 (define (vm-list vm x [ max-recursion 10 ])
   (if (<= max-recursion 0)
       null
@@ -601,8 +661,10 @@
                      (vm-list vm (cdr pair) i))))
             (else null))))
 
+(: variable-environment (-> vm-exec Environment))
 (define (variable-environment vm)
-  (let ([ frames (vm-list vm (read-memory-word vm MEM-ENV 32)) ])
+  (let ([ frames : EthWords (vm-list vm (read-memory-word vm MEM-ENV 32))])
+    (: parse-frame (-> EthWord vm-frame))
     (define (parse-frame frame-ptr)
       (let* ([ frame (vm-pair vm frame-ptr) ]
              [ vars (vm-list vm (car frame) )]
@@ -612,13 +674,14 @@
              [ sz (min sz1 sz2) ]
              )
         (if (> sz 0)
-            (map list
-                 (map integer->string (take vars sz))
-                 (map (λ (x) (vm-value vm x)) (take vals sz))
-                 )
-            null)))
+            (vm-frame
+             (map (compose string->symbol integer->string) (take vars sz))
+             (map (λ ([ ptr : EthWord ]) (vm-value vm ptr)) (take vals sz))
+             )
+            (vm-frame null null))))
     (map parse-frame frames)))
 
+(: assert-landing-pad (-> vm-exec Address Void))
 (define (assert-landing-pad vm addr)
   (let ([ ethi (instruction-at vm addr)])
     (if (and (eth-asm? ethi)
@@ -648,49 +711,58 @@
     (newline)
     ))
 
-(: sim-lookup-bytecode (-> simulator Address bytes))
+(: sim-lookup-bytecode (-> simulator Address Bytes))
 (define (sim-lookup-bytecode sim addr)
   (let* ([ acc (sim-account sim addr) ])
     (if acc
-        (dict-ref (simulator-code-db sim)
+        (hash-ref (simulator-code-db sim)
                   (vm-account-code-hash acc)
-                  (bytes))
+                  (λ () (bytes)))
         (bytes))))
 
-(: lookup-bytecode (-> vm-exec Address bytes))
+(: lookup-bytecode (-> vm-exec Address Bytes))
 (define (lookup-bytecode vm addr)
   (sim-lookup-bytecode (vm-exec-sim vm) addr))
 
 (: sim-account (-> simulator Address (U #f vm-account)))
 (define (sim-account sim addr)
   (let ([ accs (simulator-accounts sim) ])
-    (dict-ref accs addr #f)))
+    (hash-ref accs addr #f)))
 
 (: account (-> vm-exec Address (U #f vm-account)))
 (define (account vm addr)
   (let ([ sim (vm-exec-sim vm) ])
     (sim-account sim addr)))
 
+(: find-or-create-account! (-> simulator Address vm-account))
+(define (find-or-create-account! sim addr)
+  (: acc (U #f vm-account))
+  (define acc (sim-account sim addr))
+  (if acc acc (create-account! sim addr 0 (bytes)))
+  )
+
 ; TODO: Implement by mining a block
-(: mint-ether! (-> simulator Symbol EthWord Void))
-(define (mint-ether! sim name amount)
+(: mint-ether! (-> simulator Address EthWord Void))
+(define (mint-ether! sim addr amount)
   (: acc vm-account)
-  (define acc (sim-account sim (find-or-create-addr-name! name)))
-  (match acc
-    [ #f (error "mint-money!: Unknown account" name)]
-    [ acc (set-vm-account-balance! acc (+ amount (vm-account-balance acc)))]))
+  (define acc (find-or-create-account! sim addr))
+  (set-vm-account-balance! acc (+ amount (vm-account-balance acc))))
 
 (: account-balance (-> simulator Address EthWord))
 (define (account-balance sim addr)
-  (vm-account-balance (dict-ref (simulator-accounts sim) addr (vm-account 0 0 0 0))))
+  (let* ([ accs : vm-world (simulator-accounts sim)]
+         [ acc : (U #f vm-account) (hash-ref accs addr #f)])
+    (if acc
+        (vm-account-balance acc)
+        0)))
 
 (: make-code-hash (-> Bytes CodeHash))
 (define (make-code-hash bs)
   (if (equal? 0 (bytes-length bs))
-      empty-hash
+      empty-hash-word
       (keccak-256-word bs)))
 
-(: create-account! (-> simulator Address EthWord Bytes Void))
+(: create-account! (-> simulator Address EthWord Bytes vm-account))
 (define (create-account! sim addr val bs)
   (let* ([ hash (make-code-hash bs)]
          [ store-root (store-get-root (simulator-store sim)) ]
@@ -699,13 +771,14 @@
                                store-root                      ; storage root
                                hash                            ; code hash
                                )])
-    (dict-set! (simulator-accounts sim) addr account)
-    (dict-set! (simulator-code-db sim) hash bs)
+    (hash-set! (simulator-accounts sim) addr account)
+    (hash-set! (simulator-code-db sim) hash bs)
+    account
     ))
 
 (: account-value (-> simulator Address EthWord))
 (define (account-value sim addr)
-  (vm-account-balance (dict-ref (simulator-accounts sim) addr)))
+  (vm-account-balance (hash-ref (simulator-accounts sim) addr)))
 
 (: transfer-money! (-> vm-exec EthWord Address Address Void))
 (define (transfer-money! vm amount from to)
@@ -715,12 +788,14 @@
          [ to-bal   (if to-acc   (vm-account-balance to-acc)   0)]
          [ sim      (vm-exec-sim vm)]
          )
-    (assert (>= from-bal amount))
+    (unless from-acc (error "transfer-money!: Invalid sender" from (*addresses-by-name*)))
+    (unless (>= from-bal amount)
+      (error "transfer-money!: Insufficient balance" (find-addr-name from)))
     (when (> amount 0)
       (set-vm-account-balance! from-acc (- from-bal amount))
       (if to-acc
           (set-vm-account-balance! to-acc   (+ to-bal   amount))
-          (create-account! sim to amount (bytes))))))
+          (void (create-account! sim to amount (bytes)))))))
 
 (: vm-exec-contract (-> vm-exec Address))
 (define (vm-exec-contract vm)

@@ -21,10 +21,19 @@
               (register-addr-name! sym addr)
               addr)))
 
-(: find-addr-name (-> Symbol Address))
-(define (find-addr-name sym)
+(: find-name (-> Symbol Address))
+(define (find-name sym)
   (hash-ref (*addresses-by-name*) sym))
 
+(: find-addr-name (-> Address (U Symbol #f)))
+(define (find-addr-name addr)
+  (: kv (U #f (Pairof Symbol Address)))
+  (define kv (findf (λ ([ p : (Pairof Symbol Address) ]) (equal? addr (cdr p)))
+                    (hash->list (*addresses-by-name*))))
+  (if kv
+      (car kv)
+      #f))
+         
 (: register-addr-name! (-> Symbol Address Void))
 (define (register-addr-name! sym addr)
   (hash-set! (*addresses-by-name*) sym addr))

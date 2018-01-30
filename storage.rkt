@@ -1,4 +1,4 @@
-#lang typed/racket/no-check
+#lang typed/racket
 
 (require "types.rkt")
 (require "globals.rkt")
@@ -17,7 +17,7 @@
 (define HARDCODED-STORAGE-ROOT #xFFFFFFFF)
 
 (: make-store (-> vm-store))
-(define (make-store) (vm-store null null (make-hash)))
+(define (make-store) (vm-store (make-hash) (make-hash) (make-hash)))
 
 (: store-load-checkpoint! (-> vm-store StorageRoot Void))
 (define (store-load-checkpoint! store root) (void))
@@ -26,10 +26,13 @@
 (define (store-set-account! store target) (void))
 
 (: store-get-value (-> vm-store EthWord EthWord))
-(define (store-get-value store key) (dict-ref (vm-store-account store) key 0))
+(define (store-get-value store key)
+  (: accs (HashTable EthWord EthWord))
+  (define accs (vm-store-account store))
+  (hash-ref accs key (λ () 0)))
 
 (: store-set-value! (-> vm-store EthWord EthWord Void))
-(define (store-set-value! store key value) (dict-set! (vm-store-account store) key value))
+(define (store-set-value! store key value) (hash-set! (vm-store-account store) key value))
 
 (: store-begin-txn! (-> vm-store Void))
 (define (store-begin-txn! store) (void))

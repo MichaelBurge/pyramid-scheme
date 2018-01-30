@@ -84,7 +84,11 @@
 (define *txn-nonce* (make-parameter 0))
 
 (: *account-nonce* (Parameterof Integer))
-(define *account-nonce* (make-parameter 0))
+(define *account-nonce* (make-parameter 100))
+
+; TODO: Contract address should use actual Ethereum spec rather than a counter
+(: *contract-create-counter* (Parameterof Integer))
+(define *contract-create-counter* (make-parameter 200))
 
 ; Constants
 (define assumed-label-size 2) ; TODO: Number of bytes to leave behind for label relocations. This makes it difficult to write programs larger than 65536 bytes.
