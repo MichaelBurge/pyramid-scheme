@@ -56,6 +56,13 @@
 (define (%-suicide a) (unproc (op 'SUICIDE) a))
 (define (%-address)   (nullop (op 'ADDRESS)  ))
 (define (%-balance a) (unop   (op 'BALANCE) a))
+(define (%-log0-fixnum x)
+  (asm (push 'shrink 32))         ; [ 32 ]
+  (intro-var x)                   ; [ x ; 32 ]
+  (asm (cg-add (const #x20) stack); [ x'; 32 ]
+       (op 'LOG0)                 ; [ ]
+       (cg-goto (reg 'continue))) ; [ ]
+  )
 (define (%-log1 bs t)
   (intro-var t)                   ; [ t ]
   (intro-var bs)                  ; [ bs; t ]

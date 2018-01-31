@@ -19,15 +19,18 @@ Pyramid Scheme is under heavy construction. Join our [public Discord channel](ht
 After installing the prerequisites(listed below), 
 
 ```bash
-$ ./pyramid tests/0001-factorial.pmd
-<long hex string>
+$ ./pyramid -t tests/0001-factorial.pmd 
+(Test Passed:  return 120 120 ((s . 14066) (g . 47052) (z . 3591)))
 ```
 
 To deploy that program on a test network:
-* Use the [testrpc](https://www.npmjs.com/package/ethereumjs-testrpc) tool to start a test EthereumJS instance
-* Change the `from` variable in [deploy.js](deploy.js) to one of the test addresses that `testrpc` output.
+* Install [Ganache CLI](https://github.com/trufflesuite/ganache-cli)
+* Start an EthereumJS test chain: `ganache-cli -l 10000000`. It will output a list of "Available Accounts".
+* Change the `from` variable in [deploy.js](deploy.js) to one of the test accounts.
 * Change the `code` variable to be the hex string that the Pyramid compiler output
-* Copy the contents of `deploy.js` into the `testrpc` Javascript prompt.
+* Install the [Go Ethereum](https://github.com/ethereum/go-ethereum) client.
+* Attach to the EthereumJS chain: `geth attach http://localhost:8545`.
+* Copy the contents of `deploy.js` into the `geth` Javascript prompt.
 
 You can see advanced command line options using `pyramid --help`.
 

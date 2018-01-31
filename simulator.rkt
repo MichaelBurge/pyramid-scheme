@@ -65,16 +65,17 @@
          [ vm (make-vm-exec sim txn bytecode)]
          )
     (with-handlers ([ exn:evm:return? (λ ([ x : exn:evm:return ])
-                                        (finalize-sim! vm txn)
+                                        
                                         (let ([ bs : Bytes (exn:evm:return-result x) ])
                                           (simulation-result vm bs (vm->receipt vm bs))))]
                     [ exn:evm? (λ ([ x : exn:evm ]) x)])
+      (transfer-value! vm txn)
       (simulate! vm MAX-ITERATIONS)
       (error "apply-txn-message!: Reached end of function without explicit termination")
       )))
 
-(: finalize-sim! (-> vm-exec vm-txn Void))
-(define (finalize-sim! vm txn)
+(: transfer-value! (-> vm-exec vm-txn Void))
+(define (transfer-value! vm txn)
   (let ([ to    (cast (vm-txn-to txn) Address) ]
         [ from (txn-sender txn)]
         )
@@ -282,6 +283,7 @@
     [ 'CALLDATALOAD (simulate-calldataload! vm)]
     [ 'BALANCE   (simulate-balance! vm)]
     [ 'CALL      (simulate-call! vm)]
+    [ 'LOG0      (begin (pop-stack! vm) (pop-stack! vm) (void)) ]
     [ _          (error "simulate-asm - Unimplemented vm-exec instruction found:" sym)]
     ))
 
