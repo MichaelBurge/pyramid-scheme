@@ -8,10 +8,9 @@
          `(op-lookup-variable-value (const (quote ,v1)) (reg 'env))
          (if (null? f) null (list `(,(car f) stack)))))
 
-(defmacro (func-return [ save? #t ])
-  `(asm
-    ,@(maybe->list save? '(cg-write-reg (reg 'val) stack))
-    (cg-goto (reg 'continue))))
+(defmacro (func-save [ save? #t ])
+  `(asm ,@(maybe->list save? '(cg-write-reg (reg 'val) stack))))
+
 
 (defmacro (make-arities)
   (define vs "abcdefghijklmnopqrstuvwxyz")
@@ -24,7 +23,7 @@
     `(,qq (begin ,@intros
                  (asm (,uq x))
                  (asm ,@(maybe->list box-output? '(cg-make-fixnum stack)))
-                 (func-return ,(equal? writes 1)))))
+                 (func-save ,(equal? writes 1)))))
   `(begin               ;                    R W BO BI
      (defmacro (nullop x)            ,(arity 0 1 #t #t))
      (defmacro (unop x a)            ,(arity 1 1 #t #t))
@@ -60,8 +59,7 @@
   (asm (push 'shrink 32))         ; [ 32 ]
   (intro-var x)                   ; [ x ; 32 ]
   (asm (cg-add (const #x20) stack); [ x'; 32 ]
-       (op 'LOG0)                 ; [ ]
-       (cg-goto (reg 'continue))) ; [ ]
+       (op 'LOG0))                ; [ ]
   )
 (define (%-log1 bs t)
   (intro-var t)                   ; [ t ]
@@ -71,7 +69,7 @@
        (cg-swap 1)                ; [ bs; len; t ]
        (cg-vector-data stack)     ; [ data; len; t ]
        (op 'LOG1)                 ; [ ]
-       (cg-goto (reg 'continue))) ; [ ]
+       )
   )
 
 (define (%-origin)                (nullop (op 'ORIGIN)))
@@ -109,7 +107,7 @@
   (intro-var to         cg-unbox-integer)
   (intro-var gas        cg-unbox-integer)
   (asm (op 'CALL))
-  (func-return))
+  (func-save))
 
 (define %-TAG-FIXNUM 0)
 (define %-TAG-SYMBOL 1)

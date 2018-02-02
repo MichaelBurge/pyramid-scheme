@@ -20,7 +20,7 @@
   (match exp
     [(struct pyr-const (x))                (compile-const target linkage x)]
     [(struct pyr-quoted (x))               (compile-quoted target linkage x)]
-    [(struct pyr-asm _)                    (inst-seq '() '() (list exp))]
+    [(struct pyr-asm _)                    (compile-asm target linkage exp)]
     [(struct pyr-macro-definition _)       (compile-macro-definition target linkage exp)]
     [(struct pyr-variable (name))          (compile-variable target linkage name)]
     [(struct pyr-assign (name val))        (compile-assignment target linkage name val )]
@@ -75,7 +75,11 @@
                                                      (inst-seq '(argl) (listof target)
                                                                (list (assign target (reg 'argl))))))]
     [else (error "compile-quoted: Unhandled case" exp)]))
-  
+
+(: compile-asm (-> Target Linkage pyr-asm inst-seq))
+(define (compile-asm target linkage exp)
+  (end-with-linkage linkage
+                    (inst-seq '() '() (list exp))))
 
 (: compile-macro-definition (-> Target Linkage pyr-macro-definition inst-seq))
 (define (compile-macro-definition target linkage exp)
