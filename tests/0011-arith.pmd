@@ -1,3 +1,5 @@
+#lang pyramid
+
 (set-test-result! 3)
 
 (include psl "arith.pmd")

@@ -1,3 +1,5 @@
+#lang pyramid
+
 (set-test-result! 10)
 
 (include psl "syntax.pmd")

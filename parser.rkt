@@ -1,5 +1,6 @@
 #lang typed/racket
 
+(require typed/racket/unsafe)
 (require "types.rkt")
 (require "utils.rkt")
 (require "globals.rkt")
@@ -9,7 +10,9 @@
 (require/typed racket/pretty
   [ pretty-print (-> Any Void)])
 
-(provide (all-defined-out))
+(unsafe-provide read-statements-port)
+
+(provide (except-out (all-defined-out) read-statements-port))
 
 (: expand-pyramid (-> PyramidQ Pyramid))
 (define (expand-pyramid x)
@@ -84,8 +87,8 @@
     [(struct pyr-asm-push (size value))          `(push ,size ,value)]
     [(struct pyr-asm-op   (sym))                 `(op (quote ,sym))]
     [(struct pyr-asm-bytes (bs)) (match (bytes-length bs)
-                                   [ 0           `(byte ,(first (bytes->list bs)))]
-                                   [ n           `(bytes ,(bytes->integer bs #f))])]
+                                   [ 1           `(byte ,(first (bytes->list bs)))]
+                                   [ n           `(bytes ,n ,(bytes->integer bs #f))])]
     [(struct pyr-asm-cg (exp))                   exp]
     [(struct label-definition (name 0  #f))      `(label (quote ,name))]
     [(struct label-definition (name os #f))      `(label (quote ,name) ,os)]
@@ -111,7 +114,7 @@
     [`(push  'shrink         ,val) (pyr-asm-push 'shrink           (cast val EthWord))]
     [`(push  ,(? byte? size) ,val) (pyr-asm-push  (cast size Byte) (cast val EthWord))]
     [`(op    (quote ,x))           (pyr-asm-op    (cast x Symbol))]
-    [`(byte  ,(? byte? val))       (pyr-asm-bytes (bytes (cast val Byte)))]
+    [`(byte  ,(? exact-integer? val))       (pyr-asm-bytes (bytes (cast val Byte)))]
     [`(bytes ,(? exact-integer? size)
              ,(? exact-integer? val))
      (pyr-asm-bytes (integer->bytes val size #f))]
@@ -122,25 +125,43 @@
      (pyr-asm-cg `(,name ,@args))]
     [_ (error "parse-asm: Unknown syntax" x)]))
 
-(: read-statements (-> String (Listof Any)))
-(define (read-statements filename)
-  (let loop ([fh (open-input-file filename) ])
-    (let ([ x (read fh) ])
+(: read-statements-port (-> Path Input-Port (Listof (Syntaxof PyramidQ))))
+(define (read-statements-port path fh)
+  (: loop (-> (Listof (Syntaxof PyramidQ))))
+  (define (loop)
+    (let ([ x (read-syntax path fh) ])
       ;(displayln x)
       ;(displayln (continuation-mark-set-first (current-continuation-marks) '(line)))
       ;(displayln (continuation-mark-set->list* (current-continuation-marks) '(line)))
       (if (eof-object? x)
           null
           (cons x
-                (loop fh))))))
+                (loop)))))
+  (loop))
 
-(: read-file (-> String (Listof Any)))
+
+;; (: read-statements (-> String (Listof Any)))
+;; (define (read-statements filename)
+;;   (read-statements-port (open-input-file filename)))
+
+;; (: read-file (-> String (Listof Any)))
+;; (define (read-file filename)
+;;   `(begin ,@(read-statements filename)))
+
+(module unsafe racket
+  (provide parse-file)
+  (define (parse-file filename)
+    (eval `(begin (require ,filename) program))
+    )
+  ;(expand-pyramid (read-file filename)))
+)
+
+(require/typed 'unsafe
+  [ parse-file (-> String Pyramid) ])
+
+(: read-file (-> String PyramidQ))
 (define (read-file filename)
-  `(begin ,@(read-statements filename)))
-
-(: parse-file (-> String Pyramid))
-(define (parse-file filename)
-  (expand-pyramid (read-file filename)))
+  (shrink-pyramid (parse-file filename)))
 
 (: sequence->exp (-> Pyramids Pyramid))
 (define (sequence->exp seq)
@@ -148,3 +169,4 @@
     (`() (pyr-begin '()))
     ((list x) x)
     (xs (pyr-begin xs))))
+

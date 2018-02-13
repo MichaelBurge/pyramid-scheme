@@ -1,3 +1,5 @@
+#lang pyramid
+
 ; The (asm) language primitive executes ordinary Racket code within the codegen.rkt module, where
 ; the cg-* helpers are defined.
 

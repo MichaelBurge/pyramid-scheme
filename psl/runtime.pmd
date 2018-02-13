@@ -1,3 +1,5 @@
+#lang pyramid
+
 (define memory-allocator
   (let ([ ptr (%-mem-alloc 3) ])
     (begin

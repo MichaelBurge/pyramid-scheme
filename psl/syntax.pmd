@@ -1,3 +1,5 @@
+#lang pyramid
+
 (defmacro (let args . body)
   (let* ([vars (map first args)]
          [exprs (map second args)])

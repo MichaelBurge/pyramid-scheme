@@ -573,7 +573,7 @@ These optimizations are currently unimplemented:
       ((eq? name 'make-compiled-procedure)   (cg-op-make-compiled-procedure   (car args) (cadr args)))
       ((eq? name 'define-variable!)          (op-define-variable!             (car args) (cadr args) (caddr args)))
       ((eq? name 'set-variable-value!)       (op-set-variable-value!          (car args) (cadr args) (caddr args)))
-      ; Expressions
+      ; Expressions;
       ((eq? name 'box)                       (cg-op-box                       (car args)))
       ((eq? name 'extend-environment)        (cg-op-extend-environment        (car args) (cadr args) (caddr args)))
       ((eq? name 'compiled-procedure-entry)  (cg-op-compiled-procedure-entry  (car args)))

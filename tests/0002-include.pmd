@@ -1,3 +1,5 @@
+#lang pyramid
+
 (set-test-result! 120)
 
 (include "0001-factorial.pmd")

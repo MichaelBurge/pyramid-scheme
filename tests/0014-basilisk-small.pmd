@@ -1,3 +1,5 @@
+#lang pyramid
+
 (require psl "arith.pmd")
 (require psl "syntax.pmd")
 (require psl "contract.pmd")
