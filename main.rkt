@@ -4,13 +4,8 @@
 (require "parser.rkt")
 (provide read
          read-syntax
-         ;
-         define
-         provide
-         expand-pyramid
-         quote
-         #%module-begin
-         #%app)
+         (rename-out [pyramid-module-begin #%module-begin])
+         )
 
 (module reader racket
   (require "parser.rkt")
@@ -25,8 +20,7 @@
   (define (read-syntax path port)
     (define quoted (map syntax->datum (read-statements-port path port)))
     (define module-datum `(module pyr-mod pyramid
-                            (provide program)
-                            (define program (expand-pyramid (quote (begin ,@quoted))))))
+                            (begin ,@quoted)))
     (define stx (datum->syntax #f module-datum))
     stx
     ;; (displayln tokens)
@@ -36,5 +30,6 @@
 
 (define-syntax (pyramid-module-begin stx)
   (syntax-case stx ()
-    ;[(_ x) #`(#%module-begin (quote #,(expand-c #'x)))]))
-    [(_ x) #`(#%module-begin #,(expand-pyramid #'x))]))
+    [(_ x) #`(#%module-begin
+              (provide program)
+              (define program (expand-pyramid (syntax->datum #'x))))]))
