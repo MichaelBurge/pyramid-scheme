@@ -125,16 +125,20 @@
   (set! label-counter (+ 1 label-counter))
   label-counter)
 
+(: make-label-name (-> Symbol Symbol))
+(define (make-label-name name)
+  (string->symbol
+   (string-append
+    (symbol->string name)
+    "-"
+    (number->string (*abstract-offset*))
+    "-"
+    (number->string (new-label-number)))))
+
 (: make-label (case-> (-> Symbol label-definition)
                       (-> Symbol Integer label-definition)))
-   
 (define (make-label name [offset 0])
-  (label-definition (string->symbol
-                     (string-append (symbol->string name)
-                                    "-"
-                                    (number->string (*abstract-offset*))
-                                    "-"
-                                    (number->string (new-label-number))))
+  (label-definition (make-label-name name)
                     offset
                     #f
                     ))

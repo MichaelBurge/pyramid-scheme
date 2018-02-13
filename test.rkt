@@ -15,7 +15,6 @@
 (require "analysis.rkt")
 (require (except-in "macro.rkt" make-label))
 (require "globals.rkt")
-;(require "minimize.rkt")
 (require "storage.rkt")
 (require "accessors.rkt")
 (require "abi.rkt")
@@ -45,53 +44,13 @@
                     (debug-info simres))
       (error "Test failed: " (test-expectation-name expect) simres)))
 
-;; (define (assert-equal-vm name expected actual-bs debug-info)
-;;   (if (exn:fail? actual-bs)
-;;       (error "assert-equal-vm: Caught error" actual-bs)
-;;       (let ([ actual (parse-type (infer-type expected) actual-bs) ])
-;;         (assert-equal name expected actual debug-info))))
-
 (define (on-error-throw vm)
   (error "Test Failure - exception thrown")
   )
- 
-(: run-test (-> String Pyramid Any))
-(define (run-test name prog)
-  ;; (with-handlers ([exn:evm? (λ (x) x)]
-  ;;                 ;; [exn:fail? (λ (x)
-  ;;                 ;;              (begin
-  ;;                 ;;                (displayln `("Unexpected exception encountered" ,x))
-  ;;                 ;;                x)))
-  ;;                 )
-    (*include-directory* "tests")
-    (when (verbose? VERBOSITY-LOW)
-      (*on-simulate-instruction* (on-simulate-debug (invert-hash (*symbol-table*)))))
-    (let* ([ params         (full-compile prog) ]
-           [ initializer-bs (full-compile-result-bytes params)]
-           [ sim            (make-simulator)]
-           [ deploy-txn     (make-txn-create initializer-bs)]
-           [ deploy-result  (cast (apply-txn-create! sim deploy-txn) simulation-result)]
-           [ contract       (vm-txn-receipt-contract-address (simulation-result-txn-receipt deploy-result))]
-           [ program-txn    (make-txn-message (cast contract Address) 0 (bytes)) ]
-           [ exec-result    (apply-txn-message! sim program-txn)]
-           )
-      (cons deploy-result exec-result)))
 
 (define (evm-result-equal? a b)
   (cond [(and (exn? a) (exn? b)) (equal? (exn-message a) (exn-message b)) ]
         [else (equal? a b)]))
-
-;; (: minimize-test (-> String Pyramid Pyramid))
-;; (define (minimize-test name prog)
-;;   (let* ([ baseline (run-test name prog) ]
-;;          [ pred? (λ (candidate)
-;;                    (let ([ result (run-test name candidate) ])
-;;                      (begin
-;;                        ; (debug-print `(,candidate ,baseline ,result))
-;;                        (evm-result-equal? baseline result))))]
-;;          [ result (minimize pred? prog) ]
-;;          )
-;;     (pretty-print result)))
 
 (: debug-info (-> simulation-result Any))
 (define (debug-info result)
@@ -248,7 +207,7 @@
     (mint-ether! sim
                  (find-or-create-addr-name! (test-account-name acc))
                  (test-account-balance acc))))
-
+ 
 ; TODO: Turn these into unit tests.
 ; TEST 1: (cg-intros (list (const 1234) (const 4321)))
 ; TEST 2: (cg-allocate-initialize (const 3) (list (const 10) (const 20) (const 30)))

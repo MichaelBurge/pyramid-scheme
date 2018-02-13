@@ -2,7 +2,6 @@
 
 (require "types.rkt")
 (require "globals.rkt")
-(require "transaction.rkt")
 (require "utils.rkt")
 
 (provide (all-defined-out))
