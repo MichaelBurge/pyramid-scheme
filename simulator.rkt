@@ -361,7 +361,7 @@
          )
     (when (>= (+ len dest-addr) (bytes-length dest))
       (error "simulate-codecopy!: Exceeded available memory" `(,dest-addr ,len) '>= (bytes-length dest)))
-             
+    (touch-memory! vm (+ dest-addr len))
     (bytes-copy! dest dest-addr
                  src src-addr
                  (+ src-addr len))))
@@ -434,8 +434,11 @@
 
 (: read-memory (-> vm-exec EthWord EthWord Bytes))
 (define (read-memory vm addr len)
-  (if (>= addr (bytes-length (vm-exec-memory vm)))
-      (make-bytes len 0)
+  (define largest (vm-exec-largest-accessed-memory vm))
+  (if (>= addr largest)
+      (begin
+        (maybe-warn "read-memory: Out-of-bounds memory read" `(,largest < (+ ,addr ,len)))
+        (make-bytes len 0))
       (subbytes (vm-exec-memory vm) addr (+ addr len))
       )
   )
@@ -684,23 +687,24 @@
 
 (: variable-environment (-> vm-exec Environment))
 (define (variable-environment vm)
-  (let ([ frames : EthWords (vm-list vm (read-memory-word vm MEM-ENV 32))])
-    (: parse-frame (-> EthWord Frame))
-    (define (parse-frame frame-ptr)
-      (let* ([ frame (vm-pair vm frame-ptr) ]
-             [ vars (vm-list vm (car frame) )]
-             [ vals (vm-list vm (cdr frame) )]
-             [ sz1 (length vars) ]
-             [ sz2 (length vals) ]
-             [ sz (min sz1 sz2) ]
-             )
-        (if (> sz 0)
-            (list
-             (map integer->string (take vars sz))
-             (map (λ ([ ptr : EthWord ]) (vm-value vm ptr)) (take vals sz))
-             )
-            (list null null))))
-    (map parse-frame frames)))
+  (parameterize ([ *warnings?* #f ])
+    (let ([ frames : EthWords (vm-list vm (read-memory-word vm MEM-ENV 32))])
+      (: parse-frame (-> EthWord Frame))
+      (define (parse-frame frame-ptr)
+        (let* ([ frame (vm-pair vm frame-ptr) ]
+               [ vars (vm-list vm (car frame) )]
+               [ vals (vm-list vm (cdr frame) )]
+               [ sz1 (length vars) ]
+               [ sz2 (length vals) ]
+               [ sz (min sz1 sz2) ]
+               )
+          (if (> sz 0)
+              (list
+               (map integer->string (take vars sz))
+               (map (λ ([ ptr : EthWord ]) (vm-value vm ptr)) (take vals sz))
+               )
+              (list null null))))
+      (map parse-frame frames))))
 
 (: assert-landing-pad (-> vm-exec Address Void))
 (define (assert-landing-pad vm addr)
@@ -728,11 +732,20 @@
     (write-char #\tab)
     (display i)
     (write-char #\tab)
-    (write-json (variable-environment vm))
+    (write-json (to-json-compatible (variable-environment vm)))
     (newline)
     ))
 
-(: sim-lookup-bytecode (-> simulator Address Bytes))
+(: to-json-compatible (-> Any Any))
+(define (to-json-compatible x)
+  (match x
+    [(? symbol? x) (string-append "'" (symbol->string x))]
+    [(? list? x) (map to-json-compatible x)]
+    [(cons a b)  (list (to-json-compatible a) (to-json-compatible b))]
+    [_           x]
+    ))
+
+    (: sim-lookup-bytecode (-> simulator Address Bytes))
 (define (sim-lookup-bytecode sim addr)
   (let* ([ acc (sim-account sim addr) ])
     (if acc
@@ -823,3 +836,8 @@
 (: vm-exec-contract (-> vm-exec Address))
 (define (vm-exec-contract vm)
   (vm-exec-environment-contract (vm-exec-env vm)))
+
+(: maybe-warn (-> String Any * Any))
+(define (maybe-warn msg . xs)
+  (when (*warnings?*)
+    (error msg xs)))

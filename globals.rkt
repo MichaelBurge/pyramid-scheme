@@ -29,6 +29,9 @@
 (define *simplify?* (make-parameter #t))
 ; (define optimize-level (make-parameter 0))
 
+(: *warnings?* (Parameterof Boolean))
+(define *warnings?* (make-parameter #t))
+
 (: *link?* (Parameterof Boolean))
 (define *link?* (make-parameter #t))
 

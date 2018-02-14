@@ -1,0 +1,9 @@
+#lang pyramid
+
+(set-test-result! 3)
+
+(require psl "runtime.pmd")
+
+(define p (pair 1 2))
+
+(+ (l p) (r p))

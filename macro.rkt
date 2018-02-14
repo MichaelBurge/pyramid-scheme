@@ -186,24 +186,26 @@ Functions defined here are available to Pyramid programs within macros.
                         (read-file mod)))
     ))
 
-(: was-required? (-> Symbol String Boolean))
-(define (was-required? collection mod)
-  (let ([ key (string-append (symbol->string collection) "/" mod) ])
-    (set-member? (*required-modules*) key)))
+(: include-unless-cached (-> Symbol String Any))
+(define (include-unless-cached collection mod)
+  (let* ([ key (string-append (symbol->string collection) "/" mod) ]
+         [ has-key? (set-member? (*required-modules*) key)]
+         [ add-key! (λ () (*required-modules* (set-add (*required-modules*) key)))])
+    (if has-key?
+        '(begin)
+        (begin (add-key!)
+               (if (equal? collection '*current-directory)
+                   (%-include mod)
+                   (%-include collection mod))))))
 
 (: %-require (case-> (-> String Any) (-> Symbol String Any)))
 (define %-require
   (case-lambda
-    ([ mod ]
-     (if (was-required? '*current-directory mod)
-         '(begin)
-         (%-include mod)))
+    ([ mod ] (include-unless-cached '*current-directory mod))
     ([ collection mod ]
      (assert collection symbol?)
      (assert mod string?)
-     (if (was-required? collection mod)
-         '(begin)
-         (%-include collection mod)))))
+     (include-unless-cached collection mod))))
 
 ; A Patchpoint consists of a symbol table entry that should be replaced with the stack output of some bytecode.
 (: %-register-patchpoint! (-> Symbol EthInstructions Void))

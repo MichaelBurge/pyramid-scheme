@@ -21,6 +21,7 @@
   ; (pretty-print prog)
   (set! prog (pass-inline-simple-definitions prog))
   (set! prog (fixpass pass-remove-unused-definitions prog))
+  (set! prog (pass-collapse-nested-begins prog))
   ;(pretty-print prog)
   (set! prog (pass-error-on-undefined-variables prog))
   ;(pretty-print prog)

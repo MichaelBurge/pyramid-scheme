@@ -60,7 +60,7 @@
      (pyr-application (expand-pyramid head) (map expand-pyramid tail)))
     (_ (begin
          (pretty-print x)
-         (error "expand-pyramid: Unexpected form")))))
+         (error "expand-pyramid: Unexpected form" x)))))
 
 (: shrink-pyramid (-> Pyramid PyramidQ))
 (define (shrink-pyramid x)

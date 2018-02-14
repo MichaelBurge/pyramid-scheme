@@ -1,0 +1,12 @@
+#lang pyramid
+
+(set-test-result! 120)
+
+(require psl "syntax.pmd")
+(require psl "arith.pmd")
+
+(define acc 1)
+
+(for (λ (x) (set! acc (* acc x)))
+  (list 1 2 3 4 5))
+acc

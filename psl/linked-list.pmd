@@ -1,6 +1,6 @@
 #lang pyramid
 
-(include psl "runtime.pmd")
+(require psl "runtime.pmd")
 
 (define (linked-list) (pair **allocator** null))
 

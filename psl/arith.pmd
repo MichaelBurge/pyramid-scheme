@@ -1,6 +1,6 @@
 #lang pyramid
 
-(include psl "primitives.pmd")
+(require psl "primitives.pmd")
 
 (define + %-+)
 (define - %--)

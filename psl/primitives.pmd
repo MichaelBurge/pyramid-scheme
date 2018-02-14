@@ -28,8 +28,11 @@
                  (func-save ,(equal? writes 1)))))
   `(begin               ;                    R W BO BI
      (defmacro (nullop x)            ,(arity 0 1 #t #t))
+     (defmacro (nullop-unboxed x)    ,(arity 0 1 #f #f))
      (defmacro (unop x a)            ,(arity 1 1 #t #t))
      (defmacro (unproc x a)          ,(arity 1 0 #f #t))
+     (defmacro (unop-boolean x a)    ,(arity 1 1 #f #t))
+     (defmacro (unop-unboxed x a)    ,(arity 1 1 #f #f))
      (defmacro (binop x a b)         ,(arity 2 1 #t #t))
      (defmacro (binop-boolean x a b) ,(arity 2 1 #f #t))
      (defmacro (binop-unboxed x a b) ,(arity 2 1 #f #f))
@@ -83,14 +86,14 @@
                                   (triop  (op 'CALLDATACOPY) mem-ptr data-ptr size))
 (define (%-timestamp)             (nullop (op 'TIMESTAMP)))
 
-(define (%-tag a)            (unop    (cg tag stack) a))
-(define (%-mem-alloc a)      (unop    (cg allocate stack) a))
-(define (%-mem-read a b)     (binop   (cg read-address-offset stack stack) a b))
-(define (%-mem-write! a b c) (triproc (cg write-address-offset stack stack stack) a b c))
+(define (%-tag a)            (unop    (cg-tag stack) a))
+(define (%-mem-alloc a)      (unop    (cg-allocate stack) a))
+(define (%-mem-read a b)     (binop   (cg-read-address-offset stack stack) a b))
+(define (%-mem-write! a b c) (triproc (cg-write-address-offset stack stack stack) a b c))
 (define (%-store-read a)     (unop    (op 'SLOAD) a))
 (define (%-store-write! a b) (biproc  (op 'SSTORE) a b))
-(define (%-box a)            (unop    (cg make-fixnum stack)   a))
-(define (%-unbox a)          (unop    (cg unbox-integer stack) a))
+(define (%-box a)            (unop    (cg-make-fixnum stack)   a))
+(define (%-unbox a)          (unop    (cg-unbox-integer stack) a))
 (defmacro (%-bool->fixnum a)
   `(begin
      ,a
@@ -127,3 +130,13 @@
 (define %-MEM-NIL            #xc0)
 (define %-MEM-ALLOCATOR      #xe0)
 (define %-MEM-DYNAMIC-START #x100)
+
+; Runtime support
+(define (%-cons a b) (binop-unboxed (cg-cons stack stack) a b))
+
+(define (%-car x) (unop-unboxed (cg-car stack) x))
+
+(define (%-cdr x) (unop-unboxed (cg-cdr stack) x))
+
+(define (%-null? x) (unop-unboxed (cg-null? stack) x))
+(define (%-null) (nullop-unboxed (cg-make-nil)))

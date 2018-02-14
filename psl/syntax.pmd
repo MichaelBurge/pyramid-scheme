@@ -1,5 +1,7 @@
 #lang pyramid
 
+(require psl "runtime.pmd")
+
 (defmacro (let args . body)
   (let* ([vars (map first args)]
          [exprs (map second args)])
@@ -28,3 +30,15 @@
                       (bytes 32 0)
                       (cg-make-fixnum stack)
                       (cg-write-reg (reg 'val) stack)))))
+
+(define (void) (begin))
+(defmacro (when pred . body)
+  `(if ,pred
+       (begin ,@ body)
+       (void)))
+
+(define (for f lst)
+  (if (null? lst)
+      (void)
+      (begin (f (l lst))
+             (for f (r lst)))))

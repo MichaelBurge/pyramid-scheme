@@ -1,0 +1,7 @@
+#lang pyramid
+
+(set-test-result! 1)
+
+(require psl "runtime.pmd")
+
+(%-bool->fixnum (null? (%-null)))

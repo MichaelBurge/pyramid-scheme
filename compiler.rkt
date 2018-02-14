@@ -167,7 +167,7 @@
 (: compile-sequence (-> Target Linkage Pyramids inst-seq))
 (define (compile-sequence target linkage seq)
   (match seq
-    ('()              (empty-instruction-sequence))
+    ('()         (compile-linkage linkage))
     (`(,x)       (compile-pyramid target linkage x))
     (`(,x . ,xs) (preserving '(env continue)
                                   (compile-pyramid  target 'next   x)
@@ -178,7 +178,7 @@
   (let ((proc-entry (make-label 'entry))
         (after-lambda (make-label 'after-lambda)))
     (let ((lambda-linkage
-           (cast (if (eq? linkage 'next) after-lambda linkage) Linkage)))
+           (if (eq? linkage 'next) after-lambda linkage)))
       (append-instruction-sequences
        (tack-on-instruction-sequence
         (end-with-linkage lambda-linkage
