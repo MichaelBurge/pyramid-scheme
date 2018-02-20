@@ -4,10 +4,9 @@
 
 (require racket/pretty)
 
-(require "types.rkt")
 (require "ast.rkt")
 (require "compiler.rkt")
-(require "codegen.rkt")
+(require (except-in "codegen.rkt" asm))
 (require "disassembler.rkt")
 (require "serializer.rkt")
 (require (except-in "macro.rkt" make-label))
@@ -18,6 +17,8 @@
 (require "parser.rkt")
 
 (provide (all-defined-out))
+
+(struct full-compile-result ([ bytes : Bytes ] [ abstract-insts : Instructions ] [ eth-insts : EthInstructions ]) #:transparent)
 
 (: maybe-link (-> Bytes Bytes))
 (define (maybe-link bs)

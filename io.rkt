@@ -1,6 +1,9 @@
 #lang typed/racket
 
-(require "types.rkt")
+(require (submod "types.rkt" ast))
+(require (submod "types.rkt" abstract-machine))
+(require (submod "types.rkt" evm-assembly))
+(require (submod "types.rkt" simulator))
 (require "globals.rkt")
 (require "parser.rkt")
 (require "wallet.rkt")
@@ -13,7 +16,7 @@
 (: display-abstract-instruction (-> Instruction Void))
 (define (display-abstract-instruction i)
   (match i
-    [(struct pyr-asm _) (print-ast i)]
+    [(struct pyr-asm _) (display `(,(*abstract-offset*) ,(format-ast i)))]
     [_                  (display `(,(*abstract-offset*) ,i))]))
                  
   
@@ -79,6 +82,10 @@
 (define (print-ast ast)
   (pretty-print (shrink-pyramid ast)))
 
+(: format-ast (-> Pyramid String))
+(define (format-ast ast)
+  (pretty-format (shrink-pyramid ast)))
+
 (: print-account (-> Address vm-account Void))
 (define (print-account addr acc)
   (match acc
@@ -101,3 +108,6 @@
 (: print-account-balances (-> vm-exec Void))
 (define (print-account-balances vm)
   (print-account-balances-sim (vm-exec-sim vm)))
+
+(define (display-macros)
+  (display `(,"Mapped symbols:" ,(namespace-mapped-symbols (*available-macros*)))))

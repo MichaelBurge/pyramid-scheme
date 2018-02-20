@@ -1,6 +1,8 @@
 #lang typed/racket
 
-(require "types.rkt")
+(require (submod "types.rkt" common))
+(require (submod "types.rkt" evm-assembly))
+(require (submod "types.rkt" simulator))
 (require "disassembler.rkt")
 (require "serializer.rkt")
 (require "codegen.rkt")
@@ -8,7 +10,6 @@
 (require "storage.rkt")
 (require "crypto.rkt")
 (require "io.rkt")
-(require "accessors.rkt")
 (require "wallet.rkt")
 (require "transaction.rkt")
 (require "utils.rkt")
@@ -29,6 +30,9 @@
  apply-txn-create!
  apply-txn-message!
  mint-ether!
+ ;
+ simres-account-balance
+ vm-exec-bytecode
  ;
  *on-simulate-instruction*
  on-simulate-nop
@@ -841,3 +845,17 @@
 (define (maybe-warn msg . xs)
   (when (*warnings?*)
     (error msg xs)))
+
+(: simres-account-balance (-> simulation-result Address EthWord))
+(define (simres-account-balance simres addr)
+  (let* ([ receipt (simulation-result-txn-receipt simres) ]
+         [ world (vm-txn-receipt-post-transaction receipt) ]
+         [ acc : (U vm-account #f) (hash-ref world addr #f)]
+         )
+    (if acc
+        (vm-account-balance acc)
+        0)))
+
+(: vm-exec-bytecode (-> vm-exec Bytes))
+(define (vm-exec-bytecode vm) (vm-exec-environment-bytecode (vm-exec-env vm)))
+

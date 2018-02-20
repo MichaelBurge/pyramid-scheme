@@ -1,19 +1,21 @@
-#lang typed/racket
+#lang errortrace typed/racket
 
-(require "types.rkt")
+(require (submod "types.rkt" ast))
+(require (submod "types.rkt" abstract-machine))
 (require "ast.rkt")
 (require "globals.rkt")
 (require "utils.rkt")
 (require racket/set)
-(provide (all-defined-out))
 
-; Global constants
-(define reg-val : RegisterName 'val)
-(define linkage-next : Target 'next)
-(define linkage-return : Target 'return)
+(provide compile-pyramid
+         (all-from-out (submod "types.rkt" abstract-machine)))
 
-; Global variables
-(define label-counter 0)
+; Scoped globals
+(: *stack-depth* (Parameterof Integer))
+(define *stack-depth* (make-parameter 0))
+
+(define-type Linkage (U 'next 'return label))
+(define-type Target RegisterName)
 
 (: compile-pyramid (-> Target Linkage Pyramid inst-seq))
 (define (compile-pyramid target linkage exp)
@@ -34,18 +36,16 @@
 
 (: empty-instruction-sequence (-> inst-seq))
 (define (empty-instruction-sequence)
-  (inst-seq '() '() '()))
+  (make-insts '() '()))
 
 (: compile-linkage (-> Linkage inst-seq))
 (define (compile-linkage linkage)
-  (cond ((eq? linkage 'return)
-         (inst-seq '(continue) '()
-                   (list (goto (reg 'continue)))))
-        ((eq? linkage 'next)
-         (empty-instruction-sequence))
-        (else
-         (inst-seq '() '()
-                   (list (goto linkage))))))
+  (match linkage
+    ['return (make-insts '(continue) '()
+                         (goto (reg 'continue)))]
+    ['next   (empty-instruction-sequence)]
+    [_       (make-insts '() '()
+                         (goto linkage))]))
 
 (: end-with-linkage (-> Linkage inst-seq inst-seq))
 (define (end-with-linkage linkage instruction-sequence)
@@ -56,8 +56,8 @@
 (: compile-const (-> Target Linkage RegisterValue inst-seq))
 (define (compile-const target linkage val)
   (end-with-linkage linkage
-                    (inst-seq '() (list target)
-                              (list (assign target (boxed-const val))))))
+                    (make-insts '() (list target)
+                                (assign target (boxed-const val)))))
 
 (: compile-quoted (-> Target Linkage Pyramid inst-seq))
 (define (compile-quoted target linkage exp)
@@ -65,48 +65,48 @@
     [(struct pyr-const (val)) (compile-const target linkage val)]
     [(struct pyr-variable (name))
      (end-with-linkage linkage
-                       (inst-seq '() (list target)
-                                 (list (assign target (boxed-const name)))))]
+                       (make-insts '() (list target)
+                                   (assign target (boxed-const name))))]
     [(struct pyr-application (hd tl))
      (end-with-linkage linkage
                        (append-instruction-sequences (construct-arglist (map (λ ([ x : Pyramid ])
                                                                                (compile-quoted 'val 'next x))
                                                                              (cons hd tl)))
-                                                     (inst-seq '(argl) (listof target)
-                                                               (list (assign target (reg 'argl))))))]
+                                                     (make-insts '(argl) (listof target)
+                                                                 (assign target (reg 'argl)))))]
     [else (error "compile-quoted: Unhandled case" exp)]))
 
 (: compile-asm (-> Target Linkage pyr-asm inst-seq))
 (define (compile-asm target linkage exp)
   (end-with-linkage linkage
-                    (inst-seq '() '() (list exp))))
+                    (make-insts '() '() exp)))
 
 (: compile-macro-definition (-> Target Linkage pyr-macro-definition inst-seq))
 (define (compile-macro-definition target linkage exp)
   (install-macro-exp! exp)
-  (inst-seq '() '() '())
+  (make-insts '() '())
   )
 
 (: compile-variable (-> Target Linkage VariableName inst-seq))
 (define (compile-variable target linkage name)
   (end-with-linkage linkage
-                    (inst-seq '(env) (list target)
-                              (list (assign target
-                                            (op 'lookup-variable-value
-                                                `(,(const name)
-                                                  ,(reg 'env))))))))
+                    (make-insts '(env) (list target)
+                                (assign target
+                                        (op 'lookup-variable-value
+                                            `(,(const name)
+                                              ,(reg 'env)))))))
 
-(: compile-assignment (-> Target Linkage RegisterName Pyramid inst-seq))
+(: compile-assignment (-> Target Linkage VariableName Pyramid inst-seq))
 (define (compile-assignment target linkage name val)
   (let ([value-code (compile-pyramid 'val 'next val)])
     (end-with-linkage linkage
                       (preserving '(env)
                                   value-code
-                                  (inst-seq '(env val) (list target)
-                                            (listof (perform (op 'set-variable-value!
-                                                                 (listof (const name)
-                                                                         (reg 'val)
-                                                                         (reg 'env))))))))))
+                                  (make-insts '(env val) (list target)
+                                              (perform (op 'set-variable-value!
+                                                           (listof (const name)
+                                                                   (reg 'val)
+                                                                   (reg 'env)))))))))
 
 (: compile-definition (-> Target Linkage VariableName Pyramid inst-seq))
 (define (compile-definition target linkage name val)
@@ -114,34 +114,15 @@
     (end-with-linkage linkage
                       (preserving '(env)
                                   value-code
-                                  (inst-seq '(env val) (list target)
-                                            (listof (perform (op 'define-variable!
-                                                                 `(,(const name)
-                                                                   ,(reg 'val)
-                                                                   ,(reg 'env))))))))))
+                                  (make-insts '(env val) (list target)
+                                              (perform (op 'define-variable!
+                                                           `(,(const name)
+                                                             ,(reg 'val)
+                                                             ,(reg 'env)))))))))
 
-
-(define (new-label-number)
-  (set! label-counter (+ 1 label-counter))
-  label-counter)
-
-(: make-label-name (-> Symbol Symbol))
-(define (make-label-name name)
-  (string->symbol
-   (string-append
-    (symbol->string name)
-    "-"
-    (number->string (*abstract-offset*))
-    "-"
-    (number->string (new-label-number)))))
-
-(: make-label (case-> (-> Symbol label-definition)
-                      (-> Symbol Integer label-definition)))
-(define (make-label name [offset 0])
-  (label-definition (make-label-name name)
-                    offset
-                    #f
-                    ))
+(: label->insts (-> label-definition inst-seq))
+(define (label->insts lbl)
+  (make-insts '() '() lbl))
 
 (: compile-if (-> Target Linkage Pyramid Pyramid Pyramid inst-seq))
 (define (compile-if target linkage pred con alt)
@@ -156,13 +137,13 @@
         (preserving '(env continue)
                     p-code
                     (append-instruction-sequences
-                     (inst-seq '(val) '()
-                               (list (test (op 'false? `(,(reg 'val))))
-                                     (branch f-branch)))
+                     (make-insts '(val) '()
+                                 (test (op 'false? `(,(reg 'val))))
+                                 (branch f-branch))
                      (parallel-instruction-sequences
-                      (append-instruction-sequences t-branch c-code)
-                      (append-instruction-sequences f-branch a-code))
-                     after-if))))))
+                      (append-instruction-sequences (label->insts t-branch) c-code)
+                      (append-instruction-sequences (label->insts f-branch) a-code))
+                     (label->insts after-if)))))))
 
 (: compile-sequence (-> Target Linkage Pyramids inst-seq))
 (define (compile-sequence target linkage seq)
@@ -175,31 +156,31 @@
 
 (: compile-lambda (-> Target Linkage VariableNames Pyramid inst-seq))
 (define (compile-lambda target linkage formals body)
-  (let ((proc-entry (make-label 'entry))
+  (let ((proc-entry   (make-label 'entry))
         (after-lambda (make-label 'after-lambda)))
     (let ((lambda-linkage
            (if (eq? linkage 'next) after-lambda linkage)))
       (append-instruction-sequences
        (tack-on-instruction-sequence
         (end-with-linkage lambda-linkage
-                          (inst-seq '(env) (list target)
-                                    (list (assign target
-                                                  (op 'make-compiled-procedure
-                                                      `(,proc-entry
-                                                        ,(reg 'env)))))))
+                          (make-insts '(env) (list target)
+                                      (assign target
+                                              (op 'make-compiled-procedure
+                                                  `(,proc-entry
+                                                    ,(reg 'env))))))
         (compile-lambda-body proc-entry formals body))
-       after-lambda))))
+       (label->insts after-lambda)))))
 
 (: compile-lambda-body (-> label-definition VariableNames Pyramid inst-seq))
 (define (compile-lambda-body proc-entry formals body)
   (append-instruction-sequences
-   (inst-seq '(env proc argl) '(env)
-             (listof proc-entry
-                     (assign 'env (op 'compiled-procedure-env `(,(reg 'proc))))
-                     (assign 'env (op 'extend-environment
-                                      `(,(const formals)
-                                        ,(reg 'argl)
-                                        ,(reg 'env))))))
+   (make-insts '(env proc argl) '(env)
+               proc-entry
+               (assign 'env (op 'compiled-procedure-env `(,(reg 'proc))))
+               (assign 'env (op 'extend-environment
+                                `(,(const formals)
+                                  ,(reg 'argl)
+                                  ,(reg 'env)))))
    (compile-pyramid 'val 'return body)))
 
 
@@ -223,13 +204,13 @@
 (: construct-arglist (-> (Listof inst-seq) inst-seq))
 (define (construct-arglist operand-codes)
   (if (null? operand-codes)
-      (inst-seq '() '(argl)
-                (list (assign 'argl (const '()))))
+      (make-insts '() '(argl)
+                  (assign 'argl (const '())))
       (let ((code-to-get-last-arg
              (append-instruction-sequences
               (car operand-codes)
-              (inst-seq '(val) '(argl)
-                        (list (assign 'argl (op 'list `(,(reg 'val)))))))))
+              (make-insts '(val) '(argl)
+                          (assign 'argl (op 'list `(,(reg 'val))))))))
         (if (null? (cdr operand-codes))
             code-to-get-last-arg
             (preserving '(env)
@@ -242,11 +223,11 @@
   (let ((code-for-next-arg
          (preserving '(argl)
                      (car operand-codes)
-                     (inst-seq '(val argl) '(argl)
-                               (list (assign 'argl
-                                             (op 'cons
-                                                 `(,(reg 'val)
-                                                   ,(reg 'argl)))))))))
+                     (make-insts '(val argl) '(argl)
+                                 (assign 'argl
+                                         (op 'cons
+                                             `(,(reg 'val)
+                                               ,(reg 'argl))))))))
                                              
     (if (null? (cdr operand-codes))
         code-for-next-arg
@@ -256,103 +237,80 @@
 
 (: compile-procedure-call (-> Target Linkage inst-seq))
 (define (compile-procedure-call target linkage)
-  (let ((primitive-branch (make-label 'primitive-branch))
-        (compiled-branch (make-label 'compiled-branch))
-        (after-call (make-label 'after-call)))
-    (let ((compiled-linkage
-           (if (eq? linkage 'next) after-call linkage))
-          (primitive-linkage
-           (if (eq? linkage 'next) after-call linkage)))
+  (let ((primitive-branch    (make-label 'primitive-branch))
+        (compiled-branch     (make-label 'compiled-branch))
+        (continuation-branch (make-label 'continuation-branch))
+        (after-call          (make-label 'after-call)))
+    (let ([compiled-linkage  (if (eq? linkage 'next) after-call linkage)]
+          [primitive-linkage (if (eq? linkage 'next) after-call linkage)]
+          )
       (append-instruction-sequences
-       (inst-seq '(proc) '()
-                 (list (test (op 'primitive-procedure? `(,(reg 'proc))))
-                       (branch primitive-branch)))
+       (make-insts '(proc) '()
+                   (test (op 'compiled-procedure? `(,(reg 'proc))))
+                   (branch compiled-branch)
+                   (test (op 'continuation? `(,(reg 'proc))))
+                   (branch continuation-branch)
+                   )
        (parallel-instruction-sequences
         (append-instruction-sequences
-         compiled-branch
-         (compile-proc-appl target compiled-linkage))
-        (append-instruction-sequences
-         primitive-branch
+         (label->insts primitive-branch)
          (end-with-linkage linkage
-                           (inst-seq '(continue proc argl)
-                                     (listof target)
-                                     (listof (assign target
-                                                     (op 'apply-primitive-procedure
-                                                         `(,(reg 'proc)
-                                                           ,(reg 'argl)))))))))
-       after-call))))
+                           (make-insts '(continue proc argl) (listof target)
+                                       (assign target
+                                               (op 'apply-primitive-procedure
+                                                   `(,(reg 'proc)
+                                                     ,(reg 'argl)))))))
+        (append-instruction-sequences
+         (label->insts compiled-branch)
+         (compile-proc-appl target compiled-linkage))
+        (label->insts continuation-branch)
+        (make-insts '(val) '() (perform (op 'restore-continuation
+                                            (list (reg 'val))))))
+       (label->insts after-call)
+      ))))
 
-(: compile-proc-appl (-> Target (U 'return label) inst-seq))
+  (: compile-proc-appl (-> Target (U 'return label) inst-seq))
 (define (compile-proc-appl target linkage)
-  (cond ((and (eq? target 'val) (not (eq? linkage 'return)))
-         (inst-seq '(proc) all-regs
-                   (listof (assign 'continue linkage)
-                           (assign 'val (op 'compiled-procedure-entry
-                                            `(,(reg 'proc))))
-                         (goto (reg 'val)))))
-        ((and (not (eq? target 'val))
-              (not (eq? linkage 'return)))
-         (let ((proc-return (make-label 'proc-return)))
-           (inst-seq '(proc) all-regs
-                     (listof (assign 'continue proc-return)
-                             (assign 'val (op 'compiled-procedure-entry
-                                              `(,(reg 'proc))))
-                             (goto (reg 'val))
-                             proc-return
-                             (assign target (reg 'val))
-                             (goto linkage)))))
-        ((and (eq? target 'val) (eq? linkage 'return))
-         (inst-seq '(proc continue) all-regs
-                   (listof (assign 'val (op 'compiled-procedure-entry
-                                            `(,(reg 'proc))))
-                           (goto (reg 'val)))))
-        ((and (not (eq? target 'val)) (eq? linkage 'return))
-         (error "return linkage, target not val -- COMPILE"
-                target))))
-
-(: literal-instructions (-> Any Instructions))
-(define (literal-instructions x) (cast x Instructions))
+  (match (cons target linkage)
+    [(cons 'val 'return)
+     (make-insts '(proc continue) all-regs
+                 (assign 'val (op 'compiled-procedure-entry
+                                  `(,(reg 'proc))))
+                 (goto (reg 'val)))]
+    [(cons _    'return) (error "compile-proc-appl: return linkage implies target should be val" target)]
+    [(cons 'val _) (make-insts '(proc) all-regs
+                               (assign 'continue linkage)
+                               (assign 'val (op 'compiled-procedure-entry
+                                                `(,(reg 'proc))))
+                               (goto (reg 'val)))]
+    [(cons _ _ )
+     (let ((proc-return (make-label 'proc-return)))
+       (make-insts '(proc) all-regs
+                   (assign 'continue proc-return)
+                   (assign 'val (op 'compiled-procedure-entry
+                                    `(,(reg 'proc))))
+                   (goto (reg 'val))
+                   proc-return
+                   (assign target (reg 'val))
+                   (goto linkage)))]
+    ))
 
 (: all-regs RegisterNames)
-(define all-regs '(env proc val argl continue))
+(define all-regs (apply set '(env proc val argl continue)))
 
-(: registers-needed (-> iseq-or-label RegisterNames))
-(define (registers-needed s)
-  (if (label? s) '() (inst-seq-needs s)))
-
-(: registers-modified (-> iseq-or-label RegisterNames))
-(define (registers-modified s)
-  (if (label? s) '() (inst-seq-modifies s)))
-
-(: statements (-> iseq-or-label Instructions))
-(define (statements s)
-  (if (label? s)
-      (list s)
-      (inst-seq-statements s)))
-
-(: needs-register? (-> iseq-or-label RegisterName Boolean))
-(define (needs-register? seq reg)
-  (if (memq reg (registers-needed seq))
-      #t
-      #f))
-
-(: modifies-register? (-> iseq-or-label RegisterName Boolean))
-(define (modifies-register? seq reg)
-  (if (memq reg (registers-modified seq))
-      #t
-      #f))
-
-(: append-instruction-sequences (-> iseq-or-label * inst-seq))
+(: append-instruction-sequences (-> inst-seq * inst-seq))
 (define (append-instruction-sequences . seqs)
-  (define (append-2-sequences [seq1 : iseq-or-label ] [seq2 : iseq-or-label])
+  (: append-2-sequences (-> inst-seq inst-seq inst-seq))
+  (define (append-2-sequences seq1 seq2)
     (inst-seq
-     (list-union (registers-needed seq1)
-                 (list-difference (registers-needed seq2)
-                                  (registers-modified seq1)))
-     (list-union (registers-modified seq1)
-                 (registers-modified seq2))
-     (append (statements seq1) (statements seq2))))
-  (: append-seq-list (-> (Listof iseq-or-label) inst-seq))
+     (set-union (inst-seq-needs seq1)
+                (set-subtract (inst-seq-needs seq2)
+                              (inst-seq-modifies seq1)))
+     (set-union (inst-seq-modifies seq1)
+                (inst-seq-modifies seq2))
+     (append (inst-seq-statements seq1)
+             (inst-seq-statements seq2))))
+  (: append-seq-list (-> (Listof inst-seq) inst-seq))
   (define (append-seq-list seqs)
     (if (null? seqs)
         (empty-instruction-sequence)
@@ -360,54 +318,50 @@
                             (append-seq-list (cdr seqs)))))
   (append-seq-list seqs))
 
-(: list-union (All (A) (-> (Listof A) (Listof A) (Listof A))))
-(define (list-union s1 s2)
-  (cond ((null? s1) s2)
-        ((memq (car s1) s2) (list-union (cdr s1) s2))
-        (else (cons (car s1) (list-union (cdr s1) s2)))))
+(define-syntax-rule (preserving regs seq1 seq2)
+  (preserving-lazy (apply set regs) seq1 seq2))
 
-(: list-difference (All (A) (-> (Listof A) (Listof A) (Listof A))))
-(define (list-difference s1 s2)
-  (cond ((null? s1) '())
-        ((memq (car s1) s2) (list-difference (cdr s1) s2))
-        (else (cons (car s1)
-                    (list-difference (cdr s1) s2)))))
+(: preserving-lazy (-> (U (Listof RegisterName) RegisterNames) inst-seq inst-seq inst-seq))
+(define (preserving-lazy regs1 seq1 seq2)
+  (define regs          (if (list? regs1) (apply set regs1) regs1))
+  (define seq1-needs    (inst-seq-needs    seq1))
+  (define seq2-needs    (inst-seq-needs    seq2))
+  (define seq1-modifies (inst-seq-modifies seq1))
+  (define seq2-modifies (inst-seq-modifies seq2))
+  (: saved-regs RegisterNames)
+  (define saved-regs (set-intersect regs seq2-needs seq1-modifies))
+  (parameterize ([*stack-depth* (+ (*stack-depth*) (set-count saved-regs))])
+    (append-instruction-sequences
+     (inst-seq (set-union    seq1-needs    saved-regs)
+               (set-subtract seq1-modifies saved-regs)
+               (let ([ rs (set->list saved-regs)])
+                 (append (map save rs)
+                         (inst-seq-statements seq1)
+                         (map restore (reverse rs)))))
+     seq2)))
+             
 
-(: preserving (-> RegisterNames inst-seq inst-seq inst-seq))
-(define (preserving regs seq1 seq2)
-  (if (null? regs)
-      (append-instruction-sequences seq1 seq2)
-      (let ((first-reg (car regs)))
-        (if (and (needs-register? seq2 first-reg)
-                 (modifies-register? seq1 first-reg))
-            (preserving (cdr regs)
-                        (inst-seq
-                         (list-union (list first-reg)
-                                     (registers-needed seq1))
-                         (list-difference (registers-modified seq1)
-                                          (list first-reg))
-                         (append `(,(save first-reg))
-                                 (statements seq1)
-                                 `(,(restore first-reg))))
-                        seq2)
-            (preserving (cdr regs) seq1 seq2)))))
-
-(: tack-on-instruction-sequence (-> iseq-or-label iseq-or-label inst-seq))
+(: tack-on-instruction-sequence (-> inst-seq inst-seq inst-seq))
 (define (tack-on-instruction-sequence seq body-seq)
   (inst-seq
-   (registers-needed seq)
-   (registers-modified seq)
-   (append (statements seq) (statements body-seq))))
+   (inst-seq-needs seq)
+   (inst-seq-modifies seq)
+   (append (inst-seq-statements seq) (inst-seq-statements body-seq))))
 
-(: parallel-instruction-sequences (-> iseq-or-label iseq-or-label inst-seq))
-(define (parallel-instruction-sequences seq1 seq2)
+(: parallel-instruction-sequences (-> inst-seq inst-seq * inst-seq))
+(define (parallel-instruction-sequences seq0 . seqs)
   (inst-seq
-   (list-union (registers-needed seq1)
-               (registers-needed seq2))
-   (list-union (registers-modified seq1)
-               (registers-modified seq2))
-   (append (statements seq1) (statements seq2))))
+   (apply set-union (inst-seq-needs      seq0) (map inst-seq-needs      seqs))
+   (apply set-union (inst-seq-modifies   seq0) (map inst-seq-modifies   seqs))
+   (apply append    (inst-seq-statements seq0) (map inst-seq-statements seqs))
+   ))
 
-
-(define (display-macros)
-  (display `(,"Mapped symbols:" ,(namespace-mapped-symbols (*available-macros*)))))
+(: make-insts (-> (U (Setof RegisterName) (Listof RegisterName))
+                  (U (Setof RegisterName) (Listof RegisterName))
+                  Instruction *
+                  inst-seq))
+(define (make-insts needs modifies . is)
+  (let ([ lst-needs    (if (list? needs   ) needs    (set->list needs   ))]
+        [ lst-modifies (if (list? modifies) modifies (set->list modifies))]
+        )
+    (inst-seq (apply set lst-needs) (apply set lst-modifies) is)))

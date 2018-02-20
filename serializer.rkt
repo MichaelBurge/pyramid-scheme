@@ -1,6 +1,7 @@
 #lang typed/racket
 
-(require "types.rkt")
+(require (submod "types.rkt" evm-assembly))
+(require (submod "types.rkt" common))
 (require "utils.rkt")
 (require "globals.rkt")
 (require errortrace)
@@ -273,7 +274,7 @@ Either a label or integer can be pushed onto the stack.
              (generate-relocation! (relocation (*byte-offset*) (label-name val)))
              (hash-ref (*symbol-table*) (label-name val) (λ () 0))))
           ; Symbols are unexpected: Labels are wrapped in a struct; quotes are expanded to integers in the code generator.
-          ((symbol? val) (error "Unexpected symbol - push-true-val" val))
+          ((symbol? val) (error "push-true-val: Unexpected symbol" val))
           ((integer? val) val)
           (else
            (error "Unknown value" val)))))

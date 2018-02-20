@@ -1,6 +1,7 @@
 #lang typed/racket
 
-(require "types.rkt")
+(require (submod "types.rkt" common))
+(require (submod "types.rkt" simulator))
 (require "typed/binaryio.rkt")
 
 (provide infer-type
@@ -8,8 +9,14 @@
 
 (: parse-type (-> AbiType Bytes Any))
 (define (parse-type type bs)
+  (: assert-size (-> Integer Void))
+  (define (assert-size n)
+    (unless (= (bytes-length bs) n)
+      (error "parse-type: Expected size" type n '!= (bytes-length bs))))
   (cond ((equal? type "void") '())
-        ((equal? type "uint256")   (parse-uint256 bs))
+        ((equal? type "uint256")
+         (assert-size 32)
+         (parse-uint256 bs))
         ((equal? type "uint256[]") (parse-array "uint256" bs))
         (else (error "parse-pyramid-result: Unsupported type:" type))))
 
@@ -31,12 +38,13 @@
 
 (: infer-type (-> Any AbiType))
 (define (infer-type x)
-  (cond ((fixnum? x) "uint256")
-        ((null? x) "void")
-        ((list? x) (match (infer-type (car x))
-                     ("uint256" "uint256[]")
-                     (t (error "unexpected list type" t))))
-        (else (error "infer-type: Unknown type" x))))
+  (cond
+    ((fixnum? x) "uint256")
+    ((null? x) "void")
+    ((list? x) (match (infer-type (car x))
+                 ("uint256" "uint256[]")
+                 (t (error "unexpected list type" t))))
+    (else (error "infer-type: Unknown type" x))))
 
 #|
 Example ABI:

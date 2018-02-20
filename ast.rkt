@@ -1,7 +1,7 @@
 #lang typed/racket
 
 (require typed/racket/unsafe)
-(require "types.rkt")
+(require (submod "types.rkt" ast))
 (require "globals.rkt")
 (require "parser.rkt")
 (require "utils.rkt")
@@ -12,11 +12,12 @@
                 install-macro-exp!)
 
 (provide (all-defined-out)
+         (all-from-out (submod "types.rkt" ast))
          sequence->exp)
-
+  
 (module unsafe typed/racket/no-check
   (require typed/racket/unsafe)
-  (require "types.rkt")
+  (require (submod "types.rkt" ast))
   (require "globals.rkt")
   (require "parser.rkt")
   
@@ -156,3 +157,22 @@
   (assert name macro?)
   (pyr-macro-application name (pyr-application-operands app)))
 
+(define (new-label-number) (tick-counter! *label-counter*))
+
+(: make-label-name (-> Symbol Symbol))
+(define (make-label-name name)
+  (string->symbol
+   (string-append
+    (symbol->string name)
+    "-"
+    (number->string (*abstract-offset*))
+    "-"
+    (number->string (new-label-number)))))
+
+(: make-label (case-> (-> Symbol label-definition)
+                      (-> Symbol Integer label-definition)))
+(define (make-label name [offset 0])
+  (label-definition (make-label-name name)
+                    offset
+                    #f
+                    ))

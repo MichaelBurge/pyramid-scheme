@@ -139,4 +139,10 @@
 (define (%-cdr x) (unop-unboxed (cg-cdr stack) x))
 
 (define (%-null? x) (unop-unboxed (cg-null? stack) x))
-(define (%-null) (nullop-unboxed (cg-make-nil)))
+(define (%-null) (nullop-unboxed (cg-make-nil)))       
+
+(defmacro (%-call-with-current-continuation f)
+  `(begin (define cont (asm (cg-save-continuation)))
+          (,f cont)
+          (asm (cg-write-reg (reg 'val) (reg 'argl)))
+          ))

@@ -1,7 +1,8 @@
 #lang typed/racket
 
 (require typed/racket/unsafe)
-(require "types.rkt")
+(require (submod "types.rkt" common))
+(require (submod "types.rkt" ast))
 (require "utils.rkt")
 (require "globals.rkt")
 

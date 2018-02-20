@@ -25,6 +25,7 @@
   ;(pretty-print prog)
   (set! prog (pass-error-on-undefined-variables prog))
   ;(pretty-print prog)
+  (set! prog (pass-remove-empty-asms prog))
   (set! prog (pass-collapse-nested-begins prog))
   ;(pretty-print prog)
   prog
@@ -140,6 +141,14 @@
                                     [ (struct pyr-variable ((? macro? name)))
                                       (application->macro-application x)]
                                     [ _ x]))))                                
+
+(: pass-remove-empty-asms Pass)
+(define (pass-remove-empty-asms ast)
+  (transform-ast-descendants-on ast pyr-asm?
+                                (λ ([ x : pyr-asm ])
+                                  (if (null? (pyr-asm-insts x))
+                                      (pyr-begin (list))
+                                      x))))
 
 (: defined-vars (-> Pyramid (Setof VariableName)))
 (define (defined-vars prog)

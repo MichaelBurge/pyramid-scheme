@@ -42,3 +42,6 @@
       (void)
       (begin (f (l lst))
              (for f (r lst)))))
+
+(define (call/cc f)
+  (%-call-with-current-continuation f))

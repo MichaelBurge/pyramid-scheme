@@ -1,6 +1,6 @@
 #lang typed/racket
 
-(require "types.rkt")
+(require (submod "types.rkt" evm-assembly))
 (require "serializer.rkt")
 (require "utils.rkt")
 (require "globals.rkt")
@@ -41,7 +41,7 @@
     (define (loop n)
       (fprintf (current-output-port) "~x" n)
       (write-char #\tab)
-      (display (reverse-symbol-name reverse-symbol-table n))
+      (display (reverse-symbol-name reverse-symbol-table (- n (*loader-size*))))
       ;; (print `(,(bytes-ref bs n)
       ;;          ,(push-op? (hash-ref opcodes-by-byte (bytes-ref bs n)))
       ;;          ,(op-extra-size (hash-ref opcodes-by-byte (bytes-ref bs n)))))

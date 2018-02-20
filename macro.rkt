@@ -1,15 +1,15 @@
 #lang errortrace typed/racket
 
-(require "types.rkt")
+(require (submod "types.rkt" simulator))
+(require (submod "types.rkt" test))
 (require "ast.rkt")
-(require "codegen.rkt")
+(require (except-in "codegen.rkt" asm))
 (require "io.rkt")
 (require "parser.rkt")
 (require "globals.rkt")
 (require "simulator.rkt")
 (require "crypto.rkt")
 (require "utils.rkt")
-(require "accessors.rkt")
 (require "wallet.rkt")
 (require "transaction.rkt")
 (require "abi.rkt")
@@ -23,6 +23,8 @@
 
 (provide (all-defined-out)
          make-label
+         make-label-name
+         *assumed-label-size*
          label-name
          maybe->list)
 
@@ -138,13 +140,6 @@ Functions defined here are available to Pyramid programs within macros.
                (make-test-case name '() deploy-txn msg-txns))]
        [_ (error "make-test-suite: Unexpected syntax" exp)]))))
 
-(: make-parser (-> Any (-> simulation-result-ex Any)))
-(define (make-parser expected)
-  (λ (x)
-    (if (simulation-result? x)
-        (parse-type (infer-type expected) (simulation-result-val x))
-        x)))
-
 (: make-simple-test-suite (-> PyramidQ test-suite))
 (define (make-simple-test-suite expected)
   (test-suite
@@ -174,6 +169,12 @@ Functions defined here are available to Pyramid programs within macros.
     [_ (error "make-test-txn: Unexpected syntax" exp)]
     ))
 
+(: make-parser (-> Any (-> simulation-result-ex Any)))
+(define (make-parser expected)
+  (λ (x)
+    (if (simulation-result? x)
+        (parse-type (infer-type expected) (simulation-result-val x))
+        x)))
 
 ;; (define (%-selector sig) (keccak-256 (string->bytes/utf-8 (%-sig-str sig))))
 

@@ -1,6 +1,6 @@
 #lang typed/racket
 
-(require "types.rkt")
+(require (submod "types.rkt" simulator))
 (require "globals.rkt")
 (require "utils.rkt")
 

@@ -2,6 +2,10 @@
 
 (require "utils.rkt")
 (require "types.rkt")
+(require (submod "types.rkt" common))
+(require (submod "types.rkt" test))
+(require (submod "types.rkt" evm-assembly))
+(require (submod "types.rkt" simulator))
 
 (provide (all-defined-out))
 
@@ -93,8 +97,12 @@
 (: *contract-create-counter* (Parameterof Integer))
 (define *contract-create-counter* (make-parameter 200))
 
+(: *label-counter* (Parameterof Integer))
+(define *label-counter* (make-parameter 0))
+
 ; Constants
 (define assumed-label-size 2) ; TODO: Number of bytes to leave behind for label relocations. This makes it difficult to write programs larger than 65536 bytes.
+(define *assumed-label-size* assumed-label-size)
 (define MEMORY-SIZE 200000)
 (define MAX-ITERATIONS 1000000)
 (define DEFAULT-GAS-PRICE 10)

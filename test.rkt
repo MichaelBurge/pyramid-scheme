@@ -3,11 +3,12 @@
 ; (require test-engine/racket-tests)
 ;(require racket/cmdline)
 
-(require "types.rkt")
+(require (submod "types.rkt" simulator))
+(require (submod "types.rkt" test))
 (require "ast.rkt")
 (require "compiler.rkt")
 (require "io.rkt")
-(require "codegen.rkt")
+(require (except-in "codegen.rkt" asm))
 (require "serializer.rkt")
 (require "disassembler.rkt")
 (require "utils.rkt")
@@ -16,7 +17,6 @@
 (require (except-in "macro.rkt" make-label))
 (require "globals.rkt")
 (require "storage.rkt")
-(require "accessors.rkt")
 (require "abi.rkt")
 (require "transaction.rkt")
 (require "wallet.rkt")
@@ -207,7 +207,7 @@
     (mint-ether! sim
                  (find-or-create-addr-name! (test-account-name acc))
                  (test-account-balance acc))))
- 
+
 ; TODO: Turn these into unit tests.
 ; TEST 1: (cg-intros (list (const 1234) (const 4321)))
 ; TEST 2: (cg-allocate-initialize (const 3) (list (const 10) (const 20) (const 30)))

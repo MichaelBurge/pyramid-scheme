@@ -18,6 +18,8 @@
 (define r %-cdr)
 
 (defmacro (list . xs)
-  (if (null? xs)
-      '(%-null)
-      `(pair ,(car xs) (list ,@(cdr xs)))))
+  (define (loop lst)
+    (if (null? xs)
+        '(%-null)
+        `(pair ,(car lst) (list ,@(cdr lst)))))
+  (loop (reverse xs)))
