@@ -1,5 +1,7 @@
 #lang typed/racket
 
+(require typed/racket/unsafe)
+
 (require (submod "types.rkt" abstract-machine))
 (require (submod "types.rkt" evm-assembly))
 (require "types.rkt")
@@ -10,8 +12,52 @@
 
 (require "typed/binaryio.rkt")
 
-(provide (all-defined-out)
+(provide codegen
+         codegen-list
+         (all-from-out 'constants)
          (all-from-out (submod "types.rkt" evm-assembly)))
+
+(: *primops* (Promise (Listof primop)))
+(define *primops*
+  (delay
+  (listof
+   ; Variables
+   [primop 'define-variable!          op-define-variable!             ]
+   [primop 'set-variable-value!       op-set-variable-value!          ]
+   [primop 'lookup-variable-value     op-lookup-variable-value        ]
+   [primop 'extend-environment        cg-op-extend-environment        ]
+   ; Runtime
+   [primop 'type                      cg-tag                          ]
+   [primop 'allocate                  cg-allocate                     ]
+   [primop 'read-memory               cg-read-address-offset          ]
+   [primop 'write-memory              cg-write-address-offset         ]
+   ; Booleans
+   [primop 'false?                    cg-op-false?                    ]
+   ; Fixnums
+   [primop 'make-fixnum               cg-make-fixnum                  ]
+   [primop 'fixnum-value              cg-unbox-integer                ]
+   [primop 'add                       cg-add                          ]
+   ; Continuations
+   [primop 'save-continuation         cg-save-continuation            ]
+   [primop 'restore-continuation!     op-restore-continuation         ]
+   [primop 'continuation?             op-continuation?                ]
+   ; Compiled Procedures
+   [primop 'make-compiled-procedure   cg-op-make-compiled-procedure   ]
+   [primop 'compiled-procedure-entry  cg-op-compiled-procedure-entry  ]
+   [primop 'compiled-procedure-env    cg-op-compiled-procedure-env    ]
+   [primop 'compiled-procedure?       op-compiled-procedure?          ]
+   ; Primitive Procedures
+   [primop 'primitive-procedure?      cg-op-primitive-procedure?      ]
+   [primop 'apply-primitive-procedure cg-op-apply-primitive-procedure ]
+   ; Lists
+   [primop 'singleton                 cg-op-list                      ]
+   [primop 'pair                      cg-op-cons                      ]
+   [primop 'pair?                     cg-pair?                        ]
+   [primop 'left                      cg-car                          ]
+   [primop 'right                     cg-cdr                          ]
+   [primop 'null?                     cg-null?                        ]
+   [primop 'null                      cg-make-nil                     ]
+   )))
 
 #|
 -- Registers -> Stack --
@@ -84,26 +130,31 @@ These optimizations are currently unimplemented:
 (define *label-op-continuation?*         (make-label 'op-primitive-procedure?))
 
 
-; Constants
-(define TAG-FIXNUM              0)
-(define TAG-SYMBOL              1)
-(define TAG-COMPILED-PROCEDURE  2)
-(define TAG-PRIMITIVE-PROCEDURE 3)
-(define TAG-PAIR                4)
-(define TAG-VECTOR              5)
-(define TAG-NIL                 6)
-(define TAG-CONTINUATION        7)
+(module constants typed/racket
+  (provide (all-defined-out))
+  
+  (define TAG-FIXNUM              0)
+  (define TAG-SYMBOL              1)
+  (define TAG-COMPILED-PROCEDURE  2)
+  (define TAG-PRIMITIVE-PROCEDURE 3)
+  (define TAG-PAIR                4)
+  (define TAG-VECTOR              5)
+  (define TAG-NIL                 6)
+  (define TAG-CONTINUATION        7)
 
-(define MEM-ENV           #x20)
-(define MEM-PROC          #x40)
-(define MEM-CONTINUE      #x60)
-(define MEM-ARGL          #x80)
-(define MEM-VAL           #xa0)
-(define MEM-NIL           #xc0)
-(define MEM-ALLOCATOR     #xe0)
-(define MEM-DYNAMIC-START #x100) ; This should be the highest hardcoded memory address.
+  (define MEM-ENV           #x20)
+  (define MEM-PROC          #x40)
+  (define MEM-CONTINUE      #x60)
+  (define MEM-ARGL          #x80)
+  (define MEM-VAL           #xa0)
+  (define MEM-NIL           #xc0)
+  (define MEM-ALLOCATOR     #xe0)
+  (define MEM-DYNAMIC-START #x100) ; This should be the highest hardcoded memory address.
 
-(define WORD       #x20) ; 256-bit words / 8 bit granularity addresses = 32 8-bit words, or 0x20.
+  (define WORD       #x20) ; 256-bit words / 8 bit granularity addresses = 32 8-bit words, or 0x20.
+  )
+
+(require 'constants)
 
 ; Top-level code generator
 (: codegen (Generator Instructions))
@@ -126,7 +177,7 @@ These optimizations are currently unimplemented:
 (: codegen-one (Generator Instruction))
 (define (codegen-one i)
   (*abstract-offset* (+ 1 (*abstract-offset*)))
-  (cond ((label?      i) (cg-label   i))
+  (cond ((label?   i) (cg-label   i))
         ((symbol?  i) (error "Unexpected symbol - codegen-one" i))
         ((assign?  i) (cg-assign  i))
         ((test?    i) (cg-test    i))
@@ -135,7 +186,7 @@ These optimizations are currently unimplemented:
         ((save?    i) (cg-save    i))
         ((restore? i) (cg-restore i))
         ((perform? i) (cg-perform i))
-        ((pyr-asm? i) (cg-asm i))
+        ((evm?     i) (evm-insts  i))
         (else
          (error "Unknown instruction type -- codegen-one:" i))))
 
@@ -162,7 +213,7 @@ These optimizations are currently unimplemented:
 (define (cg-save i)
   (append
    (debug-label 'cg-save)
-   (cg-write-stack (reg (save-reg-name i)))
+   (cg-write-stack (save-exp i))
    (debug-label 'cg-save-end)))
 
 (: cg-restore (Generator restore))
@@ -179,28 +230,28 @@ These optimizations are currently unimplemented:
    (cg-mexpr-op (perform-action i))
    (debug-label 'cg-perform-end)))
 
-(module asm-unsafe typed/racket/no-check
-  (require "types.rkt")
-  (provide eval-asm-cg)
-  (define (eval-asm-cg anchor i) (eval i (namespace-anchor->namespace anchor)))
-  )
+;; (module asm-unsafe typed/racket/no-check
+;;   (require "types.rkt")
+;;   (provide eval-asm-cg)
+;;   (define (eval-asm-cg anchor i) (eval i (namespace-anchor->namespace anchor)))
+;;   )
   
 
-(require/typed 'asm-unsafe
-  [ eval-asm-cg (Generator2 Namespace-Anchor Any)])
+;; (require/typed 'asm-unsafe
+;;   [ eval-asm-cg (Generator2 Namespace-Anchor Any)])
 
-(: eval-asm (Generator pyr-asm-base))
-(define (eval-asm i)
-  (match i
-    [(struct pyr-asm-push  (size n)) (listof (eth-push size n))]
-    [(struct pyr-asm-op    (op))     (listof (eth-asm op))]
-    [(struct pyr-asm-bytes (value))  (map eth-unknown (bytes->list value))]
-    [(struct label-definition _)     (listof i)]
-    [(struct pyr-asm-cg (exp))       (eval-asm-cg *asm-anchor* exp)]))
+;; (: eval-asm (Generator pyr-asm-base))
+;; (define (eval-asm i)
+;;   (match i
+;;     [(struct pyr-asm-push  (size n)) (listof (eth-push size n))]
+;;     [(struct pyr-asm-op    (op))     (listof (eth-asm op))]
+;;     [(struct pyr-asm-bytes (value))  (map eth-unknown (bytes->list value))]
+;;     [(struct label-definition _)     (listof i)]
+;;     [(struct pyr-asm-cg (exp))       (eval-asm-cg *asm-anchor* exp)]))
 
-(: cg-asm (Generator pyr-asm))
-(define (cg-asm is)
-  (apply append (map eval-asm (pyr-asm-insts is))))
+;; (: cg-asm (Generator pyr-asm))
+;; (define (cg-asm is)
+;;   (apply append (map eval-asm (pyr-asm-insts is))))
 
 ;;; Primitive operations emitted by the abstract compiler
 
@@ -546,9 +597,9 @@ These optimizations are currently unimplemented:
         ((const? exp)  (cg-mexpr-const exp))
         ((boxed-const? exp) (cg-mexpr-boxed-const exp))
         ((op?    exp)  (cg-mexpr-op    exp))
-        ((symbol? exp) (cg-mexpr-label (label exp)))
         ((label? exp)  (cg-mexpr-label exp))
         ((stack? exp)  '())
+        ((evm?   exp)  (evm-insts exp))
         (else
          (error "cg-mexpr: Unknown mexpr" exp (list? exp)))))
 
@@ -580,8 +631,8 @@ These optimizations are currently unimplemented:
     (begin
       (cond ((symbol? val)
              (let ((int (symbol->integer val)))
-               (list (eth-push (integer-bytes int) int))))
-            ((integer? val) (list (eth-push (integer-bytes val) val)))
+               (list (evm-push (integer-bytes int) int))))
+            ((integer? val) (list (evm-push (integer-bytes val) val)))
             ((list? val)    (cg-make-list (map const val) #f))
             (else
              (error "cg-mexpr-const: Unsupported constant" exp))))))
@@ -596,37 +647,31 @@ These optimizations are currently unimplemented:
           [(integer? val) (cg-make-fixnum (const val))]
           [(list? val)    (cg-make-list (map const val) #t)]
           [else           (error "cg-mexpr-const: Unsupported constant" exp)])))
-      
 
-(: cg-mexpr-op    (Generator op))
+(unsafe-require/typed "unsafe.rkt"
+                      [ unsafe-apply (-> Procedure (Listof Any) EthInstructions)])
+
+(: cg-mexpr-op (Generator op))
 (define (cg-mexpr-op exp)
-  (let ((name (op-name exp))
-        (args (op-args exp)))
-    (match name
-      ; Procedures
-      ('make-compiled-procedure   (cg-op-make-compiled-procedure   (car args) (cadr args)))
-      ('define-variable!          (op-define-variable!             (car args) (cadr args) (caddr args)))
-      ('set-variable-value!       (op-set-variable-value!          (car args) (cadr args) (caddr args)))
-      ('restore-continuation      (op-restore-continuation         (car args)))
-      ; Expressions
-      ('box                       (cg-op-box                       (car args)))
-      ('extend-environment        (cg-op-extend-environment        (car args) (cadr args) (caddr args)))
-      ('compiled-procedure-entry  (cg-op-compiled-procedure-entry  (car args)))
-      ('compiled-procedure-env    (cg-op-compiled-procedure-env    (car args)))
-      ('compiled-procedure?       (op-compiled-procedure?          (car args)))
-      ('primitive-procedure?      (cg-op-primitive-procedure?      (car args)))
-      ('continuation?             (op-continuation?                (car args)))
-      ('apply-primitive-procedure (cg-op-apply-primitive-procedure (car args) (cadr args)))
-      ('lookup-variable-value     (op-lookup-variable-value        (car args) (cadr args)))
-      ('false?                    (cg-op-false?                    (car args)))
-      ('list                      (cg-op-list                      (car args)))
-      ('cons                      (cg-op-cons                      (car args) (cadr args)))
-      (else
-       (error "cg-mexpr-op: Unknown primitive op" name args)))))
+  (let* ([ name (op-name exp)]
+         [ args (op-args exp)]
+         [ tbl *primop-table*]
+         [ primop (find-primop tbl name)]
+         [ proc (primop-gen primop)]
+         )
+    (unless (procedure-arity-includes? proc (length args))
+      (error "cg-mexpr-op: Attempted to invoke primop with incorrect number of arguments" name (procedure-arity proc) args))
+    (unsafe-apply proc args)))
+
+(: find-primop (-> PrimopTable Symbol primop))
+(define (find-primop tbl name)
+  (if (hash-has-key? tbl name)
+      (hash-ref tbl name)
+      (error "find-op: Unknown primop" name)))
 
 (: cg-mexpr-label (Generator (U label-definition label)))
 (define (cg-mexpr-label exp)
-  (list (eth-push 'shrink exp)))
+  (list (evm-push 'shrink exp)))
 
 (: cg-mexpr-stack Generator0)
 (define (cg-mexpr-stack) '())
@@ -663,7 +708,7 @@ These optimizations are currently unimplemented:
 (define (cg-pop size)
   (if (eq? size 0)
       '()
-      (cons (eth-asm 'POP)
+      (cons (evm-op 'POP)
             (cg-pop (- size 1)))))
 
 (: cg-swap                 (Generator  Integer))
@@ -719,32 +764,9 @@ These optimizations are currently unimplemented:
    (cg-mul (const WORD) stack)      ; [ os'; addr; val ]
    (cg-add stack stack)             ; [ addr'; val ]
    (cg-write-address stack stack))) ; [ ]
-
-(: symbol->integer (-> Symbol Integer)) ; TODO: I think the "official" ABI uses a Keccak hash for this.
-(define (symbol->integer sym)
-  (let ((lst (string->list (symbol->string sym))))
-    (: loop (-> (Listof Char) Integer Integer))
-    (define (loop lst i)
-      (if (null? lst)
-          i
-          (loop (cdr lst)
-                (+ (char->integer (car lst))
-                   (* 256 i)))))
-    (loop lst 0)))
-
-(: integer->string (-> Integer String))
-(define (integer->string n)
-  (: integer->char-list (-> Integer (Listof Char)))
-  (define (integer->char-list n)
-    (if (equal? n 0)
-        null
-        (let-values ([ (q r) (quotient/remainder n 256) ])
-          (cons (integer->char r)
-                (integer->char-list q)))))
-  (list->string (reverse (integer->char-list n))))
     
 (: asm                     (-> Symbol EthInstructions))
-(define (asm sym) (list (eth-asm sym)))
+(define (asm sym) (list (evm-op sym)))
 
 ;;; Lists
 (: cg-null?        (Generator  MExpr))
@@ -808,7 +830,7 @@ These optimizations are currently unimplemented:
      (asm 'DUP2)                         ; [ vector; len; vector; list ]
      (cg-vector-set-length! stack stack) ; [ vector; list ]
      ; 3. Loop through the list, setting vector elements.
-     `(,(eth-push 1 0))                  ; [ i; vector; list ]
+     `(,(evm-push 1 0))                  ; [ i; vector; list ]
      ; STACK:                            [ i; vector; list ]
      `(,loop)
      ; 4. Check if loop should be terminated
@@ -863,7 +885,7 @@ These optimizations are currently unimplemented:
     (append
      (debug-label 'cg-list-length) ; [ list ]
      (cg-mexpr exp)           ; [ list ]
-     `(,(eth-push 1 0))       ; [ len; list ]
+     `(,(evm-push 1 0))       ; [ len; list ]
      (cg-swap 1)              ; [ list; len ]
      `(,loop)
      (asm 'DUP1)              ; [ list; list; len ]
@@ -1117,7 +1139,7 @@ These optimizations are currently unimplemented:
                                    exps))))
 
 (: cg-make-nil Generator0)
-(define (cg-make-nil) (list (eth-push 1 MEM-NIL)))
+(define (cg-make-nil) (list (evm-push 1 MEM-NIL)))
 ;  (cg-allocate-initialize (const 1) (list (const TAG-NIL))))
 
 ; NOTE: It is currently only valid to call cg-make-list on non-stack items.
@@ -1182,8 +1204,8 @@ These optimizations are currently unimplemented:
   (append
    (debug-label 'cg-initialize-program)
    ; Set the dynamic memory allocator pointer
-   (list (eth-push 2 MEM-DYNAMIC-START))
-   (list (eth-push 1 MEM-ALLOCATOR))
+   (list (evm-push 2 MEM-DYNAMIC-START))
+   (list (evm-push 1 MEM-ALLOCATOR))
    (cg-write-address stack stack)
    ; Initialize an empty environment
    (cg-make-environment)
@@ -1316,7 +1338,7 @@ These optimizations are currently unimplemented:
   (append
    (debug-label 'cg-return-uint256) ; [ n ]
    (cg-add (const WORD) exp)        ; [ &val ]
-   `(,(eth-push 1 WORD))            ; [ 1; &val ]
+   `(,(evm-push 1 WORD))            ; [ 1; &val ]
    (cg-reverse 2)                   ; [ &val; 1 ]
    (asm 'RETURN)))                  ; [ ]
 
@@ -1555,3 +1577,8 @@ SWAP1 -> [ x1; x2; x3; c ]
 (define (cg-throw sym)
   (append (debug-label sym)
           (asm 'REVERT)))
+
+(: *primop-table* (HashTable Symbol primop))
+(define *primop-table*
+  (make-hash (map (λ ([p : primop]) (cons (primop-name p) p))
+                  (force *primops*))))

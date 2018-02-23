@@ -16,8 +16,8 @@
 (: display-abstract-instruction (-> Instruction Void))
 (define (display-abstract-instruction i)
   (match i
-    [(struct pyr-asm _) (display `(,(*abstract-offset*) ,(format-ast i)))]
-    [_                  (display `(,(*abstract-offset*) ,i))]))
+    [(struct pyr-asm _) (print `(,(*abstract-offset*) ,(format-ast i)))]
+    [_                  (print `(,(*abstract-offset*) ,(shrink-asm i)))]))
                  
   
 (: display-abstract-instructions (-> (U inst-seq Instructions) Void))

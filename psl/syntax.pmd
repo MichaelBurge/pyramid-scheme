@@ -25,11 +25,12 @@
          [ sym (label-name lb) ]
          )
     (%-register-patchpoint! sym is)
-    `(define ,id (asm (label (quote ,sym) ,2)
-                      (op 'PUSH32)
-                      (bytes 32 0)
-                      (cg-make-fixnum stack)
-                      (cg-write-reg (reg 'val) stack)))))
+    `(define ,id (asm (evm (label (quote ,sym) ,2)
+                           (op 'PUSH32)
+                           (bytes 32 0))
+                      (op 'make-fixnum stack)
+                      (restore 'val)))
+    ))
 
 (define (void) (begin))
 (defmacro (when pred . body)

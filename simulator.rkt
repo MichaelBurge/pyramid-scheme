@@ -210,7 +210,7 @@
   
 (: simulate-one! (-> vm-exec EthInstruction Void))
 (define (simulate-one! vm i)
-  (when (eth-unknown? i)
+  (when (evm-bytes? i)
     (error "Unknown opcode found - simulate-one:" i))
   (let* ([ used-gas (instruction-gas vm i) ]
          [ op       (ethi->opcode i) ]
@@ -223,10 +223,10 @@
     ((*on-simulate-instruction*) vm i reads)
     (match i
       [(struct label-definition _)          (simulate-nop!  vm)]
-      [(struct eth-push ((? byte? size)
+      [(struct evm-push ((? byte? size)
                          (? integer? val))) (simulate-push! vm size val)]
-      [(struct eth-push _)                  (error "simulate-one!: Can only push integers" i)]
-      [(struct eth-asm (sym))               (simulate-asm!  vm (eth-asm-name i))]
+      [(struct evm-push _)                  (error "simulate-one!: Can only push integers" i)]
+      [(struct evm-op (sym))                (simulate-asm!  vm (evm-op-name i))]
       [_                                    (error "Unknown opcode found - simulate-one:" i)]
       )
     (set-vm-exec-pc!   vm (+ (vm-exec-pc   vm) (instruction-size i)))
@@ -562,7 +562,7 @@
       (+ C_gascap C_extra)))
   (define (C_suicide) (error "C_suicide unimplemented"))
   (: is-asm (-> Symbol Boolean))
-  (define (is-asm sym) (equal? i (eth-asm sym)))
+  (define (is-asm sym) (equal? i (evm-op sym)))
   (: is-asms (-> Symbols Boolean))
   (define (is-asms syms) (ormap is-asm syms))
   (cond ((is-asm 'SSTORE) (C_sstore))
@@ -588,7 +588,7 @@
         ((is-asms W_verylow) G_verylow)
         ((is-asms dups)      G_verylow)
         ((is-asms swaps)     G_verylow)
-        ((eth-push? i)       G_verylow)
+        ((evm-push? i)       G_verylow)
         ((is-asms W_low)     G_low)
         ((is-asms W_mid)     G_mid)
         ((is-asms W_high)    G_high)
@@ -713,8 +713,8 @@
 (: assert-landing-pad (-> vm-exec Address Void))
 (define (assert-landing-pad vm addr)
   (let ([ ethi (instruction-at vm addr)])
-    (if (and (eth-asm? ethi)
-             (equal? 'JUMPDEST (eth-asm-name ethi)))
+    (if (and (evm-op? ethi)
+             (equal? 'JUMPDEST (evm-op-name ethi)))
         (void)
         (raise (exn:evm:misaligned-jump "assert-landing-pad"
                                         (current-continuation-marks)

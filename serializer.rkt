@@ -200,37 +200,34 @@ The relocation is generated at the data, not the PUSH instruction.
   (parameterize ([ *byte-offset* 0 ])
     (apply bytes-append (map serialize-one is))
   ))
-  ;; (if (null? is)
-  ;;     (bytes)
-  ;;     (bytes-append (serialize-one (car is))
-  ;;                   (serialize     (cdr is)))))
 
 (: serialize-one (-> EthInstruction Bytes))
 (define (serialize-one i)
   (*byte-offset* (+ 1 (*byte-offset*)))
-  (cond ((eth-asm?     i) (serialize-asm i))
-        ((eth-push?    i) (serialize-push i))
-        ((eth-unknown? i) (bytes (eth-unknown-byte i)))
-        ((label-definition? i) (serialize-label i))
-        (else
-         (error "Unknown EthInstruction - serialize-one:" i))))
+  (cond [(evm-op?    i) (serialize-asm i)]
+        [(evm-push?  i) (serialize-push i)]
+        [(evm-bytes? i) (evm-bytes-bytes i)]
+        [(label-definition? i) (serialize-label i)]
+        [else (error "Unknown EthInstruction - serialize-one:" i)]
+        ))
 
-(: serialize-asm (-> eth-asm Bytes))
+(: serialize-asm (-> evm-op Bytes))
 (define (serialize-asm i)
   (serialize-opcode (ethi->opcode i)))
 
-(: ethi->opcode (-> (U eth-asm eth-push label) opcode))
+(: ethi->opcode (-> (U evm-op evm-push label) opcode))
 (define (ethi->opcode ethi)
-  (cond ((eth-asm? ethi) (lookup-opcode (eth-asm-name ethi)))
-        ((eth-push? ethi) (lookup-push-opcode ethi))
-        ((label? ethi) (lookup-opcode 'JUMPDEST))
-        (else (error "ethi->opcode: Unknown case"))))
+  (cond [(evm-op? ethi) (lookup-opcode (evm-op-name ethi))]
+        [(evm-push? ethi) (lookup-push-opcode ethi)]
+        [(label? ethi) (lookup-opcode 'JUMPDEST)]
+        [else (error "ethi->opcode: Unknown case")]
+        ))
 
 (: serialize-opcode (-> opcode Bytes))
 (define (serialize-opcode op)
   (bytes (opcode-byte op)))
 
-(: serialize-push (-> eth-push Bytes))
+(: serialize-push (-> evm-push Bytes))
 (define (serialize-push push)
   (let ((op (lookup-push-opcode push))
         (val (push-true-value push))
@@ -242,13 +239,13 @@ The relocation is generated at the data, not the PUSH instruction.
 (: serialize-label (-> label-definition Bytes))
 (define (serialize-label lbl)
   (remember-label! lbl)
-  (serialize-asm (eth-asm 'JUMPDEST)))
+  (serialize-asm (evm-op 'JUMPDEST)))
 
 (: lookup-opcode (-> Symbol opcode))
 (define (lookup-opcode sym)
   (hash-ref opcodes-by-sym sym))
 
-(: lookup-push-opcode (-> eth-push opcode))
+(: lookup-push-opcode (-> evm-push opcode))
 (define (lookup-push-opcode push)
   (: b Byte)
   (define b (cast (+ #x5f (push-true-size push)) Byte))
@@ -260,7 +257,7 @@ The relocation is generated at the data, not the PUSH instruction.
         [ os  (+ (*byte-offset*) (label-definition-offset lbl))])
     (hash-set! (*symbol-table*) sym (- os 1))))
 
-(: push-true-value (-> eth-push Integer))
+(: push-true-value (-> evm-push Integer))
 #| push-true-value:
 Either a label or integer can be pushed onto the stack.
 * An integer is emitted in big-endian form with the given size.
@@ -268,7 +265,7 @@ Either a label or integer can be pushed onto the stack.
 * Label values become known when the assembler encounters one. A "current position" global counter is the value.
 |#
 (define (push-true-value push)
-  (let ((val (eth-push-value push)))
+  (let ((val (evm-push-value push)))
     (cond ((label? val)
            (begin
              (generate-relocation! (relocation (*byte-offset*) (label-name val)))
@@ -279,14 +276,14 @@ Either a label or integer can be pushed onto the stack.
           (else
            (error "Unknown value" val)))))
 
-(: push-true-size (-> eth-push Byte))
+(: push-true-size (-> evm-push Byte))
 (define (push-true-size push)
-  (if (equal? (eth-push-size push) 'shrink)
-      (let ([ val (eth-push-value push) ])
+  (if (equal? (evm-push-size push) 'shrink)
+      (let ([ val (evm-push-value push) ])
         (cond ((label? val) assumed-label-size)
               ((integer? val) (integer-bytes val))
               (else (error "push-true-size: Unexpected case" val))))
-      (eth-push-size push)))
+      (evm-push-size push)))
 
 (: apply-relocations! (-> Bytes RelocationTable SymbolTable Void))
 (define (apply-relocations! bs relocs symbols)
@@ -312,15 +309,15 @@ Either a label or integer can be pushed onto the stack.
          (pps (apply append (map (patchpoint-injection offset) (*patchpoints*)))) ; (instructions-size pps)
          (afterLoader (+ 1 (integer-bytes len) 2 2 1 (instructions-size pps) 1 (integer-bytes len) 2 1))
          (loader
-          (append (list (eth-push 'shrink len)         ; 1 + (integer-bytes len)
-                        (eth-push 1       afterLoader) ; 2 bytes
-                        (eth-push 1       0)           ; 2 bytes
-                        (eth-asm 'CODECOPY)            ; 1
+          (append (list (evm-push 'shrink len)         ; 1 + (integer-bytes len)
+                        (evm-push 1       afterLoader) ; 2 bytes
+                        (evm-push 1       0)           ; 2 bytes
+                        (evm-op   'CODECOPY)           ; 1
                         )
                   pps                                  ; (instructions-size pps)
-                  (list (eth-push 'shrink len)         ; 1 + (integer-bytes len)
-                        (eth-push 1       0)           ; 2
-                        (eth-asm 'RETURN)))))          ; 1
+                  (list (evm-push 'shrink len)         ; 1 + (integer-bytes len)
+                        (evm-push 1       0)           ; 2
+                        (evm-op   'RETURN)))))         ; 1
     (*loader-size* afterLoader)
     (bytes-append (serialize loader)
                   bs)))
@@ -340,15 +337,17 @@ Either a label or integer can be pushed onto the stack.
 
 (: ethi-extra-size (-> EthInstruction Byte))
 (define (ethi-extra-size ethi)
-  (if (eth-unknown? ethi)
-      0
+  (if (evm-bytes? ethi)
+      (cast (- (bytes-length (evm-bytes-bytes ethi)) 1) Byte)
       (op-extra-size (ethi->opcode ethi))))
 
 (: instruction-size (-> EthInstruction Integer))
 (define (instruction-size i)
-  (if (eth-push? i)
-      (+ 1 (push-true-size i))
-      1))
+  (cond [(evm-push?  i) (+ 1 (push-true-size i))]
+        [(evm-bytes? i) (bytes-length (evm-bytes-bytes i))]
+        [(evm-op?    i) 1]
+        [else (error "instruction-size: Unhandled case" i)]
+        ))
 
 (: instructions-size (-> EthInstructions Integer))
 (define (instructions-size is)
@@ -371,8 +370,8 @@ Either a label or integer can be pushed onto the stack.
            [ os (symbol-offset sym) ]
            [ is (append
                  (patchpoint-initializer pp)             ; [ value ]
-                 (list (eth-push assumed-label-size os ) ; [ ptr; value ]
-                       (eth-asm 'MSTORE)))])             ; [ ]
+                 (list (evm-push assumed-label-size os ) ; [ ptr; value ]
+                       (evm-op   'MSTORE)))])            ; [ ]
       (offset (+ (instructions-size is) (offset)))
       is)))
 

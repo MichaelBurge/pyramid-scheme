@@ -79,7 +79,7 @@
 (: compile-asm (-> Target Linkage pyr-asm inst-seq))
 (define (compile-asm target linkage exp)
   (end-with-linkage linkage
-                    (make-insts '() '() exp)))
+                    (inst-seq all-regs all-regs (pyr-asm-insts exp))))
 
 (: compile-macro-definition (-> Target Linkage pyr-macro-definition inst-seq))
 (define (compile-macro-definition target linkage exp)
@@ -210,7 +210,7 @@
              (append-instruction-sequences
               (car operand-codes)
               (make-insts '(val) '(argl)
-                          (assign 'argl (op 'list `(,(reg 'val))))))))
+                          (assign 'argl (op 'singleton `(,(reg 'val))))))))
         (if (null? (cdr operand-codes))
             code-to-get-last-arg
             (preserving '(env)
@@ -225,7 +225,7 @@
                      (car operand-codes)
                      (make-insts '(val argl) '(argl)
                                  (assign 'argl
-                                         (op 'cons
+                                         (op 'pair
                                              `(,(reg 'val)
                                                ,(reg 'argl))))))))
                                              
@@ -264,7 +264,7 @@
          (label->insts compiled-branch)
          (compile-proc-appl target compiled-linkage))
         (label->insts continuation-branch)
-        (make-insts '(val) '() (perform (op 'restore-continuation
+        (make-insts '(val) '() (perform (op 'restore-continuation!
                                             (list (reg 'val))))))
        (label->insts after-call)
       ))))
@@ -335,7 +335,7 @@
      (inst-seq (set-union    seq1-needs    saved-regs)
                (set-subtract seq1-modifies saved-regs)
                (let ([ rs (set->list saved-regs)])
-                 (append (map save rs)
+                 (append (map save (map reg rs))
                          (inst-seq-statements seq1)
                          (map restore (reverse rs)))))
      seq2)))
@@ -356,8 +356,8 @@
    (apply append    (inst-seq-statements seq0) (map inst-seq-statements seqs))
    ))
 
-(: make-insts (-> (U (Setof RegisterName) (Listof RegisterName))
-                  (U (Setof RegisterName) (Listof RegisterName))
+(: make-insts (-> (U RegisterNames (Listof RegisterName))
+                  (U RegisterNames (Listof RegisterName))
                   Instruction *
                   inst-seq))
 (define (make-insts needs modifies . is)

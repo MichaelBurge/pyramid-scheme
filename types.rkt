@@ -19,12 +19,104 @@
   (struct label ([ name : Symbol ]) #:transparent)
   (struct label-definition label ([ offset : Integer ] [ virtual : Boolean ]) #:transparent)
   (define-type RegisterValue (U Boolean Symbol Integer String (Listof Integer) (Listof Symbol) (Listof String)))
+  (define-predicate register-value? RegisterValue)
   (define-type Verbosity Fixnum)
+  )
+
+; codegen.rkt
+(module evm-assembly typed/racket
+  (require (submod ".." common))
+  (provide (all-defined-out))
+  
+  (struct opcode ([ byte : Byte ] [ name : Symbol ] [ num-reads : Integer ] [ num-writes : Integer ]) #:transparent)
+  (struct evm-op      ([ name : Symbol ]) #:transparent)
+  (struct evm-push    ([ size : (U 'shrink Byte) ] [ value : (U Integer Symbol label) ]) #:transparent)
+  (struct evm-bytes   ([ bytes : Bytes ]) #:transparent)
+  (define-type EthInstruction     (U evm-op evm-push evm-bytes label-definition))
+  (define-type EthInstructions    (Listof   EthInstruction))
+  (define-type Generator0         (->       EthInstructions))
+  (define-type (Generator  A)     (-> A     EthInstructions))
+  (define-type (Generator2 A B)   (-> A B   EthInstructions))
+  (define-type (Generator3 A B C) (-> A B C EthInstructions))
+
+  (struct relocation ([ pos : Integer ] [ symbol : Symbol ]) #:transparent)
+  (struct patchpoint ([ symbol : Symbol ] [ initializer : EthInstructions ]) #:transparent)
+  (define-type SymbolTable (Mutable-HashTable Symbol Integer))
+  (define-type ReverseSymbolTable (Mutable-HashTable Integer Symbol))
+  (define-type RelocationTable (Setof relocation))
+  (define-type LinkedOffset Integer)
+  (define-type UnlinkedOffset Integer)
+  
+  (: make-symbol-table (-> SymbolTable))
+  (define (make-symbol-table) (make-hash))
+  
+  (: make-reverse-symbol-table (-> ReverseSymbolTable))
+  (define (make-reverse-symbol-table) (make-hash))
+  
+  (: make-relocation-table (-> RelocationTable))
+  (define (make-relocation-table) (set))
+  )
+
+; compiler.rkt
+(module abstract-machine typed/racket
+  (require typed/racket/unsafe)
+  (require (submod ".." common))
+  (require (submod ".." evm-assembly))
+  ;(require (submod ".." ast))
+
+  (provide (all-defined-out))
+  
+  (define-type RegisterName (U 'env 'proc 'continue 'argl 'val))
+
+  (struct primop ([ name : Symbol ] [ gen : Procedure ]) #:transparent)
+  (define-type PrimopTable (HashTable Symbol primop))
+  
+  (struct assign ([ reg-name : RegisterName ] [ value : MExpr ]) #:transparent)
+  (struct test ([ condition : MExpr ]) #:transparent)
+  (struct branch ([ dest : MExpr ]) #:transparent)
+  (struct goto ([ dest : MExpr ]) #:transparent)
+  (struct save ([ exp : MExpr ]) #:transparent)
+  (struct restore ([ reg-name : RegisterName ]) #:transparent)
+  (struct perform ([ action : op ]) #:transparent)
+  (struct evm ([ insts : EthInstructions ]) #:transparent)
+  (define-type Instruction (U label-definition
+                              assign
+                              test
+                              branch
+                              goto
+                              save
+                              restore
+                              perform
+                              evm
+                              ))
+
+  (struct reg ([name : RegisterName]) #:transparent)
+  (struct const ([ value : RegisterValue ]) #:transparent)
+  (struct boxed-const ([ value : RegisterValue ]) #:transparent)
+  (struct op ([ name : Symbol] [ args : MExprs ]) #:transparent)
+  (struct %stack ())
+  (define stack (%stack))
+  (define stack? %stack?)
+  (define-type MExpr (U reg
+                        const
+                        boxed-const
+                        op
+                        Symbol
+                        label
+                        %stack
+                        evm
+                        ))
+
+  (struct inst-seq ([ needs : RegisterNames ] [ modifies : RegisterNames ] [ statements : Instructions ]) #:transparent)
+  (define-type MExprs (Listof MExpr))
+  (define-type Instructions (Listof Instruction))
+  (define-type RegisterNames (Setof RegisterName))
   )
 
 ; ast.rkt
 (module ast typed/racket
   (require (submod ".." common))
+  (require (submod ".." abstract-machine))
   (provide (all-defined-out)
            (all-from-out (submod ".." common)))
   
@@ -39,12 +131,12 @@
   (struct pyr-application ([ operator : Pyramid ] [ operands : Pyramids ]) #:transparent)
   (struct pyr-macro-application ([ name : VariableName ] [ operands : Pyramids ]) #:transparent)
   (struct pyr-macro-definition ([ name : VariableName ] [ parameters : DottableParameters ] [ body : Racket ]) #:transparent)
-  (struct pyr-asm-push ([ size : (U 'shrink Byte)] [ value : Integer]) #:transparent)
-  (struct pyr-asm-op ([ name : Symbol ]) #:transparent)
-  (struct pyr-asm-bytes ([ value : Bytes ]) #:transparent)
-  (struct pyr-asm-cg ([ exp : Any ]) #:transparent)
-  (define-type pyr-asm-base (U pyr-asm-push pyr-asm-op pyr-asm-bytes pyr-asm-cg label-definition))
-  (struct pyr-asm ([ insts : (Listof pyr-asm-base)]) #:transparent)
+  ;; (struct pyr-asm-push ([ size : (U 'shrink Byte)] [ value : Integer]) #:transparent)
+  ;; (struct pyr-asm-op ([ name : Symbol ]) #:transparent)
+  ;; (struct pyr-asm-bytes ([ value : Bytes ]) #:transparent)
+  ;; (struct pyr-asm-cg ([ exp : Any ]) #:transparent)
+  ;(define-type pyr-asm-base (U pyr-asm-push pyr-asm-op pyr-asm-bytes pyr-asm-cg label-definition))
+  (struct pyr-asm ([ insts : Instructions]) #:transparent)
   (define-type Pyramid (U pyr-const
                           pyr-variable
                           pyr-quoted
@@ -60,7 +152,7 @@
                           ))
   (define-type VariableName Symbol)
   (define-type VariableNames (Listof VariableName))
-  (define-type PyramidQ Any)
+  (define-type PyramidQ (Sexpof Any))
   (define-type PyramidQs (Listof Any))
   (define-type DottableParameters Any)
   (define-type Racket Any)
@@ -84,89 +176,6 @@
   (define-type pyr-macro-applications (Listof pyr-macro-application))
   (define-type pyr-macro-definitions (Listof pyr-macro-definition))
   (define-type pyr-asms (Listof pyr-asm))
-)
-
-; codegen.rkt
-(module evm-assembly typed/racket
-  (require (submod ".." common))
-  (provide (all-defined-out))
-  
-  (struct opcode ([ byte : Byte ] [ name : Symbol ] [ num-reads : Integer ] [ num-writes : Integer ]) #:transparent)
-  (struct eth-asm     ([ name : Symbol ]) #:transparent)
-  (struct eth-push    ([ size : (U 'shrink Byte) ] [ value : (U Integer Symbol label) ]) #:transparent)
-  (struct eth-unknown ([ byte : Byte ]) #:transparent)
-  (define-type EthInstruction     (U eth-asm eth-push eth-unknown label-definition))
-  (define-type EthInstructions    (Listof   EthInstruction))
-  (define-type Generator0         (->       EthInstructions))
-  (define-type (Generator  A)     (-> A     EthInstructions))
-  (define-type (Generator2 A B)   (-> A B   EthInstructions))
-  (define-type (Generator3 A B C) (-> A B C EthInstructions))
-  (struct relocation ([ pos : Integer ] [ symbol : Symbol ]) #:transparent)
-  (struct patchpoint ([ symbol : Symbol ] [ initializer : EthInstructions ]) #:transparent)
-  (define-type SymbolTable (Mutable-HashTable Symbol Integer))
-  (define-type ReverseSymbolTable (Mutable-HashTable Integer Symbol))
-  (define-type RelocationTable (Setof relocation))
-  (define-type LinkedOffset Integer)
-  (define-type UnlinkedOffset Integer)
-  
-  (: make-symbol-table (-> SymbolTable))
-  (define (make-symbol-table) (make-hash))
-  
-  (: make-reverse-symbol-table (-> ReverseSymbolTable))
-  (define (make-reverse-symbol-table) (make-hash))
-  
-  (: make-relocation-table (-> RelocationTable))
-  (define (make-relocation-table) (set))
-  )
-
-; compiler.rkt
-(module abstract-machine typed/racket
-  (require (submod ".." common))
-  (require (submod ".." evm-assembly))
-  (require (submod ".." ast))
-  (provide (all-defined-out))
-  
-  (define-type RegisterName (U 'env 'proc 'continue 'argl 'val))
-  
-  (struct assign ([ reg-name : RegisterName ] [ value : MExpr ]) #:transparent)
-  (struct test ([ condition : MExpr ]) #:transparent)
-  (struct branch ([ dest : MExpr ]) #:transparent)
-  (struct goto ([ dest : MExpr ]) #:transparent)
-  (struct save ([ reg-name : RegisterName ]) #:transparent)
-  (struct restore ([ reg-name : RegisterName ]) #:transparent)
-  (struct perform ([ action : op ]) #:transparent)
-  (struct asm ([ insts : EthInstructions ]))
-  (define-type Instruction (U label-definition
-                              assign
-                              test
-                              branch
-                              goto
-                              save
-                              restore
-                              perform
-                              pyr-asm
-                              ))
-
-  (struct reg ([name : RegisterName]) #:transparent)
-  (struct const ([ value : RegisterValue ]) #:transparent)
-  (struct boxed-const ([ value : RegisterValue ]) #:transparent)
-  (struct op ([ name : Symbol] [ args : MExprs ]) #:transparent)
-  (struct eth-stack () #:transparent)
-  (define stack (eth-stack))
-  (define stack? eth-stack?)
-  (define-type MExpr (U reg
-                        const
-                        boxed-const
-                        op
-                        Symbol
-                        label
-                        eth-stack
-                        ))
-
-  (struct inst-seq ([ needs : RegisterNames ] [ modifies : RegisterNames ] [ statements : Instructions ]) #:transparent)
-  (define-type MExprs (Listof MExpr))
-  (define-type Instructions (Listof Instruction))
-  (define-type RegisterNames (Setof RegisterName))
   )
 
 ; simulator.rkt

@@ -62,7 +62,31 @@
       (bytes->integer bs #f #t i
                       (min (+ i len)
                            (bytes-length bs)))))
-  
+
+(: symbol->integer (-> Symbol Integer)) ; TODO: I think the "official" ABI uses a Keccak hash for this.
+(define (symbol->integer sym)
+  (let ((lst (string->list (symbol->string sym))))
+    (: loop (-> (Listof Char) Integer Integer))
+    (define (loop lst i)
+      (if (null? lst)
+          i
+          (loop (cdr lst)
+                (+ (char->integer (car lst))
+                   (* 256 i)))))
+    (loop lst 0)))
+
+(: integer->string (-> Integer String))
+(define (integer->string n)
+  (: integer->char-list (-> Integer (Listof Char)))
+  (define (integer->char-list n)
+    (if (equal? n 0)
+        null
+        (let-values ([ (q r) (quotient/remainder n 256) ])
+          (cons (integer->char r)
+                (integer->char-list q)))))
+  (list->string (reverse (integer->char-list n))))
+
+
 ;; (if (>= i (bytes-length bs))
   ;;     0
   ;;     (bytes->integer (subbytes(bytes-ref bs i)))

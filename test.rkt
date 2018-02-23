@@ -8,7 +8,7 @@
 (require "ast.rkt")
 (require "compiler.rkt")
 (require "io.rkt")
-(require (except-in "codegen.rkt" asm))
+(require "codegen.rkt")
 (require "serializer.rkt")
 (require "disassembler.rkt")
 (require "utils.rkt")

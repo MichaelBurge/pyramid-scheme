@@ -3,7 +3,6 @@
 (require racket/cmdline)
 
 (require "ast.rkt")
-(require (except-in "codegen.rkt" asm))
 (require "serializer.rkt")
 (require "compiler.rkt")
 (require "types.rkt")

@@ -19,7 +19,7 @@
 (struct save             instruction (reg-name      ) #:transparent)
 (struct restore          instruction (reg-name      ) #:transparent)
 (struct perform          instruction (action        ) #:transparent)
-(struct asm              instruction (insts         ) #:transparent)
+(struct evm              instruction (insts         ) #:transparent)
 
 (struct mexpr             (         ) #:transparent)
 (struct reg         mexpr (name     ) #:transparent)

@@ -6,7 +6,7 @@
 
 (require "ast.rkt")
 (require "compiler.rkt")
-(require (except-in "codegen.rkt" asm))
+(require "codegen.rkt")
 (require "disassembler.rkt")
 (require "serializer.rkt")
 (require (except-in "macro.rkt" make-label))
