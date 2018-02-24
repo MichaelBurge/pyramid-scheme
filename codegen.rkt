@@ -12,52 +12,11 @@
 
 (require "typed/binaryio.rkt")
 
-(provide codegen
-         codegen-list
-         (all-from-out 'constants)
-         (all-from-out (submod "types.rkt" evm-assembly)))
-
-(: *primops* (Promise (Listof primop)))
-(define *primops*
-  (delay
-  (listof
-   ; Variables
-   [primop 'define-variable!          op-define-variable!             ]
-   [primop 'set-variable-value!       op-set-variable-value!          ]
-   [primop 'lookup-variable-value     op-lookup-variable-value        ]
-   [primop 'extend-environment        cg-op-extend-environment        ]
-   ; Runtime
-   [primop 'type                      cg-tag                          ]
-   [primop 'allocate                  cg-allocate                     ]
-   [primop 'read-memory               cg-read-address-offset          ]
-   [primop 'write-memory              cg-write-address-offset         ]
-   ; Booleans
-   [primop 'false?                    cg-op-false?                    ]
-   ; Fixnums
-   [primop 'make-fixnum               cg-make-fixnum                  ]
-   [primop 'fixnum-value              cg-unbox-integer                ]
-   [primop 'add                       cg-add                          ]
-   ; Continuations
-   [primop 'save-continuation         cg-save-continuation            ]
-   [primop 'restore-continuation!     op-restore-continuation         ]
-   [primop 'continuation?             op-continuation?                ]
-   ; Compiled Procedures
-   [primop 'make-compiled-procedure   cg-op-make-compiled-procedure   ]
-   [primop 'compiled-procedure-entry  cg-op-compiled-procedure-entry  ]
-   [primop 'compiled-procedure-env    cg-op-compiled-procedure-env    ]
-   [primop 'compiled-procedure?       op-compiled-procedure?          ]
-   ; Primitive Procedures
-   [primop 'primitive-procedure?      cg-op-primitive-procedure?      ]
-   [primop 'apply-primitive-procedure cg-op-apply-primitive-procedure ]
-   ; Lists
-   [primop 'singleton                 cg-op-list                      ]
-   [primop 'pair                      cg-op-cons                      ]
-   [primop 'pair?                     cg-pair?                        ]
-   [primop 'left                      cg-car                          ]
-   [primop 'right                     cg-cdr                          ]
-   [primop 'null?                     cg-null?                        ]
-   [primop 'null                      cg-make-nil                     ]
-   )))
+(provide ;codegen
+ ;codegen-list
+ (all-defined-out)
+ (all-from-out 'constants)
+ (all-from-out (submod "types.rkt" evm-assembly)))
 
 #|
 -- Registers -> Stack --
@@ -655,7 +614,7 @@ These optimizations are currently unimplemented:
 (define (cg-mexpr-op exp)
   (let* ([ name (op-name exp)]
          [ args (op-args exp)]
-         [ tbl *primop-table*]
+         [ tbl (*primops*)]
          [ primop (find-primop tbl name)]
          [ proc (primop-gen primop)]
          )
@@ -1577,8 +1536,3 @@ SWAP1 -> [ x1; x2; x3; c ]
 (define (cg-throw sym)
   (append (debug-label sym)
           (asm 'REVERT)))
-
-(: *primop-table* (HashTable Symbol primop))
-(define *primop-table*
-  (make-hash (map (λ ([p : primop]) (cons (primop-name p) p))
-                  (force *primops*))))

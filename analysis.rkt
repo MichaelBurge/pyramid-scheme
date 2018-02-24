@@ -4,6 +4,8 @@
 
 (require racket/pretty)
 
+(require/typed "abstract-analyzer.rkt"
+  [ verify-instructions (-> Instructions Void)])
 (require "ast.rkt")
 (require "compiler.rkt")
 (require "codegen.rkt")
@@ -75,6 +77,7 @@
       (let ([ instructions     (compile-pyramid 'val 'next simplified) ])
         (verbose-section "Abstract Machine Code" VERBOSITY-LOW
                          (λ () (display-abstract-instructions instructions)))
+        (verify-instructions (inst-seq-statements instructions))
         (let ([ eth-instructions (codegen (inst-seq-statements instructions)) ])
           (verbose-section "EVM Instructions" VERBOSITY-HIGH
                            (λ () (display-all eth-instructions)))

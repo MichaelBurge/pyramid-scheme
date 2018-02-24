@@ -68,7 +68,7 @@
   
   (define-type RegisterName (U 'env 'proc 'continue 'argl 'val))
 
-  (struct primop ([ name : Symbol ] [ gen : Procedure ]) #:transparent)
+  (struct primop ([ name : Symbol ] [ gen : Procedure ] [ eval : Procedure ]) #:transparent)
   (define-type PrimopTable (HashTable Symbol primop))
   
   (struct assign ([ reg-name : RegisterName ] [ value : MExpr ]) #:transparent)
@@ -111,6 +111,44 @@
   (define-type MExprs (Listof MExpr))
   (define-type Instructions (Listof Instruction))
   (define-type RegisterNames (Setof RegisterName))
+  (struct v-fixnum              ([value : Integer])        #:transparent)
+  (struct v-symbol              ([value : Symbol ])        #:transparent)
+  (struct v-compiled-procedure  ([label : label  ] [ env : v-environment])  #:transparent)
+  (struct v-primitive-procedure ([label : label  ])        #:transparent)
+  (struct v-pair                ([left  : value] [right : value])           #:transparent)
+  (struct v-vector              ([elems : values])         #:transparent)
+  (struct v-null                (                )         #:transparent)
+  (struct v-continuation        ([continue : label ] [env : v-environment]) #:transparent)
+  (struct v-frame               ([mappings : (HashTable Symbol value)])     #:transparent)
+  (struct v-environment         ([frames : v-frames]))
+  (define-type v-unboxed (U Integer Symbol Boolean))
+  (define-type v-callable (U v-compiled-procedure v-primitive-procedure v-continuation))
+  (define-predicate v-unboxed? v-unboxed)
+  (define-predicate v-callable? v-callable)
+  (define-type value (U Void
+                        v-unboxed
+                        v-fixnum
+                        v-symbol
+                        v-compiled-procedure
+                        v-primitive-procedure
+                        v-pair
+                        v-vector
+                        v-null
+                        v-continuation
+                        v-frame
+                        v-environment
+                        label))
+  (define-type v-frames (Listof v-frame))
+  (define-type values (Listof value))
+  (struct machine ([pc : Integer]
+                   [env : value]
+                   [proc : v-callable]
+                   [continue : label]
+                   [argl : value]
+                   [val : value]
+                   [stack : values]
+                   [halted? : Boolean])
+    #:transparent #:mutable)
   )
 
 ; ast.rkt

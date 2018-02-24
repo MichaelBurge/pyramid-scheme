@@ -13,6 +13,8 @@
 (require "globals.rkt")
 (require "parser.rkt")
 (require (except-in "macro.rkt" make-label))
+(require/typed "primops.rkt"
+  [ make-primop-table (-> PrimopTable)])
 
 (require "typed/binaryio.rkt")
 
@@ -63,8 +65,13 @@
     (write (bytes->hex-string bs))
     (newline)))
 
+(: install-primops! (-> Void))
+(define (install-primops!)
+  (*primops* (make-primop-table)))
+
 (: main (-> Void))
 (define (main)
+  (install-primops!)
   (%-install-macro-library!)
   (let ([ prog (read-file file-to-compile) ])
     (cond ((*test?*)    (assert-test file-to-compile prog))

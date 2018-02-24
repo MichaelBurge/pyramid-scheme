@@ -6,6 +6,7 @@
 (require (submod "types.rkt" test))
 (require (submod "types.rkt" evm-assembly))
 (require (submod "types.rkt" simulator))
+(require (submod "types.rkt" abstract-machine))
 
 (provide (all-defined-out))
 
@@ -99,6 +100,11 @@
 
 (: *label-counter* (Parameterof Integer))
 (define *label-counter* (make-parameter 0))
+
+(: *primops* (Parameterof PrimopTable))
+(define *primops*
+  (let ([ tbl : PrimopTable (make-hash)])
+    (make-parameter tbl)))
 
 ; Constants
 (define assumed-label-size 2) ; TODO: Number of bytes to leave behind for label relocations. This makes it difficult to write programs larger than 65536 bytes.
