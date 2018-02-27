@@ -22,4 +22,4 @@
     (if (null? xs)
         '(%-null)
         `(pair ,(car lst) (list ,@(cdr lst)))))
-  (loop (reverse xs)))
+  (loop xs))

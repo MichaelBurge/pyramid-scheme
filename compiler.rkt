@@ -265,7 +265,7 @@
          (compile-proc-appl target compiled-linkage))
         (label->insts continuation-branch)
         (make-insts '(val) '() (perform (op 'restore-continuation!
-                                            (list (reg 'val))))))
+                                            (list (reg 'proc))))))
        (label->insts after-call)
       ))))
 

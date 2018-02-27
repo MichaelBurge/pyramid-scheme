@@ -33,6 +33,9 @@
 (: *evm-pc* (Parameterof Integer))
 (define *evm-pc* (make-parameter -1))
 
+(: *num-iterations* (Parameterof Integer))
+(define *num-iterations* (make-parameter 0))
+
 (module unsafe typed/racket
   (require typed/racket/unsafe)
   (require (submod "types.rkt" abstract-machine))
@@ -66,17 +69,24 @@
   (build-abstract-symbol-table is)
   (when (verbose? VERBOSITY-LOW)
     (printf "PC\tInstruction\tStack\tval\tcontinue\tproc\targl\tenv\n"))
-  (let loop ([n 0])
-    (let ([pc (machine-pc *m*) ])
-      (when (>= n MAX-ITERATIONS)
-        (error "verify-instructions: Didn't stop after iterations" n))
-      (cond ((machine-halted? *m*) (machine-val *m*))
-            ((>= pc (vector-length vis)) (machine-val *m*))
-            (else (begin (*current-instruction* (vector-ref vis pc))
-                         (when (verbose? VERBOSITY-LOW)
-                           (print-debug-line))
-                         (eval-instruction (*current-instruction*))
-                         (loop (+ n 1))))))))
+  (parameterize ([ *num-iterations* 0])
+    (let loop ()
+      (let ([pc (machine-pc *m*) ])
+        (tick-iteration!)
+        (cond ((machine-halted? *m*) (machine-val *m*))
+              ((>= pc (vector-length vis)) (machine-val *m*))
+              (else (begin (*current-instruction* (vector-ref vis pc))
+                           (when (verbose? VERBOSITY-LOW)
+                             (print-debug-line))
+                           (eval-instruction (*current-instruction*))
+                           (loop))))))))
+
+(: tick-iteration! (-> Void))
+(define (tick-iteration!)
+  (define n (*num-iterations*))
+  (when (>= n MAX-ITERATIONS)
+    (error "tick-iteration!: Didn't stop after iterations" n))
+  (*num-iterations* (+ 1 n)))
 
 (: build-symbol-table (All (A) (-> (Listof (U A label-definition)) (HashTable Symbol Integer))))
 (define (build-symbol-table is)
@@ -124,7 +134,7 @@
 (: write-reg (-> RegisterName value Void))
 (define (write-reg reg-name v)
   (match reg-name
-    ['env      (set-machine-env!      *m* v)]
+    ['env      (set-machine-env!      *m* (cast v v-environment))]
     ['proc     (set-machine-proc!     *m* (cast v v-callable))]
     ['continue (set-machine-continue! *m* (cast v label))]
     ['argl     (set-machine-argl!     *m* v)]
@@ -180,6 +190,7 @@
 
   (parameterize ([ *evm-pc* 0])
     (let loop ([ n 0 ])
+      (tick-iteration!)
       (if (or (>= n (vector-length is))
               (<  n 0))
           (void)
@@ -292,7 +303,7 @@
     [_ (error "eval-evm-op: Unknown EVM op" x)]
     ))
 
-(: eval-op-extend-environment (-> value value value value))
+(: eval-op-extend-environment (-> value value value v-environment))
 (define (eval-op-extend-environment names values env)
   (define ns (v-list->list names))
   (define vs (v-list->list values))
@@ -388,10 +399,19 @@
   (v-fixnum-value x))
 
 (: eval-op-save-continuation (-> value))
-(define (eval-op-save-continuation) (undefined))
+(define (eval-op-save-continuation)
+  (: cont v-continuation)
+  (define cont (v-continuation (machine-continue *m*)
+                               (machine-env      *m*)))
+  cont
+  )
 
 (: eval-op-restore-continuation (-> value Void))
-(define (eval-op-restore-continuation cont) (undefined))
+(define (eval-op-restore-continuation cont)
+  (assert cont v-continuation?)
+  (jump (v-continuation-continue cont))
+  (set-machine-env! *m* (v-continuation-env cont))
+  )
 
 (: eval-op-primitive-procedure? (-> value Boolean))
 (define (eval-op-primitive-procedure? x) (v-primitive-procedure? x))

@@ -1,0 +1,19 @@
+#lang pyramid
+
+(set-test-result! 8)
+
+(require psl "arith.pmd")
+(require psl "syntax.pmd")
+
+;; (call/cc
+;;  (λ (return)
+;;    (for (λ (x)
+;;           (return x))
+;;      '(8))))
+
+(call/cc
+ (λ (return)
+   (for (λ (x)
+          (when (= (% x 2) 0)
+            (return x)))
+     (list 1 3 5 7 8 9 13 16 5 0))))

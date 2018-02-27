@@ -142,7 +142,7 @@
   (define-type v-frames (Listof v-frame))
   (define-type values (Listof value))
   (struct machine ([pc : Integer]
-                   [env : value]
+                   [env : v-environment]
                    [proc : v-callable]
                    [continue : label]
                    [argl : value]
