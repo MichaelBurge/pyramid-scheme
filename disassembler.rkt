@@ -39,22 +39,22 @@
   (let ((reverse-symbol-table (invert-hash (*symbol-table*))))
     (: loop (-> Integer Void))
     (define (loop n)
-      (fprintf (current-output-port) "~x" n)
-      (write-char #\tab)
-      (display (reverse-symbol-name reverse-symbol-table (- n (*loader-size*))))
-      ;; (print `(,(bytes-ref bs n)
-      ;;          ,(push-op? (hash-ref opcodes-by-byte (bytes-ref bs n)))
-      ;;          ,(op-extra-size (hash-ref opcodes-by-byte (bytes-ref bs n)))))
-      (write-char #\tab)
-      (let ([ ethi (disassemble-one bs n) ])
-        (match ethi
-          [(struct evm-push  (size value)) (printf "Push ~a 0x~x" size value )]
-          [(struct evm-op    (sym)       ) (write-string (symbol->string sym))]
-          [(struct evm-bytes (bs)        ) (printf "BYTES ~a" bs             )]
-          [_ (error "print-disassembly: Unknown ethi" ethi                   )])
-        (set! n (+ n (ethi-extra-size ethi))))
-      (newline)
       (if (>= n (- (bytes-length bs) 1))
           (void)
-          (loop (+ n 1))))
+          (begin
+            (printf "~x" n)
+            (write-char #\tab)
+            (display (reverse-symbol-name reverse-symbol-table (- n (*loader-size*))))
+            ;; (print `(,(bytes-ref bs n)
+            ;;          ,(push-op? (hash-ref opcodes-by-byte (bytes-ref bs n)))
+            ;;          ,(op-extra-size (hash-ref opcodes-by-byte (bytes-ref bs n)))))
+            (write-char #\tab)
+            (let ([ ethi (disassemble-one bs n) ])
+              (match ethi
+                [(struct evm-push  (size value)) (printf "Push ~a 0x~x" size value )]
+                [(struct evm-op    (sym)       ) (write-string (symbol->string sym))]
+                [(struct evm-bytes (bs)        ) (printf "BYTES ~a" bs             )]
+                [_ (error "print-disassembly: Unknown ethi" ethi                   )])
+              (newline)
+              (loop (+ n (instruction-size ethi)))))))
     (loop 0)))

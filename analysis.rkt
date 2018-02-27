@@ -43,13 +43,6 @@
 ;;         exp
 ;;         next)))
 
-(define-syntax-rule (verbose-section title level body)
-  (when (verbose? level)
-    (displayln title)
-    body
-    (newline)
-  ))
-
 (: print-program-settings (-> Void))
 (define (print-program-settings)
   (define pps (*patchpoints*))
@@ -81,14 +74,12 @@
         (let ([ eth-instructions (codegen (inst-seq-statements instructions)) ])
           (verbose-section "EVM Instructions" VERBOSITY-HIGH
                            (display-all eth-instructions))
-          (let* ([ bs-unlinked (serialize-with-relocations eth-instructions) ]
-                 [ bs (maybe-link bs-unlinked) ])
-            (verbose-section "Symbol Table" VERBOSITY-MEDIUM
-                             (print-symbol-table (*symbol-table*)))
-            (verbose-section "Relocation Table" VERBOSITY-MEDIUM
-                             (print-relocations (*relocation-table*)))
-            (verbose-section "EVM Disassembly" VERBOSITY-LOW
-                             (print-disassembly bs))
-            ;(λ () (print-disassembly bs-unlinked)))
-            (full-compile-result bs (inst-seq-statements instructions) eth-instructions)
-            ))))))
+          (let ([ bs-unlinked (serialize-with-relocations eth-instructions) ])
+            (let ([ bs (maybe-link bs-unlinked) ])
+              (verbose-section "Symbol Table" VERBOSITY-MEDIUM
+                               (print-symbol-table (*symbol-table*)))
+              (verbose-section "EVM Disassembly" VERBOSITY-LOW
+                               (print-disassembly bs))
+              ;(λ () (print-disassembly bs-unlinked)))
+              (full-compile-result bs (inst-seq-statements instructions) eth-instructions)
+              )))))))

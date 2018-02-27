@@ -2,6 +2,7 @@
 
 (require (submod "types.rkt" evm-assembly))
 (require (submod "types.rkt" common))
+(require "io.rkt")
 (require "utils.rkt")
 (require "globals.rkt")
 (require errortrace)
@@ -203,13 +204,18 @@ The relocation is generated at the data, not the PUSH instruction.
 
 (: serialize-one (-> EthInstruction Bytes))
 (define (serialize-one i)
-  (*byte-offset* (+ 1 (*byte-offset*)))
-  (cond [(evm-op?    i) (serialize-asm i)]
-        [(evm-push?  i) (serialize-push i)]
-        [(evm-bytes? i) (evm-bytes-bytes i)]
-        [(label-definition? i) (serialize-label i)]
-        [else (error "Unknown EthInstruction - serialize-one:" i)]
-        ))
+  (define bs
+    (cond [(evm-op?    i) (serialize-asm i)]
+          [(evm-push?  i) (serialize-push i)]
+          [(evm-bytes? i) (evm-bytes-bytes i)]
+          [(label-definition? i) (serialize-label i)]
+          [else (error "Unknown EthInstruction - serialize-one:" i)]
+          ))
+  (*byte-offset* (+ (*byte-offset*) (instruction-size i)))
+  (when (>= (*byte-offset*) (expt 256 assumed-label-size))
+    (error "serialize-one: Program size exceeded hardcoded limit"))
+  bs
+  )
 
 (: serialize-asm (-> evm-op Bytes))
 (define (serialize-asm i)
@@ -232,7 +238,6 @@ The relocation is generated at the data, not the PUSH instruction.
   (let ((op (lookup-push-opcode push))
         (val (push-true-value push))
         (size (push-true-size push)))
-    (*byte-offset* (+ size (*byte-offset*)))
     (bytes-append (bytes (opcode-byte op))
                   (integer->bytes val size #f))))
 
@@ -255,7 +260,7 @@ The relocation is generated at the data, not the PUSH instruction.
 (define (remember-label! lbl)
   (let ([ sym (label-name lbl) ]
         [ os  (+ (*byte-offset*) (label-definition-offset lbl))])
-    (hash-set! (*symbol-table*) sym (- os 1))))
+    (hash-set! (*symbol-table*) sym os)))
 
 (: push-true-value (-> evm-push Integer))
 #| push-true-value:
@@ -268,7 +273,7 @@ Either a label or integer can be pushed onto the stack.
   (let ((val (evm-push-value push)))
     (cond ((label? val)
            (begin
-             (generate-relocation! (relocation (*byte-offset*) (label-name val)))
+             (generate-relocation! (relocation (+ (*byte-offset*) 1) (label-name val)))
              (hash-ref (*symbol-table*) (label-name val) (λ () 0))))
           ; Symbols are unexpected: Labels are wrapped in a struct; quotes are expanded to integers in the code generator.
           ((symbol? val) (error "push-true-val: Unexpected symbol" val))
@@ -287,6 +292,8 @@ Either a label or integer can be pushed onto the stack.
 
 (: apply-relocations! (-> Bytes RelocationTable SymbolTable Void))
 (define (apply-relocations! bs relocs symbols)
+  (verbose-section "Relocation Table" VERBOSITY-MEDIUM
+                   (print-relocations relocs))
   (: apply-relocation! (-> relocation Void))
   (define (apply-relocation! reloc)
     (let* ((val (hash-ref symbols (relocation-symbol reloc)))
@@ -335,17 +342,12 @@ Either a label or integer can be pushed onto the stack.
       (cast (- (opcode-byte op) #x5f) Byte)
       0))
 
-(: ethi-extra-size (-> EthInstruction Byte))
-(define (ethi-extra-size ethi)
-  (if (evm-bytes? ethi)
-      (cast (- (bytes-length (evm-bytes-bytes ethi)) 1) Byte)
-      (op-extra-size (ethi->opcode ethi))))
-
 (: instruction-size (-> EthInstruction Integer))
 (define (instruction-size i)
   (cond [(evm-push?  i) (+ 1 (push-true-size i))]
         [(evm-bytes? i) (bytes-length (evm-bytes-bytes i))]
         [(evm-op?    i) 1]
+        [(label?     i) 1]
         [else (error "instruction-size: Unhandled case" i)]
         ))
 

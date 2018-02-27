@@ -533,9 +533,6 @@
 (: logb (-> Number Number Real))
 (define (logb b x) (cast (/ (log x) (log b)) Real))
 
-(: floori (-> Real Integer))
-(define (floori x) (cast (floor x) Integer))
-
 (: instruction-gas (-> vm-exec EthInstruction Integer))
 (define (instruction-gas vm i)
   (define (C_sstore)

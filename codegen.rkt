@@ -552,75 +552,88 @@ These optimizations are currently unimplemented:
 
 (: cg-mexpr (Generator MExpr))
 (define (cg-mexpr exp)
-  (cond ((reg?   exp)  (cg-mexpr-reg   exp))
-        ((const? exp)  (cg-mexpr-const exp))
-        ((boxed-const? exp) (cg-mexpr-boxed-const exp))
-        ((op?    exp)  (cg-mexpr-op    exp))
-        ((label? exp)  (cg-mexpr-label exp))
-        ((stack? exp)  '())
-        ((evm?   exp)  (evm-insts exp))
-        (else
-         (error "cg-mexpr: Unknown mexpr" exp (list? exp)))))
+  (append
+   (debug-label 'cg-mexpr)
+   (cond ((reg?   exp)  (cg-mexpr-reg   exp))
+         ((const? exp)  (cg-mexpr-const exp))
+         ((boxed-const? exp) (cg-mexpr-boxed-const exp))
+         ((op?    exp)  (cg-mexpr-op    exp))
+         ((label? exp)  (cg-mexpr-label exp))
+         ((stack? exp)  '())
+         ((evm?   exp)  (append (debug-label 'cg-mexpr-evm)
+                                (evm-insts exp)))
+         (else
+          (error "cg-mexpr: Unknown mexpr" exp (list? exp))))))
 
 (: cg-mexpr-reg   (Generator reg))
 (define (cg-mexpr-reg dest)
-  (let ((reg (reg-name dest)))
-    (cond ((eq? reg 'env)      (cg-read-address (const MEM-ENV)))
-          ((eq? reg 'proc)     (cg-read-address (const MEM-PROC)))
-          ((eq? reg 'continue) (cg-read-address (const MEM-CONTINUE)))
-          ((eq? reg 'argl)     (cg-read-address (const MEM-ARGL)))
-          ((eq? reg 'val)      (cg-read-address (const MEM-VAL)))
-          (else
-           (error "cg-mexpr-reg: Unknown register" dest)))))
+  (append
+   (debug-label 'cg-mexpr-reg)
+   (let ((reg (reg-name dest)))
+     (cond ((eq? reg 'env)      (cg-read-address (const MEM-ENV)))
+           ((eq? reg 'proc)     (cg-read-address (const MEM-PROC)))
+           ((eq? reg 'continue) (cg-read-address (const MEM-CONTINUE)))
+           ((eq? reg 'argl)     (cg-read-address (const MEM-ARGL)))
+           ((eq? reg 'val)      (cg-read-address (const MEM-VAL)))
+           (else
+            (error "cg-mexpr-reg: Unknown register" dest))))))
 
 (: cg-write-reg (Generator2 reg MExpr))
 (define (cg-write-reg dest exp)
-  (let ((reg (reg-name dest)))
-    (cond ((eq? reg 'env)      (cg-write-address (const MEM-ENV)  exp))
-          ((eq? reg 'proc)     (cg-write-address (const MEM-PROC)  exp))
-          ((eq? reg 'continue) (cg-write-address (const MEM-CONTINUE) exp))
-          ((eq? reg 'argl)     (cg-write-address (const MEM-ARGL) exp))
-          ((eq? reg 'val)      (cg-write-address (const MEM-VAL) exp))
-          (else
-           (error "cg-write-reg: Unknown register" dest exp)))))
+  (append
+   (debug-label 'cg-write-reg)
+   (let ((reg (reg-name dest)))
+     (cond ((eq? reg 'env)      (cg-write-address (const MEM-ENV)  exp))
+           ((eq? reg 'proc)     (cg-write-address (const MEM-PROC)  exp))
+           ((eq? reg 'continue) (cg-write-address (const MEM-CONTINUE) exp))
+           ((eq? reg 'argl)     (cg-write-address (const MEM-ARGL) exp))
+           ((eq? reg 'val)      (cg-write-address (const MEM-VAL) exp))
+           (else
+            (error "cg-write-reg: Unknown register" dest exp))))))
 
 (: cg-mexpr-const (Generator const))
 (define (cg-mexpr-const exp)
-  (let ((val (const-value exp)))
-    (begin
-      (cond ((symbol? val)
-             (let ((int (symbol->integer val)))
-               (list (evm-push (integer-bytes int) int))))
-            ((integer? val) (list (evm-push (integer-bytes val) val)))
-            ((list? val)    (cg-make-list (map const val) #f))
-            (else
-             (error "cg-mexpr-const: Unsupported constant" exp))))))
+  (append
+   (debug-label 'cg-mexpr-const)
+   (let ((val (const-value exp)))
+     (begin
+       (cond ((symbol? val)
+              (let ((int (symbol->integer val)))
+                (list (evm-push (integer-bytes int) int))))
+             ((integer? val) (list (evm-push (integer-bytes val) val)))
+             ((list? val)    (cg-make-list (map const val) #f))
+             (else
+              (error "cg-mexpr-const: Unsupported constant" exp)))))))
           
 
 (: cg-mexpr-boxed-const (Generator boxed-const))
 (define (cg-mexpr-boxed-const exp)
-  (let ([ val (boxed-const-value exp) ])
-    (cond [(symbol? val)
-           (let ((int (symbol->integer (cast val Symbol))))
-             (cg-make-symbol (const (integer-bytes int))))]
-          [(integer? val) (cg-make-fixnum (const val))]
-          [(list? val)    (cg-make-list (map const val) #t)]
-          [else           (error "cg-mexpr-const: Unsupported constant" exp)])))
+  (append
+   (debug-label 'cg-mexpr-boxed-const)
+   (let ([ val (boxed-const-value exp) ])
+     (cond [(symbol? val)
+            (let ((int (symbol->integer (cast val Symbol))))
+              (cg-make-symbol (const (integer-bytes int))))]
+           [(integer? val) (cg-make-fixnum (const val))]
+           [(list? val)    (cg-make-list (map const val) #t)]
+           [else           (error "cg-mexpr-const: Unsupported constant" exp)]))))
 
 (unsafe-require/typed "unsafe.rkt"
                       [ unsafe-apply (-> Procedure (Listof Any) EthInstructions)])
 
 (: cg-mexpr-op (Generator op))
 (define (cg-mexpr-op exp)
-  (let* ([ name (op-name exp)]
-         [ args (op-args exp)]
-         [ tbl (*primops*)]
-         [ primop (find-primop tbl name)]
-         [ proc (primop-gen primop)]
-         )
-    (unless (procedure-arity-includes? proc (length args))
-      (error "cg-mexpr-op: Attempted to invoke primop with incorrect number of arguments" name (procedure-arity proc) args))
-    (unsafe-apply proc args)))
+  (append
+   (debug-label 'cg-mexpr-op)
+   (let* ([ name (op-name exp)]
+          [ args (op-args exp)]
+          [ tbl (*primops*)]
+          [ primop (find-primop tbl name)]
+          [ proc (primop-gen primop)]
+          )
+     (unless (procedure-arity-includes? proc (length args))
+       (error "cg-mexpr-op: Attempted to invoke primop with incorrect number of arguments" name (procedure-arity proc) args))
+     (unsafe-apply proc args))))
 
 (: find-primop (-> PrimopTable Symbol primop))
 (define (find-primop tbl name)
@@ -630,7 +643,8 @@ These optimizations are currently unimplemented:
 
 (: cg-mexpr-label (Generator (U label-definition label)))
 (define (cg-mexpr-label exp)
-  (list (evm-push 'shrink exp)))
+  (append (debug-label 'cg-mexpr-label)
+          (list (evm-push 'shrink exp))))
 
 (: cg-mexpr-stack Generator0)
 (define (cg-mexpr-stack) '())

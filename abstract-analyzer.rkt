@@ -156,6 +156,7 @@
     [(struct label-definition _) x]
     [(struct %stack _)        (pop-stack)]
     [(struct evm ((list (? evm-op? i)))) (eval-evm-op i)]
+    [(struct label _) x]
     [_ (error "eval-mexpr: Unknown expression" x)]))
 
 (: eval-op-define-variable! (-> value value value Void))
@@ -221,9 +222,16 @@
                              x))
   (match (evm-op-name x)
     ['EQ  (binop =)]
+    ['GT  (binop >)]
+    ['LT  (binop <)]
+    ['GE  (binop >=)]
+    ['LE  (binop <=)]
     ['ADD (binop +)]
-    ['SUB (binop (λ (a b) (- a b)))]
+    ['SUB (binop -)]
     ['MUL (binop *)]
+    ['ISZERO (unop  (λ (a)   (if (= a 0) 1 0)))]
+    ['DIV    (binop (λ (a b) (if (equal? 0 b) 0 (floori (/ a b)))))]
+    ['MOD    (binop (λ (a b) (if (equal? 0 b) 0 (modulo a b))))]
     ; TODO: Everything below is a stub until we get an SMT solver or something
     ['ADDRESS 1234]
     ['CALLER  4321]

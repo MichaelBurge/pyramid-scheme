@@ -86,6 +86,9 @@
                 (integer->char-list q)))))
   (list->string (reverse (integer->char-list n))))
 
+(: floori (-> Real Integer))
+(define (floori x) (cast (floor x) Integer))
+
 ;; (if (>= i (bytes-length bs))
   ;;     0
   ;;     (bytes->integer (subbytes(bytes-ref bs i)))

@@ -113,3 +113,10 @@
 (define MAX-ITERATIONS 1000000)
 (define DEFAULT-GAS-PRICE 10)
 (define DEFAULT-GAS-LIMIT 1000000)
+
+(define-syntax-rule (verbose-section title level body)
+  (when (verbose? level)
+    (displayln title)
+    body
+    (newline)
+  ))
