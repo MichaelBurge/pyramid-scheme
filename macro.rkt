@@ -1,4 +1,4 @@
-#lang errortrace typed/racket
+#lang typed/racket
 
 (require (submod "types.rkt" simulator))
 (require (submod "types.rkt" test))
@@ -17,9 +17,6 @@
 (require racket/match)
 
 (require "typed/binaryio.rkt")
-
-(require/typed "codegen.rkt"
-  [ codegen-list (Generator Instructions)])
 
 (provide (all-defined-out)
          make-label

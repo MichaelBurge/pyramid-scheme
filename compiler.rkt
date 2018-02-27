@@ -1,4 +1,4 @@
-#lang errortrace typed/racket
+#lang typed/racket
 
 (require (submod "types.rkt" ast))
 (require (submod "types.rkt" abstract-machine))

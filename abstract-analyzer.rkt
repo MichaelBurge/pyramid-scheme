@@ -178,7 +178,7 @@
   (define is (list->vector xs))
   (build-evm-symbol-table xs)
 
-  (parameterize ([ *evm-pc* -1])
+  (parameterize ([ *evm-pc* 0])
     (let loop ([ n 0 ])
       (if (or (>= n (vector-length is))
               (<  n 0))
