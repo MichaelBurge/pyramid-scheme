@@ -13,9 +13,9 @@
 ; (symbol? x) implies x = (symbol (unbox x))
 (define unbox %-unbox)
 
-(define pair %-cons)
-(define l %-car)
-(define r %-cdr)
+(define pair %-pair)
+(define l %-left)
+(define r %-right)
 
 (defmacro (list . xs)
   (define (loop lst)

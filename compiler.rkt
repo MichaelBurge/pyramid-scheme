@@ -79,7 +79,7 @@
 (: compile-asm (-> Target Linkage pyr-asm inst-seq))
 (define (compile-asm target linkage exp)
   (end-with-linkage linkage
-                    (inst-seq all-regs all-regs (pyr-asm-insts exp))))
+                    (inst-seq (set) (set) (pyr-asm-insts exp))))
 
 (: compile-macro-definition (-> Target Linkage pyr-macro-definition inst-seq))
 (define (compile-macro-definition target linkage exp)

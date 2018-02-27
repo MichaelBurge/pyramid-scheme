@@ -724,7 +724,7 @@
 (: on-simulate-debug (-> ReverseSymbolTable OnSimulateCallback))
 (define (on-simulate-debug reverse-symbol-table)
   (λ (vm i reads)
-    (fprintf (current-output-port) "~a" (vm-exec-step vm))
+    (printf "~a" (vm-exec-step vm))
     (write-char #\tab)
     (display (reverse-symbol-name reverse-symbol-table (vm-exec-pc vm)))
     (write-char #\tab)

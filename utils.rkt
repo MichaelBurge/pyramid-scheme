@@ -86,7 +86,6 @@
                 (integer->char-list q)))))
   (list->string (reverse (integer->char-list n))))
 
-
 ;; (if (>= i (bytes-length bs))
   ;;     0
   ;;     (bytes->integer (subbytes(bytes-ref bs i)))

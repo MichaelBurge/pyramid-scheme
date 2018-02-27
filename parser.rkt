@@ -17,8 +17,13 @@
 
 (provide (except-out (all-defined-out) read-statements-port))
 
+(define parser-key (make-continuation-mark-key 'parser))
+(: *handler?* (Parameterof Boolean))
+(define *handler?* (make-parameter #f))
+
 (: expand-pyramid (-> PyramidQ Pyramid))
 (define (expand-pyramid x)
+  (with-parser-frame 'expand-pyramid x
   (match x
     ((? boolean?) (pyr-const x))
     ((? exact-integer?) (pyr-const x))
@@ -63,7 +68,7 @@
      (pyr-application (expand-pyramid head) (map expand-pyramid tail)))
     (_ (begin
          (pretty-print x)
-         (error "expand-pyramid: Unexpected form" x)))))
+         (error "expand-pyramid: Unexpected form" x))))))
 
 (: shrink-pyramid (-> Pyramid PyramidQ))
 (define (shrink-pyramid x)
@@ -85,6 +90,7 @@
 
 (: parse-evm (-> PyramidQ EthInstruction))
 (define (parse-evm x)
+  (with-parser-frame 'parse-evm x
   (match x
     [`(push  'shrink         ,val) (evm-push 'shrink           (cast val EthWord))]
     [`(push  ,(? byte? size) ,val) (evm-push  (cast size Byte) (cast val EthWord))]
@@ -96,9 +102,8 @@
     [`(label (quote ,(? symbol? name))) (label-definition (cast name Symbol) 0  #f)]
     [`(label (quote ,(? symbol? name))
              ,(? exact-integer? os))    (label-definition (cast name Symbol) os #f)]
-    ;; [`(,(? symbol? name) . ,(? list? args))
-    ;;  (pyr-asm-cg `(,name ,@args))]
-    [_ (error "parse-asm: Unknown syntax" x)]))
+    [`(quote ,(? symbol? op)) (evm-op op)]
+    [_ (error "parse-evm: Unknown syntax" x)])))
 
 (: shrink-evm (-> EthInstruction PyramidQ))
 (define (shrink-evm asm)
@@ -113,10 +118,11 @@
     [(struct label-definition (name 0  #f))      `(label (quote ,name))]
     [(struct label-definition (name os #f))      `(label (quote ,name) ,os)]
     [(struct label-definition (name os virtual)) `(label (quote ,name) ,os ,virtual)]
-    [_ (error "shrink-asm: Unknown syntax" asm)]))
+    [_ (error "shrink-evm: Unknown syntax" asm)]))
 
 (: parse-asm (-> PyramidQ Instruction))
 (define (parse-asm x)
+  (with-parser-frame 'parse-asm x
   (match x
     [`(label (quote ,(? symbol? name))) (label-definition name 0 #f)]
     [`(label (quote ,(? symbol? name)) ,(? exact-integer? os)) (label-definition name os #f)]
@@ -127,10 +133,10 @@
     [`(goto ,dest) (goto (parse-mexpr dest))]
     [`(save ,e) (save (parse-mexpr e))]
     [`(restore (quote ,(? register? name))) (restore name)]
-    [`(perform ,e) (perform (cast (parse-mexpr e) op))]
+    [`(perform ,e) (perform (parse-mexpr e))]
     [`(evm . ,(? list? is)) (evm (map parse-evm is))]
     [_ (error "parse-asm: Unknown syntax" x)]
-    ))
+    )))
 
 (: shrink-asm (-> Instruction PyramidQ))
 (define (shrink-asm i)
@@ -151,8 +157,10 @@
 
 (: parse-mexpr (-> PyramidQ MExpr))
 (define (parse-mexpr x)
+  (with-parser-frame 'parse-mexpr x
   (match x
     [`(reg (quote ,(? register? name)))        (reg name)]
+    [`(const (quote ,(? symbol? value)))       (const value)]
     [`(const ,(? register-value? value))       (const value)]
     [`(boxed-const ,(? register-value? value)) (boxed-const value)]
     [`(op (quote ,(? symbol? name)) . ,(? list? args)) (op name (map parse-mexpr args))]
@@ -160,21 +168,40 @@
     [`(label (quote ,(? symbol? name)))        (label name)]
     [`(evm (quote ,xs) ...)                    (evm (map evm-op (cast xs (Listof Symbol))))]
     [_ (error "parse-mexpr: Unknown syntax" x)]
-    ))
+    )))
 
 (: shrink-mexpr (-> MExpr PyramidQ))
 (define (shrink-mexpr e)
+  (define (ensure-quoted x)
+    (if (symbol? x) `(quote ,x) x))
   (match e
     [(struct reg         (name     )) `(reg (quote ,name) )]
-    [(struct const       (value    )) `(const ,value      )]
-    [(struct boxed-const (value    )) `(boxed-const ,value)]
-    [(struct op          (name args)) `(op ,name ,@(map shrink-mexpr args))]
+    [(struct const       (value    )) `(const ,(ensure-quoted value))]
+    [(struct boxed-const (value    )) `(boxed-const ,(ensure-quoted value))]
+    [(struct op          (name args)) `(op (quote ,name) ,@(map shrink-mexpr args))]
     [(struct %stack      (         )) 'stack               ]
-    [(struct label       (name))      `(label ,name)]
+    [(struct label       (name))      `(label (quote ,name))]
     [(struct evm         (is))        `(evm ,@(map (λ (x) (list 'quote x)) (map evm-op-name (cast is (Listof evm-op)))))]
     [_ (error "shrink-mexpr: Unknown syntax" e)]
     ))
-     
+
+(: shrink-value (-> value [#:env? Boolean] PyramidQ))
+(define (shrink-value e #:env? [env? (verbose? VERBOSITY-MEDIUM)])
+  (match e
+    [(struct v-fixnum (v)) `#&,v]
+    [(struct v-symbol (v)) `#&,v]
+    [(struct v-compiled-procedure (lbl env)) `(λ ,(shrink-value lbl))]
+    [(struct v-primitive-procedure (lbl))    `(λ* ,(shrink-value lbl))]
+    [(struct v-pair (left right)) (cons (shrink-value left) (shrink-value right))]
+    [(struct v-vector (vs)) (apply vector (map shrink-value vs))]
+    [(struct v-null ()) '()]
+    [(struct v-continuation (cont env)) `(λ-> ,(shrink-value cont))]
+    [(struct v-frame (mappings)) mappings]
+    [(struct v-environment (frames)) `(env ,@(if env? (map shrink-value frames) null))]
+    [(struct label (name)) `(quote ,(label-name e))]
+    [(? v-unboxed? _) e]
+    [_ (error "shrink-value: Unhandled case" e)]))
+
 (: syntaxes (Setof Symbol))
 (define syntaxes (apply set '(quote set! define if lambda begin defmacro push op byte label asm)))
 
@@ -212,21 +239,11 @@
           (cons x (loop)))))
   (loop))
 
-
-;; (: read-statements (-> String (Listof Any)))
-;; (define (read-statements filename)
-;;   (read-statements-port (open-input-file filename)))
-
-;; (: read-file (-> String (Listof Any)))
-;; (define (read-file filename)
-;;   `(begin ,@(read-statements filename)))
-
 (module unsafe racket
   (provide parse-file)
   (define (parse-file filename)
     (eval `(begin (require ,filename) program))
     )
-  ;(expand-pyramid (read-file filename)))
 )
 
 (require/typed 'unsafe
@@ -243,3 +260,21 @@
     ((list x) x)
     (xs (pyr-begin xs))))
 
+(: print-stack-trace (-> Continuation-Mark-Set Void))
+(define (print-stack-trace st)
+  (define expressions (continuation-mark-set->list st parser-key))
+  (pretty-print expressions)
+  )
+
+;(: with-parser-frame (All (A) (-> PyramidQ (-> A) A)))
+(define-syntax-rule (with-parser-frame n x f)
+  (with-continuation-mark parser-key (list n `(quote ,x))
+    (if (*handler?*)
+        f
+        (parameterize ([ *handler?* #t ])
+          (with-handlers ([exn:fail? (λ ([ x : exn:fail])
+                                       (displayln "== Parse stack")
+                                       (print-stack-trace (exn-continuation-marks x))
+                                       (raise x))])
+            f
+            )))))

@@ -77,7 +77,7 @@
   (struct goto ([ dest : MExpr ]) #:transparent)
   (struct save ([ exp : MExpr ]) #:transparent)
   (struct restore ([ reg-name : RegisterName ]) #:transparent)
-  (struct perform ([ action : op ]) #:transparent)
+  (struct perform ([ action : MExpr ]) #:transparent)
   (struct evm ([ insts : EthInstructions ]) #:transparent)
   (define-type Instruction (U label-definition
                               assign

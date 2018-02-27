@@ -4,12 +4,11 @@
 
 (asm
  (label 'example) ; Labels evaluate to their eventual bytecode position
- (push 1 2)       ; Pushes have a size and value. Size is bytes or 'shrink
- (push 'shrink 3)
- (op 'ADD)        ; A one-byte assembly opcode
- (cg-goto 'skip)  ; You can access any assembly generators in the codegen.rkt module
- (byte 42) ;      ; You can include arbitrary data in your assembly, and refer to it with CODECOPY and labels
+ (save (const 2)) ; save pushes values onto the stack
+ (save (const 3))
+ (evm  (op 'ADD))  ; Inline EVM opcodes
+ (goto (label 'skip))     
+ (evm  (byte 42))  ; You can include arbitrary data in your assembly, and refer to it with CODECOPY and labels
  (label 'skip)
- (cg-make-fixnum stack) ; Values should be boxed before return
- (cg-write-reg (reg 'val) stack) ; The 'val register holds the "last abstract machine instruction's result"
+ (assign 'val (op 'make-fixnum stack)) ; The 'val register holds the "last abstract machine instruction's result"
  )

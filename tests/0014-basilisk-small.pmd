@@ -22,7 +22,7 @@
 
 ; Main contract
 
-(static BASILISK-WALLET (asm (op 'CALLER)))
+(static BASILISK-WALLET (asm (evm 'CALLER)))
 
 (withdraw-all! BASILISK-WALLET)
 (define sender-balance (update-sender-balance!))

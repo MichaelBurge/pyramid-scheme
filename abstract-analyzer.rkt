@@ -1,27 +1,30 @@
 #lang typed/racket
 
 (provide #%datum #%app #%module-begin #%top-interaction quote
+         run-instructions
          verify-instructions
          (all-defined-out))
 
 (require "globals.rkt")
 (require "utils.rkt")
+(require "parser.rkt")
 (require (submod "types.rkt" common))
 (require (submod "types.rkt" abstract-machine))
+(require (submod "types.rkt" evm-assembly))
 
 (: *m* machine)
 (define *m* (machine 0
                      (v-environment null)
-                     (v-compiled-procedure (label 'INVALID-PROC) (v-environment null))
-                     (label 'INVALID-CONTINUE)
+                     (v-compiled-procedure (label 'INVALID) (v-environment null))
+                     (label 'INVALID)
                      (v-null)
                      #f
                      null
                      #f))
 (: *abstract-symbol-table* (HashTable Symbol Integer))
 (define *abstract-symbol-table* (make-hash))
-(: *current-instruction* (Parameterof Integer))
-(define *current-instruction* (make-parameter 0))
+(: *current-instruction* (Parameterof Instruction))
+(define *current-instruction* (make-parameter (assign 'val (const 0))))
 
 (module unsafe typed/racket
   (require typed/racket/unsafe)
@@ -46,21 +49,28 @@
 (require 'unsafe)
 
 (: verify-instructions (-> Instructions Void))
-(define (verify-instructions is) (void is))
+(define (verify-instructions is)
+  is
+  (void))
 
 (: run-instructions (-> Instructions value))
 (define (run-instructions is)
   (define vis (list->vector is))
   (build-symbol-table is)
+  (when (verbose? VERBOSITY-LOW)
+    (printf "PC\tInstruction\tStack\tval\tcontinue\tproc\targl\tenv\n"))
   (let loop ([n 0])
-    (*current-instruction* (+ 1 (machine-pc *m*)))
-    (when (>= n MAX-ITERATIONS)
-      (error "verify-instructions: Didn't stop after iterations" n))
-    (cond ((machine-halted? *m*) (machine-val *m*))
-          ((>= n (vector-length vis)) (machine-val *m*))
-          (else (begin (eval-instruction (vector-ref vis (machine-pc *m*)))
-                       (loop (+ n 1)))))))
-
+    (let ([pc (machine-pc *m*) ])
+      (when (>= n MAX-ITERATIONS)
+        (error "verify-instructions: Didn't stop after iterations" n))
+      (cond ((machine-halted? *m*) (machine-val *m*))
+            ((>= pc (vector-length vis)) (machine-val *m*))
+            (else (begin (*current-instruction* (vector-ref vis pc))
+                         (when (verbose? VERBOSITY-LOW)
+                           (print-debug-line))
+                         (eval-instruction (*current-instruction*))
+                         (loop (+ n 1))))))))
+  
 (: build-symbol-table (-> Instructions Void))
 (define (build-symbol-table is)
   (for ([ i is]
@@ -77,10 +87,10 @@
     [(struct test (condition))    (push-stack (eval-mexpr condition)) (next)]
     [(struct branch (dest))       (if (pop-stack)                     (jump (eval-mexpr dest)) (next))]
     [(struct goto (dest))                                             (jump (eval-mexpr dest))]
-    [(struct save (e))            (push-stack (eval-mexpr e))    (next)]
+    [(struct save (e))            (push-stack (eval-mexpr e))         (next)]
     [(struct restore (reg-name))  (write-reg reg-name (pop-stack))    (next)]
     [(struct perform (op))        (void (eval-mexpr op))              (next)]
-    ;[(struct asm (xs))              (for ([ x xs ]) (eval-assembly x))]
+    [(struct evm (xs))            (for ([ x xs ]) (eval-evm x))       (next)]
     [_                               (error "eval-instruction: Unknown instruction" (*current-instruction*) i)]))
 
 (: read-reg (-> RegisterName value))
@@ -118,30 +128,48 @@
 
 (: pop-stack (-> value))
 (define (pop-stack)
-  (define val (first (machine-stack *m*)))
-  (set-machine-stack! *m* (rest (machine-stack *m*)))
-  val)
+  (match (machine-stack *m*)
+    [(? null?) (error "pop-stack: Attempted to pop an empty stack")]
+    [(cons x xs) (set-machine-stack! *m* xs)
+                 x]))
 
-;(define (eval-assembly x) (undefined))
+(: eval-evm (-> EthInstruction Void))
+(define (eval-evm x)
+  (match x
+    [(struct evm-op _)              (match (eval-evm-op x)
+                                      [(? void?) (void)]
+                                      [x         (push-stack x)])]
+    [(struct evm-push (size value)) (push-stack value)]
+    [(struct label-definition _)    (void)]
+    [(struct evm-bytes _)           (void)]
+    [_ (error "eval-evm: Unknown syntax" x)]))
+
 (: eval-mexpr (-> MExpr value))
 (define (eval-mexpr x)
   (match x
     [(struct reg (name))      (read-reg name)]
-    [(struct const (v))       (if (v-unboxed? v) v (error "eval-mexpr: const must be unboxed"))]
+    [(struct const (v))       (cond [(v-unboxed? v) v]
+                                    [(list? v)      (list->v-list (cast v (Listof value)))]
+                                    [else (error "eval-mexpr: Unhandled type" v)])]
     [(struct boxed-const (v)) (v-box v)]
     [(struct op _)            (eval-op eval-mexpr x)]
-    [(struct label-definition (name _ _)) (hash-ref *abstract-symbol-table* name)]
+    [(struct label-definition _) x]
+    [(struct %stack _)        (pop-stack)]
+    [(struct evm ((list (? evm-op? i)))) (eval-evm-op i)]
     [_ (error "eval-mexpr: Unknown expression" x)]))
 
 (: eval-op-define-variable! (-> value value value Void))
 (define (eval-op-define-variable! name value env)
   (assert name symbol?)
   (assert env v-environment?)
-  (if (null? env)
-      (set-machine-env! *m* (eval-op-extend-environment (list name) (list value) env))
-      (let* ([ frame (first (v-environment-frames env))]
-             [ ms (v-frame-mappings frame) ])
-        (hash-set! ms name value))))
+  (let ([fs (v-environment-frames env) ])
+    (if (null? fs)
+        (set-machine-env! *m*
+                          (eval-op-extend-environment (v-pair name (v-null))
+                                                      (v-pair value (v-null)) env))
+        (let* ([ frame (first fs) ]
+               [ ms (v-frame-mappings frame) ])
+          (hash-set! ms name value)))))
 
 (: eval-op-set-variable-value! (-> value value value Void))
 (define (eval-op-set-variable-value! name value env)
@@ -168,6 +196,42 @@
   (match val
     [(? exact-integer? _) (v-fixnum val)]
     [_ (error "eval-op-box: Should only box unboxed values")]))
+
+(: eval-evm-op (-> evm-op (U Void value)))
+(define (eval-evm-op x)
+  (: pop-integer (-> Integer))
+  (define (pop-integer)
+    (: res value)
+    (define res (pop-stack))
+    (if (integer? res)
+        res
+        (error "eval-evm-op: Expected an integer" res)))
+  (: binop (-> (-> Integer Integer value) value))
+  (define (binop  f) (f (pop-integer) (pop-integer)))
+  (: unop (-> (-> Integer value) value))
+  (define (unop f) (f (pop-integer)))
+  (: proc (-> Integer Void))
+  (define (proc n) (begin (for ([ i (in-range n)])
+                            (pop-integer))))
+  (: const (-> Integer value value))
+  (define (const n x) (begin (proc n)
+                             x))
+  (match (evm-op-name x)
+    ['EQ  (binop =)]
+    ['ADD (binop +)]
+    ['MUL (binop *)]
+    ; TODO: Everything below is a stub until we get an SMT solver or something
+    ['ADDRESS 1234]
+    ['CALLER  4321]
+    ['CALLVALUE 0]
+    ['PUSH32    0]
+    ['BALANCE   (const 1 0)]
+    ['CALL      (const 7 1)]
+    ['SLOAD     (const 1 0)]
+    ['SSTORE    (proc  2)]
+    ['CALLDATALOAD (const 1 0)]
+    [_ (error "eval-evm-op: Unknown EVM op" x)]
+    ))
 
 (: eval-op-extend-environment (-> value value value value))
 (define (eval-op-extend-environment names values env)
@@ -206,17 +270,18 @@
 
 (: eval-op-lookup-variable-value (-> value value value))
 (define (eval-op-lookup-variable-value name env)
-  (let loop : value ([ e env ])
-    (assert e v-pair?)
-    (if (v-null? e)
-        (error "eval-op-lookup-variable-value: Variable not found" (*current-instruction*) name env)
-        (let ([ frame (v-pair-left e) ])
-          (assert frame v-frame?)
-          ;(pretty-print `(DEBUG ,frame ,(hash-has-key? frame name)))
-          (let* ([ ms (v-frame-mappings frame)]
-                 [ next : (-> value) (λ ()(loop (v-pair-right e)))]
-                 )
-            (cast (hash-ref ms name next) value))))))
+  (assert name symbol?)
+  (assert env v-environment?)
+  (let loop : value ([ fs (v-environment-frames env) ])
+       (if (null? fs)
+           (error "eval-op-lookup-variable-value: Variable not found" (*current-instruction*) name env)
+           (let ([ frame (first fs)])
+             (assert frame v-frame?)
+             ;(pretty-print `(DEBUG ,frame ,(hash-has-key? frame name)))
+             (let ([ ms : (HashTable Symbol value) (v-frame-mappings frame)])
+               (if (hash-has-key? ms name)
+                   (hash-ref ms name)
+                   (loop (rest fs))))))))
 
 (: eval-op-false? (-> value value))
 (define (eval-op-false? value)
@@ -307,6 +372,12 @@
     [ (struct v-pair (l r)) (cons l (v-list->list r))]
     [ _ (error "v-list->list: Improper list detected" x)]))
 
+(: list->v-list (-> (Listof value) value))
+(define (list->v-list xs)
+  (if (null? xs)
+      (v-null)
+      (v-pair (first xs) (list->v-list (rest xs)))))
+
 (: v-box (-> RegisterValue value))
 (define (v-box x)
   (match x
@@ -316,3 +387,17 @@
     [(? list? _)          (v-pair (v-box (first x))
                                   (v-box (cast (rest x) RegisterValue)))]
     [_ (error "v-box: Unknown type" x)]))
+
+(: print-debug-line (-> Void))
+(define (print-debug-line)
+  (printf "~a\t~v\t~v\t~v\t~v\t~v\t~v\t~v\n"
+          (+ 1 (machine-pc *m*))
+          (shrink-asm (*current-instruction*))
+          (map shrink-value (machine-stack *m*))
+          (shrink-value (machine-val      *m*))
+          (shrink-value (machine-continue *m*))
+          (shrink-value (machine-proc     *m*))
+          (shrink-value (machine-argl     *m*))
+          (shrink-value (machine-env      *m*) #:env? #t)
+          ))
+          

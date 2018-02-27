@@ -28,14 +28,14 @@
     `(define ,id (asm (evm (label (quote ,sym) ,2)
                            (op 'PUSH32)
                            (bytes 32 0))
-                      (op 'make-fixnum stack)
+                      (save (op 'make-fixnum stack))
                       (restore 'val)))
     ))
 
 (define (void) (begin))
 (defmacro (when pred . body)
   `(if ,pred
-       (begin ,@ body)
+       (begin ,@body)
        (void)))
 
 (define (for f lst)

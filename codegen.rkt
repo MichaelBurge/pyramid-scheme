@@ -186,7 +186,7 @@ These optimizations are currently unimplemented:
 (define (cg-perform i)
   (append
    (debug-label 'cg-perform)
-   (cg-mexpr-op (perform-action i))
+   (cg-mexpr (perform-action i)) ; TODO: Watch the number of stack writes here to pop them.
    (debug-label 'cg-perform-end)))
 
 ;; (module asm-unsafe typed/racket/no-check

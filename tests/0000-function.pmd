@@ -1,0 +1,7 @@
+#lang pyramid
+
+(set-test-result! 4)
+
+(define (f x) x)
+
+(f 4)
