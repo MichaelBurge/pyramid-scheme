@@ -207,7 +207,10 @@
         res
         (error "eval-evm-op: Expected an integer" res)))
   (: binop (-> (-> Integer Integer value) value))
-  (define (binop  f) (f (pop-integer) (pop-integer)))
+  (define (binop  f)
+    (let* ([ a (pop-integer) ]
+           [ b (pop-integer) ])
+      (f a b)))
   (: unop (-> (-> Integer value) value))
   (define (unop f) (f (pop-integer)))
   (: proc (-> Integer Void))
@@ -219,6 +222,7 @@
   (match (evm-op-name x)
     ['EQ  (binop =)]
     ['ADD (binop +)]
+    ['SUB (binop (λ (a b) (- a b)))]
     ['MUL (binop *)]
     ; TODO: Everything below is a stub until we get an SMT solver or something
     ['ADDRESS 1234]

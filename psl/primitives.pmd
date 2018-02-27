@@ -16,7 +16,7 @@
     (define uq 'unquote)
     (define qq 'quasiquote)
     (define (intro c) `(intro-var ,c ,@(maybe->list unbox-input? ''fixnum-value)))
-    (define intros (reverse (for/list ([ c (in-string vs 0 reads) ])
+    (define intros (reverse (for/list ([ c (in-string vs 0 reads)])
                               (intro (string->symbol (string c))))))
     (define write? (equal? writes 1))
     `(,qq (begin ,@intros

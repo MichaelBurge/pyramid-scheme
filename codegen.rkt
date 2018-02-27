@@ -1119,7 +1119,7 @@ These optimizations are currently unimplemented:
          ))) 
   (append
    (debug-label 'cg-make-list)
-   (cg-intros lst) ; [ *vals ]
+   (cg-intros (reverse lst)) ; [ *vals ]
    (cg-make-nil)             ; [ nil; *vals ]
    (loop (length lst))))
 

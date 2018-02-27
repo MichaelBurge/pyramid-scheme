@@ -178,7 +178,7 @@
                proc-entry
                (assign 'env (op 'compiled-procedure-env `(,(reg 'proc))))
                (assign 'env (op 'extend-environment
-                                `(,(const formals)
+                                `(,(const (reverse formals))
                                   ,(reg 'argl)
                                   ,(reg 'env)))))
    (compile-pyramid 'val 'return body)))
