@@ -94,7 +94,8 @@
 (defmacro (%-bool->fixnum a)
   `(begin
      ,a
-     (asm (save (op 'make-fixnum (reg 'val)))
+     (asm (save (op 'bool->unboxed (reg 'val)))
+          (save (op 'make-fixnum stack))
           (restore 'val))
      ))
 

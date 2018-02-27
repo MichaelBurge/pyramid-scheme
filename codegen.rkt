@@ -1524,6 +1524,9 @@ SWAP1 -> [ x1; x2; x3; c ]
      `(,ret)                                            ; [ ]
      )))
 
+(: cg-identity (Generator1 MExpr))
+(define (cg-identity x) (cg-mexpr x))
+
 ; (: cg-move-front (Generator Fixnum))
 
 ; The only expressions that don't affect the stack are reads from the stack-aliased registers.

@@ -36,6 +36,7 @@
   (define-type EthInstructions    (Listof   EthInstruction))
   (define-type Generator0         (->       EthInstructions))
   (define-type (Generator  A)     (-> A     EthInstructions))
+  (define-type Generator1 Generator)
   (define-type (Generator2 A B)   (-> A B   EthInstructions))
   (define-type (Generator3 A B C) (-> A B C EthInstructions))
 

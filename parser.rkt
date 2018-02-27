@@ -91,7 +91,8 @@
 (: parse-evm (-> PyramidQ EthInstruction))
 (define (parse-evm x)
   (with-parser-frame 'parse-evm x
-  (match x
+    (match x
+    [`(push  'shrink (label (quote ,(? symbol? val)))) (evm-push 'shrink (label val))]
     [`(push  'shrink         ,val) (evm-push 'shrink           (cast val EthWord))]
     [`(push  ,(? byte? size) ,val) (evm-push  (cast size Byte) (cast val EthWord))]
     [`(op    (quote ,x))           (evm-op    (cast x Symbol))]
@@ -108,6 +109,7 @@
 (: shrink-evm (-> EthInstruction PyramidQ))
 (define (shrink-evm asm)
   (match asm
+    [(struct evm-push ('shrink (struct label (name)))) `(push 'shrink (label (quote ,name)))]
     [(struct evm-push ('shrink value))       `(push 'shrink ,value)]
     [(struct evm-push (size value))          `(push ,size ,value)]
     [(struct evm-op   (sym))                 `(op (quote ,sym))]

@@ -23,8 +23,15 @@
                      #f))
 (: *abstract-symbol-table* (HashTable Symbol Integer))
 (define *abstract-symbol-table* (make-hash))
+(: *evm-symbol-table* (HashTable Symbol Integer))
+(define *evm-symbol-table* (make-hash))
 (: *current-instruction* (Parameterof Instruction))
 (define *current-instruction* (make-parameter (assign 'val (const 0))))
+(: *current-evm-instruction* (Parameterof EthInstruction))
+(define *current-evm-instruction* (make-parameter (evm-op 'UNSET)))
+
+(: *evm-pc* (Parameterof Integer))
+(define *evm-pc* (make-parameter -1))
 
 (module unsafe typed/racket
   (require typed/racket/unsafe)
@@ -56,7 +63,7 @@
 (: run-instructions (-> Instructions value))
 (define (run-instructions is)
   (define vis (list->vector is))
-  (build-symbol-table is)
+  (build-abstract-symbol-table is)
   (when (verbose? VERBOSITY-LOW)
     (printf "PC\tInstruction\tStack\tval\tcontinue\tproc\targl\tenv\n"))
   (let loop ([n 0])
@@ -70,14 +77,25 @@
                            (print-debug-line))
                          (eval-instruction (*current-instruction*))
                          (loop (+ n 1))))))))
-  
-(: build-symbol-table (-> Instructions Void))
+
+(: build-symbol-table (All (A) (-> (Listof (U A label-definition)) (HashTable Symbol Integer))))
 (define (build-symbol-table is)
-  (for ([ i is]
+  (: ret (HashTable Symbol Integer))
+  (define ret (make-hash))
+  (for ([i is]
         [ id (in-range (length is))])
     (match i
-      [(struct label-definition (name offset virtual?)) (hash-set! *abstract-symbol-table* name id)]
-      [_ (void)])))
+      [(struct label-definition (name offset virtual?)) (hash-set! ret name id)]
+      [_ (void)]))
+  ret)
+
+(: build-abstract-symbol-table (-> Instructions Void))
+(define (build-abstract-symbol-table is)
+  (set! *abstract-symbol-table* (build-symbol-table is)))
+
+(: build-evm-symbol-table (-> EthInstructions Void))
+(define (build-evm-symbol-table ethis)
+  (set! *evm-symbol-table* (build-symbol-table ethis)))
 
 (: eval-instruction (-> Instruction Void))
 (define (eval-instruction i)
@@ -90,7 +108,7 @@
     [(struct save (e))            (push-stack (eval-mexpr e))         (next)]
     [(struct restore (reg-name))  (write-reg reg-name (pop-stack))    (next)]
     [(struct perform (op))        (void (eval-mexpr op))              (next)]
-    [(struct evm (xs))            (for ([ x xs ]) (eval-evm x))       (next)]
+    [(struct evm (xs))            (eval-evms xs)                      (next)]
     [_                               (error "eval-instruction: Unknown instruction" (*current-instruction*) i)]))
 
 (: read-reg (-> RegisterName value))
@@ -119,8 +137,17 @@
   (let ([ n (label-name dest)])
     (set-machine-pc! *m* (hash-ref *abstract-symbol-table* n (λ () (error "jump: Unknown label" n))))))
 
+(: jump-evm (-> value Void))
+(define (jump-evm dest)
+  (assert dest label?)
+  (let ([ n (label-name dest)])
+    (*evm-pc* (hash-ref *evm-symbol-table* n (λ () (error "jump-evm: Unknown label" n))))))
+
 (: next (-> Void))
 (define (next) (set-machine-pc! *m* (+ 1 (machine-pc *m*))))
+
+(: evm-next (-> Void))
+(define (evm-next) (*evm-pc* (+ 1 (*evm-pc*))))
 
 (: push-stack (-> value Void))
 (define (push-stack v)
@@ -142,7 +169,26 @@
     [(struct evm-push (size value)) (push-stack value)]
     [(struct label-definition _)    (void)]
     [(struct evm-bytes _)           (void)]
-    [_ (error "eval-evm: Unknown syntax" x)]))
+    [_ (error "eval-evm: Unknown syntax" x)]
+    )
+  (evm-next))
+
+(: eval-evms (-> EthInstructions Void))
+(define (eval-evms xs)
+  (define is (list->vector xs))
+  (build-evm-symbol-table xs)
+
+  (parameterize ([ *evm-pc* -1])
+    (let loop ([ n 0 ])
+      (if (or (>= n (vector-length is))
+              (<  n 0))
+          (void)
+          (begin
+            (parameterize ([ *current-evm-instruction* (vector-ref is n)])
+              (eval-evm (*current-evm-instruction*))
+              (when (verbose? VERBOSITY-LOW)
+                (print-debug-line))
+              (loop (*evm-pc*))))))))
 
 (: eval-mexpr (-> MExpr value))
 (define (eval-mexpr x)
@@ -232,6 +278,7 @@
     ['ISZERO (unop  (λ (a)   (if (= a 0) 1 0)))]
     ['DIV    (binop (λ (a b) (if (equal? 0 b) 0 (floori (/ a b)))))]
     ['MOD    (binop (λ (a b) (if (equal? 0 b) 0 (modulo a b))))]
+    ['JUMP (jump-evm (pop-stack))]
     ; TODO: Everything below is a stub until we get an SMT solver or something
     ['ADDRESS 1234]
     ['CALLER  4321]
@@ -370,8 +417,15 @@
 (: eval-op-null? (-> value value))
 (define (eval-op-null? x) (if (v-null? x) #t #f))
 
-(: eval-op-make-null (-> value value))
-(define (eval-op-make-null x) (v-null))
+(: eval-op-make-null (-> value))
+(define (eval-op-make-null) (v-null))
+
+(: eval-op-bool->unboxed (-> value value))
+(define (eval-op-bool->unboxed x)
+  (match x
+    [#t 1]
+    [#f 0]
+    [_ (error "eval-op-bool->unboxed: Expected a boolean")]))
 
 (: make-frame (-> Symbols values v-frame))
 (define (make-frame names values)
@@ -402,8 +456,11 @@
 
 (: print-debug-line (-> Void))
 (define (print-debug-line)
+  (define pc (+ 1 (machine-pc *m*)))
   (printf "~a\t~v\t~v\t~v\t~v\t~v\t~v\t~v\n"
-          (+ 1 (machine-pc *m*))
+          (match (*evm-pc*)
+            [-1 pc]
+            [x  (format "~a:~a" pc (*evm-pc*))])
           (shrink-asm (*current-instruction*))
           (map shrink-value (machine-stack *m*))
           (shrink-value (machine-val      *m*))

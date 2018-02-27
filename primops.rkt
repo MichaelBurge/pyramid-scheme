@@ -10,6 +10,9 @@
 (: make-primops (-> (Listof primop)))
 (define (make-primops)
   (listof
+   ;        Name                      EVM Assembly Generator          Abstract Interpreter
+   ; No-ops: These are compiled to nothing, but have semantic meaning
+   [primop 'bool->unboxed             cg-identity                     eval-op-bool->unboxed]
    ; Variables
    [primop 'define-variable!          op-define-variable!             eval-op-define-variable!]
    [primop 'set-variable-value!       op-set-variable-value!          eval-op-set-variable-value!]
