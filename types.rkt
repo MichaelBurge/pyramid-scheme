@@ -67,7 +67,7 @@
 
   (provide (all-defined-out))
   
-  (define-type RegisterName (U 'env 'proc 'continue 'argl 'val))
+  (define-type RegisterName (U 'env 'proc 'continue 'argl 'val 'stack-size))
 
   (struct primop ([ name : Symbol ] [ gen : Procedure ] [ eval : Procedure ]) #:transparent)
   (define-type PrimopTable (HashTable Symbol primop))
@@ -147,6 +147,7 @@
                    [continue : label]
                    [argl : value]
                    [val : value]
+                   [stack-size : Integer]
                    [stack : values]
                    [halted? : Boolean])
     #:transparent #:mutable)

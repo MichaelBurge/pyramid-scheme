@@ -13,14 +13,15 @@
 (require (submod "types.rkt" evm-assembly))
 
 (: *m* machine)
-(define *m* (machine 0
-                     (v-environment null)
-                     (v-compiled-procedure (label 'INVALID) (v-environment null))
-                     (label 'INVALID)
-                     (v-null)
-                     #f
-                     null
-                     #f))
+(define *m* (machine 0 ; pc
+                     (v-environment null) ; env
+                     (v-compiled-procedure (label 'INVALID) (v-environment null)) ; proc
+                     (label 'INVALID) ; continue
+                     (v-null) ; argl
+                     #f ; val
+                     0 ; stack-size
+                     null ; stack
+                     #f)) ; halted?
 (: *abstract-symbol-table* (HashTable Symbol Integer))
 (define *abstract-symbol-table* (make-hash))
 (: *evm-symbol-table* (HashTable Symbol Integer))
@@ -124,21 +125,29 @@
 (: read-reg (-> RegisterName value))
 (define (read-reg reg-name)
   (match reg-name
-    ['env      (machine-env      *m*)]
-    ['proc     (machine-proc     *m*)]
-    ['continue (machine-continue *m*)]
-    ['argl     (machine-argl     *m*)]
-    ['val      (machine-val      *m*)]
+    ['env        (machine-env        *m*)]
+    ['proc       (machine-proc       *m*)]
+    ['continue   (machine-continue   *m*)]
+    ['argl       (machine-argl       *m*)]
+    ['val        (machine-val        *m*)]
+    ['stack-size (machine-stack-size *m*)]
     [_ (error "read-reg: Unknown register" reg-name)]))
 
 (: write-reg (-> RegisterName value Void))
 (define (write-reg reg-name v)
   (match reg-name
-    ['env      (set-machine-env!      *m* (cast v v-environment))]
-    ['proc     (set-machine-proc!     *m* (cast v v-callable))]
-    ['continue (set-machine-continue! *m* (cast v label))]
-    ['argl     (set-machine-argl!     *m* v)]
-    ['val      (set-machine-val!      *m* v)]
+    ['env        (set-machine-env!        *m* (cast v v-environment))]
+    ['proc       (set-machine-proc!       *m* (cast v v-callable))]
+    ['continue   (set-machine-continue!   *m* (cast v label))]
+    ['argl       (set-machine-argl!       *m* v)]
+    ['val        (set-machine-val!        *m* v)]
+    ['stack-size (begin
+                   (assert v exact-integer?)
+                   (set-machine-stack-size! *m* (cast v Integer))
+                   (let ([ size (length (machine-stack *m*))])
+                     (unless (= size v)
+                       (error "write-reg: Attempted to write an incorrect stack size" v size))))]
+
     [_ (error "write-reg: Unknown register" reg-name)]))
 
 (: jump (-> value Void))
@@ -447,6 +456,12 @@
     [#f 0]
     [_ (error "eval-op-bool->unboxed: Expected a boolean")]))
 
+(: eval-op-add (-> value value value))
+(define (eval-op-add a b)
+  (assert a exact-integer?)
+  (assert b exact-integer?)
+  (+ a b))
+
 (: make-frame (-> Symbols values v-frame))
 (define (make-frame names values)
   (v-frame (make-hash (map (inst cons Symbol value) names values))))
@@ -477,7 +492,7 @@
 (: print-debug-line (-> Void))
 (define (print-debug-line)
   (define pc (+ 1 (machine-pc *m*)))
-  (printf "~a\t~v\t~v\t~v\t~v\t~v\t~v\t~v\n"
+  (printf "~a\t~v\t~v\t~v\t~v\t~v\t~v\t~v\t~v\n"
           (match (*evm-pc*)
             [-1 pc]
             [x  (format "~a:~a" pc (*evm-pc*))])
@@ -487,6 +502,7 @@
           (shrink-value (machine-continue *m*))
           (shrink-value (machine-proc     *m*))
           (shrink-value (machine-argl     *m*))
+          (shrink-value (machine-stack-size *m*))
           (shrink-value (machine-env      *m*) #:env? #t)
           ))
           

@@ -330,16 +330,29 @@
   (define seq2-modifies (inst-seq-modifies seq2))
   (: saved-regs RegisterNames)
   (define saved-regs (set-intersect regs seq2-needs seq1-modifies))
-  (parameterize ([*stack-depth* (+ (*stack-depth*) (set-count saved-regs))])
-    (append-instruction-sequences
-     (inst-seq (set-union    seq1-needs    saved-regs)
-               (set-subtract seq1-modifies saved-regs)
-               (let ([ rs (set->list saved-regs)])
-                 (append (map save (map reg rs))
-                         (inst-seq-statements seq1)
-                         (map restore (reverse rs)))))
-     seq2)))
-             
+  (: wrap-frame (-> Integer Instructions Instructions Instructions Instructions))
+  (define (wrap-frame size pre-sts sts post-sts)
+    (if (> size 0)
+        (append
+         (list (save (reg 'stack-size)))
+         pre-sts
+         (list (assign 'stack-size (op 'add (list (const (+ 1 size)) (reg 'stack-size)))))
+         sts
+         post-sts
+         (list (restore 'stack-size)))
+        (append pre-sts sts post-sts)))
+  (append-instruction-sequences
+   (inst-seq (set-union    seq1-needs    saved-regs)
+             (set-subtract seq1-modifies saved-regs)
+             (let* ([ rs (set->list saved-regs)])
+               (wrap-frame
+                (length rs)
+                (map save (map reg rs))
+                (inst-seq-statements seq1)
+                (map restore (reverse rs)))))
+   seq2))
+
+
 
 (: tack-on-instruction-sequence (-> inst-seq inst-seq inst-seq))
 (define (tack-on-instruction-sequence seq body-seq)
@@ -365,3 +378,5 @@
         [ lst-modifies (if (list? modifies) modifies (set->list modifies))]
         )
     (inst-seq (apply set lst-needs) (apply set lst-modifies) is)))
+
+

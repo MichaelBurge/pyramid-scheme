@@ -28,7 +28,7 @@
    ; Fixnums
    [primop 'make-fixnum               cg-make-fixnum                  eval-op-make-fixnum]
    [primop 'fixnum-value              cg-unbox-integer                eval-op-fixnum-value]
-   ;[primop 'add                       cg-add                          eval-op-add]
+   [primop 'add                       cg-add                          eval-op-add]
    ; Continuations
    [primop 'save-continuation         cg-save-continuation            eval-op-save-continuation]
    [primop 'restore-continuation!     op-restore-continuation         eval-op-restore-continuation]

@@ -101,11 +101,12 @@ These optimizations are currently unimplemented:
   (define TAG-NIL                 6)
   (define TAG-CONTINUATION        7)
 
-  (define MEM-ENV           #x20)
-  (define MEM-PROC          #x40)
-  (define MEM-CONTINUE      #x60)
-  (define MEM-ARGL          #x80)
-  (define MEM-VAL           #xa0)
+  (define MEM-ENV           #x00)
+  (define MEM-PROC          #x20)
+  (define MEM-CONTINUE      #x40)
+  (define MEM-ARGL          #x60)
+  (define MEM-VAL           #x80)
+  (define MEM-STACK-SIZE    #xa0)
   (define MEM-NIL           #xc0)
   (define MEM-ALLOCATOR     #xe0)
   (define MEM-DYNAMIC-START #x100) ; This should be the highest hardcoded memory address.
@@ -565,31 +566,24 @@ These optimizations are currently unimplemented:
          (else
           (error "cg-mexpr: Unknown mexpr" exp (list? exp))))))
 
+(: reg-address (-> reg Integer))
+(define (reg-address r)
+  (match (reg-name r)
+    ['env MEM-ENV]
+    ['proc MEM-PROC]
+    ['continue MEM-CONTINUE]
+    ['argl MEM-ARGL]
+    ['val MEM-VAL]
+    ['stack-size MEM-STACK-SIZE]
+    [x (error "reg-address: Unknown register" x)]))
+
 (: cg-mexpr-reg   (Generator reg))
 (define (cg-mexpr-reg dest)
-  (append
-   (debug-label 'cg-mexpr-reg)
-   (let ((reg (reg-name dest)))
-     (cond ((eq? reg 'env)      (cg-read-address (const MEM-ENV)))
-           ((eq? reg 'proc)     (cg-read-address (const MEM-PROC)))
-           ((eq? reg 'continue) (cg-read-address (const MEM-CONTINUE)))
-           ((eq? reg 'argl)     (cg-read-address (const MEM-ARGL)))
-           ((eq? reg 'val)      (cg-read-address (const MEM-VAL)))
-           (else
-            (error "cg-mexpr-reg: Unknown register" dest))))))
+  (cg-read-address (const (reg-address dest))))
 
 (: cg-write-reg (Generator2 reg MExpr))
 (define (cg-write-reg dest exp)
-  (append
-   (debug-label 'cg-write-reg)
-   (let ((reg (reg-name dest)))
-     (cond ((eq? reg 'env)      (cg-write-address (const MEM-ENV)  exp))
-           ((eq? reg 'proc)     (cg-write-address (const MEM-PROC)  exp))
-           ((eq? reg 'continue) (cg-write-address (const MEM-CONTINUE) exp))
-           ((eq? reg 'argl)     (cg-write-address (const MEM-ARGL) exp))
-           ((eq? reg 'val)      (cg-write-address (const MEM-VAL) exp))
-           (else
-            (error "cg-write-reg: Unknown register" dest exp))))))
+  (cg-write-address (const (reg-address dest)) exp))
 
 (: cg-mexpr-const (Generator const))
 (define (cg-mexpr-const exp)
