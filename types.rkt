@@ -17,7 +17,7 @@
   (define-type EthWord Integer)
   (define-type EthWords (Listof EthWord))
   (struct label ([ name : Symbol ]) #:transparent)
-  (struct label-definition label ([ offset : Integer ] [ virtual : Boolean ]) #:transparent)
+  (struct label-definition label ([ offset : Integer ] [ virtual? : Boolean ]) #:transparent)
   (define-type RegisterValue (U Boolean Symbol Integer String (Listof Integer) (Listof Symbol) (Listof String)))
   (define-predicate register-value? RegisterValue)
   (define-type Verbosity Fixnum)

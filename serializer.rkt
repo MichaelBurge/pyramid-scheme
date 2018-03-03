@@ -244,7 +244,9 @@ The relocation is generated at the data, not the PUSH instruction.
 (: serialize-label (-> label-definition Bytes))
 (define (serialize-label lbl)
   (remember-label! lbl)
-  (serialize-asm (evm-op 'JUMPDEST)))
+  (if (label-definition-virtual? lbl)
+      (bytes)
+      (serialize-asm (evm-op 'JUMPDEST))))
 
 (: lookup-opcode (-> Symbol opcode))
 (define (lookup-opcode sym)
@@ -347,6 +349,7 @@ Either a label or integer can be pushed onto the stack.
   (cond [(evm-push?  i) (+ 1 (push-true-size i))]
         [(evm-bytes? i) (bytes-length (evm-bytes-bytes i))]
         [(evm-op?    i) 1]
+        [(label-definition? i) (if (label-definition-virtual? i) 0 1)]
         [(label?     i) 1]
         [else (error "instruction-size: Unhandled case" i)]
         ))

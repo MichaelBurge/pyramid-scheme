@@ -701,11 +701,10 @@ These optimizations are currently unimplemented:
              [ label-term (make-label 'cgm-repeat-term)])
          (append
           (cg-mexpr size)              ; [ size ]
-          (asm 'DUP1)                  ;
           `(,label-loop)               ; [ size ]
           (asm 'DUP1)                  ; [ size; size ]
           (asm 'ISZERO)                ; [ 0?; size ]
-          (cg-branch label-term stack) ; [ size ]
+          (cg-branch label-term stack) ; [ size; ]
           (body)                       ; [ size ]
           (cg-sub stack (const 1))     ; [ size' ]
           (cg-goto label-loop)         ; [ size' ]
@@ -1347,7 +1346,7 @@ SWAP1 -> [ x1; x2; x3; c ]
 (: debug-label (Generator Symbol))
 (define (debug-label sym)
   (if (*use-debug-symbols?*)
-      (list (make-label sym))
+      (list (make-label sym 0 #t))
       '()))
 
 (: cg-throw (Generator Symbol))
