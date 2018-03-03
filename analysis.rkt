@@ -51,6 +51,15 @@
     (for ([ pp pps ])
       (displayln pp))))
 
+(: sort-source-map (-> SourceMap (Listof (Pairof Symbol Symbols))))
+(define (sort-source-map map)
+  ((inst sort (Pairof Symbol Symbols)) (hash->list map) symbol<? #:key car))
+
+(: print-source-map (-> SourceMap Void))
+(define (print-source-map map)
+  (for ([ p (sort-source-map map)])
+    (printf "~a\t~a\n" (car p) (cdr p))))
+    
 (: full-compile (-> PyramidQ full-compile-result))
 (define (full-compile prog)
   ; (reinitialize-globals!)
@@ -78,8 +87,11 @@
             (let ([ bs (maybe-link bs-unlinked) ])
               (verbose-section "Symbol Table" VERBOSITY-MEDIUM
                                (print-symbol-table (*symbol-table*)))
+              (verbose-section "Source Maps" VERBOSITY-HIGH
+                               (print-source-map (*evm-source-map*)))
               (verbose-section "EVM Disassembly" VERBOSITY-LOW
                                (print-disassembly bs))
+
               ;(λ () (print-disassembly bs-unlinked)))
               (full-compile-result bs (inst-seq-statements instructions) eth-instructions)
               )))))))

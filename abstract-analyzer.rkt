@@ -411,7 +411,8 @@
 (define (eval-op-save-continuation)
   (: cont v-continuation)
   (define cont (v-continuation (machine-continue *m*)
-                               (machine-env      *m*)))
+                               (machine-env      *m*)
+                               (machine-stack    *m*)))
   cont
   )
 
@@ -420,6 +421,7 @@
   (assert cont v-continuation?)
   (jump (v-continuation-continue cont))
   (set-machine-env! *m* (v-continuation-env cont))
+  (set-machine-stack! *m* (v-continuation-stack cont))
   )
 
 (: eval-op-primitive-procedure? (-> value Boolean))
@@ -470,8 +472,9 @@
 (define (v-list->list x)
   (match x
     [ (struct v-null _) null]
-    [ (struct v-pair (l r)) (cons l (v-list->list r))]
-    [ _ (error "v-list->list: Improper list detected" x)]))
+    [ (struct v-pair (l (? v-list? r))) (cons l (v-list->list r))]
+    [ (struct v-pair (l r)) (list l r)]
+    [ _ (error "v-list->list: Unknown list type" x)]))
 
 (: list->v-list (-> (Listof value) value))
 (define (list->v-list xs)
@@ -505,4 +508,13 @@
           (shrink-value (machine-stack-size *m*))
           (shrink-value (machine-env      *m*) #:env? #t)
           ))
-          
+
+(: v-list->environment (-> v-list v-environment))
+(define (v-list->environment xs)
+  (match xs
+    [(struct v-null _) (v-environment null)]
+    [(struct v-pair ((struct v-pair (names values))
+                     (? v-list? next)))
+     (eval-op-extend-environment names values (v-list->environment next))]
+    [_ (error "v-list->environment: Could not parse as an environment" xs)]
+    ))

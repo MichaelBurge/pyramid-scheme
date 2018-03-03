@@ -106,6 +106,19 @@
   (let ([ tbl : PrimopTable (make-hash)])
     (make-parameter tbl)))
 
+(: *recursion-depth* (Parameterof Integer))
+(define *recursion-depth* (make-parameter 10))
+
+(: *evm-source-map-stack* (Parameterof (Listof Symbol)))
+(define *evm-source-map-stack* (make-parameter null))
+
+(: *evm-source-map* (Parameterof SourceMap))
+(define *evm-source-map* (make-parameter (make-source-map)))
+
+(: on-simulate-nop (-> vm-exec EthInstruction EthWords Void))
+(define (on-simulate-nop vm i reads) (void))
+(define *on-simulate-instruction* (make-parameter on-simulate-nop))
+
 ; Constants
 (define assumed-label-size 2) ; TODO: Number of bytes to leave behind for label relocations. This makes it difficult to write programs larger than 65536 bytes.
 (define *assumed-label-size* assumed-label-size)

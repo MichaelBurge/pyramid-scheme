@@ -3,6 +3,7 @@
 (require (submod "types.rkt" common))
 (require (submod "types.rkt" evm-assembly))
 (require (submod "types.rkt" simulator))
+(require (submod "types.rkt" abstract-machine))
 (require "disassembler.rkt")
 (require "serializer.rkt")
 (require "codegen.rkt")
@@ -13,14 +14,12 @@
 (require "wallet.rkt")
 (require "transaction.rkt")
 (require "utils.rkt")
+(require "parser.rkt")
+(require "abstract-analyzer.rkt")
 (require typed/racket/unsafe)
 
 (unsafe-require/typed "unsafe.rkt"
                      [ unsafe-cast (All (A B) (-> A B))])
-
-
-(require/typed json
-  [ write-json (-> Any Void)])
 
 (require "typed/binaryio.rkt")
 (require "typed/dict.rkt")
@@ -34,9 +33,7 @@
  simres-account-balance
  vm-exec-bytecode
  ;
- *on-simulate-instruction*
- on-simulate-nop
- on-simulate-debug
+ read-memory-word
  )
 
 (: make-simulator (-> simulator))
@@ -85,11 +82,6 @@
         )
     (transfer-money! vm (vm-txn-value txn) from to)
     ))
-  
-
-(: on-simulate-nop (-> vm-exec EthInstruction EthWords Void))
-(define (on-simulate-nop vm i reads) (void))
-(define *on-simulate-instruction* (make-parameter on-simulate-nop))
 
 ; Appendix G in Ethereum Yellow Paper: http://gavwood.com/paper.pdf
 (define G_zero          0)
@@ -596,117 +588,6 @@
         (else
          (error "Unknown instruction - instruction-gas:" i))))
 
-(: memory-dict (-> vm-exec (Listof (List UnlinkedOffset EthWord))))
-(define (memory-dict vm)
-  (for/list : (Listof (List UnlinkedOffset EthWord))
-      ([ i (in-range 0 (vm-exec-largest-accessed-memory vm) 32) ])
-    (list i (read-memory-word vm i 32))))
-
-; TODO: Incorrect if x is a null value that isn't the shared copy of nil.
-
-(: vm-tag (-> vm-exec EthWord EthWord))
-(define (vm-tag vm ptr) (read-memory-word vm ptr 32))
-
-(: vm-value (-> vm-exec EthWord Any))
-(define (vm-value vm ptr)
-  (cond
-    [ (vm-fixnum? vm ptr)              (vm-fixnum vm ptr)]
-    [ (vm-symbol? vm ptr)              (vm-symbol vm ptr)]
-    [ (vm-compiled-procedure? vm ptr)  (vm-compiled-procedure vm ptr)]
-    [ (vm-primitive-procedure? vm ptr) (vm-primitive-procedure vm ptr)]
-    [ (vm-pair? vm ptr)                (vm-pair vm ptr)]
-    [ (vm-vector? vm ptr)              (vm-vector vm ptr)]
-    [ (vm-null? vm ptr)                null]
-    [ else                             (cons 'unboxed ptr)]))
-
-(define-type TagChecker (-> vm-exec EthWord Boolean))
-
-(: make-tag-checker (-> EthWord TagChecker))
-(define (make-tag-checker tag) (λ (vm ptr) (equal? tag (vm-tag vm ptr))))
-
-(: vm-fixnum? TagChecker)
-(define vm-fixnum? (make-tag-checker TAG-FIXNUM))
-
-(: vm-symbol? TagChecker)
-(define vm-symbol? (make-tag-checker TAG-SYMBOL))
-
-(: vm-compiled-procedure? TagChecker)
-(define vm-compiled-procedure? (make-tag-checker TAG-COMPILED-PROCEDURE))
-
-(: vm-primitive-procedure? TagChecker)
-(define vm-primitive-procedure? (make-tag-checker TAG-PRIMITIVE-PROCEDURE))
-
-(: vm-pair? TagChecker)
-(define vm-pair? (make-tag-checker TAG-PAIR))
-
-(: vm-vector? TagChecker)
-(define vm-vector? (make-tag-checker TAG-VECTOR))
-
-(: vm-null? TagChecker)
-(define vm-null? (make-tag-checker TAG-NIL))
-
-(: vm-fixnum (-> vm-exec EthWord EthWord))
-(define (vm-fixnum vm ptr) (read-memory-word vm (+ ptr #x20) 32))
-
-(: vm-symbol (-> vm-exec EthWord String))
-(define (vm-symbol vm ptr) (integer->string (read-memory-word vm (+ ptr #x20) 32)))
-
-(: vm-procedure (-> vm-exec EthWord String))
-(define (vm-procedure vm x)
-  (string-append
-   "label-"
-   (symbol->string (hash-ref (*reverse-symbol-table*)
-                             (read-memory-word vm (+ x #x20) 32)
-                             (λ () 'ERROR)))))
-(define vm-compiled-procedure vm-procedure)
-(define vm-primitive-procedure vm-procedure)
-
-(: vm-pair (-> vm-exec EthWord (Pairof EthWord EthWord)))
-(define (vm-pair vm ptr) (cons (read-memory-word vm (+ ptr #x20) 32)
-                               (read-memory-word vm (+ ptr #x40) 32)))
-
-(: vm-vector (-> vm-exec EthWord Bytes))
-(define (vm-vector vm x)
-  (let ([ addr (read-memory-word vm (+ x #x60) 32)]
-        [ len  (read-memory-word vm (+ x #x40) 32)]
-        )
-    (subbytes (vm-exec-memory vm) addr (+ addr len))))
-                                   
-(: vm-list (case-> (-> vm-exec EthWord EthWords)
-                   (-> vm-exec EthWord Integer EthWords)))
-(define (vm-list vm x [ max-recursion 10 ])
-  (if (<= max-recursion 0)
-      null
-      (cond ((vm-null? vm x) null)
-            ((vm-pair? vm x)
-             (let ([ pair (vm-pair vm x) ]
-                   [ i    (- max-recursion 1) ]
-                   )
-               (cons (car pair)
-                     (vm-list vm (cdr pair) i))))
-            (else null))))
-
-(: variable-environment (-> vm-exec Environment))
-(define (variable-environment vm)
-  (parameterize ([ *warnings?* #f ])
-    (let ([ frames : EthWords (vm-list vm (read-memory-word vm MEM-ENV 32))])
-      (: parse-frame (-> EthWord Frame))
-      (define (parse-frame frame-ptr)
-        (let* ([ frame (vm-pair vm frame-ptr) ]
-               [ vars (vm-list vm (car frame) )]
-               [ vals (vm-list vm (cdr frame) )]
-               [ sz1 (length vars) ]
-               [ sz2 (length vals) ]
-               [ sz (min sz1 sz2) ]
-               )
-          (if (> sz 0)
-              (list
-               (map integer->string (take vars sz))
-               (map (λ ([ ptr : EthWord ]) (vm-value vm ptr)) (take vals sz))
-               )
-              (list null null))))
-      (map parse-frame frames))))
-
 (: assert-landing-pad (-> vm-exec Address Void))
 (define (assert-landing-pad vm addr)
   (let ([ ethi (instruction-at vm addr)])
@@ -718,35 +599,7 @@
                                         vm
                                         addr)))))
 
-(: on-simulate-debug (-> ReverseSymbolTable OnSimulateCallback))
-(define (on-simulate-debug reverse-symbol-table)
-  (λ (vm i reads)
-    (printf "~a" (vm-exec-step vm))
-    (write-char #\tab)
-    (display (reverse-symbol-name reverse-symbol-table (vm-exec-pc vm)))
-    (write-char #\tab)
-    (display (integer->hex (vm-exec-pc vm)))
-    (write-char #\tab)
-    (write-json (vm-exec-stack vm))
-    (write-char #\tab)
-    (write-json (memory-dict vm))
-    (write-char #\tab)
-    (display i)
-    (write-char #\tab)
-    (write-json (to-json-compatible (variable-environment vm)))
-    (newline)
-    ))
-
-(: to-json-compatible (-> Any Any))
-(define (to-json-compatible x)
-  (match x
-    [(? symbol? x) (string-append "'" (symbol->string x))]
-    [(? list? x) (map to-json-compatible x)]
-    [(cons a b)  (list (to-json-compatible a) (to-json-compatible b))]
-    [_           x]
-    ))
-
-    (: sim-lookup-bytecode (-> simulator Address Bytes))
+(: sim-lookup-bytecode (-> simulator Address Bytes))
 (define (sim-lookup-bytecode sim addr)
   (let* ([ acc (sim-account sim addr) ])
     (if acc

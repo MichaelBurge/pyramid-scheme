@@ -39,10 +39,12 @@
        (void)))
 
 (define (for f lst)
-  (if (null? lst)
-      (void)
-      (begin (f (l lst))
-             (for f (r lst)))))
+  (define (loop xs)
+    (if (null? xs)
+        (void)
+        (begin (f (l xs))
+               (loop (r xs)))))
+  (loop lst))
 
 (define (call/cc f)
   (%-call-with-current-continuation f))

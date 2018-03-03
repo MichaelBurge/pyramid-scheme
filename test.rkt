@@ -21,6 +21,7 @@
 (require "transaction.rkt")
 (require "wallet.rkt")
 (require "simulator.rkt")
+(require "debugger.rkt")
 
 (require "typed/binaryio.rkt")
 
@@ -65,7 +66,7 @@
 (: run-test-case (-> String Bytes test-case simulation-result-exs))
 (define (run-test-case name bytecode cs)
   (when (verbose? VERBOSITY-LOW)
-    (*on-simulate-instruction* (on-simulate-debug (invert-hash (*symbol-table*)))))
+    (*on-simulate-instruction* (on-simulate-debug (*symbol-table*) (*evm-source-map*))))
   (let* ([ sim            (make-simulator)]
          [ deploy-txn     (second (test-case-deploy-txn->vm-txn cs bytecode))]
          [ deploy-result  (cast (apply-txn-create! sim deploy-txn) simulation-result)]

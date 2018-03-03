@@ -170,9 +170,10 @@
     (number->string (new-label-number)))))
 
 (: make-label (case-> (-> Symbol label-definition)
-                      (-> Symbol Integer label-definition)))
-(define (make-label name [offset 0])
+                      (-> Symbol Integer label-definition)
+                      (-> Symbol Integer Boolean label-definition)))
+(define (make-label name [offset 0] [virtual? #f])
   (label-definition (make-label-name name)
                     offset
-                    #f
+                    virtual?
                     ))

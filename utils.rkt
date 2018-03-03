@@ -77,14 +77,18 @@
 
 (: integer->string (-> Integer String))
 (define (integer->string n)
+  (define question-mark 77)
   (: integer->char-list (-> Integer (Listof Char)))
   (define (integer->char-list n)
     (if (equal? n 0)
         null
-        (let-values ([ (q r) (quotient/remainder n 256) ])
-          (cons (integer->char r)
+        (let*-values ([ (q r) (quotient/remainder n 256) ])
+          (cons (integer->char (if (>= r 128) question-mark r))
                 (integer->char-list q)))))
-  (list->string (reverse (integer->char-list n))))
+  (list->string
+   (for/list ([ c (reverse (integer->char-list n))]
+              #:when (char-graphic? c))
+     c)))
 
 (: floori (-> Real Integer))
 (define (floori x) (cast (floor x) Integer))

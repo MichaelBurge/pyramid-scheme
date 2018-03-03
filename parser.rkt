@@ -197,7 +197,7 @@
     [(struct v-pair (left right)) (cons (shrink-value left) (shrink-value right))]
     [(struct v-vector (vs)) (apply vector (map shrink-value vs))]
     [(struct v-null ()) '()]
-    [(struct v-continuation (cont env)) `(λ-> ,(shrink-value cont))]
+    [(struct v-continuation (cont env stack)) `(λ-> ,(shrink-value cont) ,stack)]
     [(struct v-frame (mappings)) mappings]
     [(struct v-environment (frames)) `(env ,@(if env? (map shrink-value frames) null))]
     [(struct label (name)) `(quote ,(label-name e))]

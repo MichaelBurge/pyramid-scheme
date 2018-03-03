@@ -44,6 +44,10 @@
 (define-syntax-rule (verbose-print verbosity xs ...)
   (when (verbose? verbosity) (debug-print xs ...)))
 
+(: sorted-symbol-table (-> SymbolTable (Listof (Pairof Symbol Integer))))
+(define (sorted-symbol-table symbols)
+  ((inst sort (Pairof Symbol Integer) Integer) (hash->list symbols) < #:key cdr))
+
 (: print-symbol-table (-> SymbolTable Void))
 (define (print-symbol-table symbols)
   (: show (-> Symbol Integer Void))
@@ -52,9 +56,7 @@
     (write-char #\tab)
     (display (integer->hex os))
     (newline))
-  (: symbols-list (Listof (Pairof Symbol Integer)))
-  (define symbols-list ((inst sort (Pairof Symbol Integer) Integer) (hash->list symbols) < #:key cdr))
-  (for ([ symbol symbols-list ])
+  (for ([ symbol (sorted-symbol-table symbols) ])
     (show (car symbol) (cdr symbol)))
   (newline))
 

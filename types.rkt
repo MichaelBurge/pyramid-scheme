@@ -21,6 +21,9 @@
   (define-type RegisterValue (U Boolean Symbol Integer String (Listof Integer) (Listof Symbol) (Listof String)))
   (define-predicate register-value? RegisterValue)
   (define-type Verbosity Fixnum)
+  (define-type SourceMap (HashTable Symbol Symbols))
+  (: make-source-map (-> SourceMap))
+  (define (make-source-map) (make-hash))
   )
 
 ; codegen.rkt
@@ -47,6 +50,7 @@
   (define-type RelocationTable (Setof relocation))
   (define-type LinkedOffset Integer)
   (define-type UnlinkedOffset Integer)
+  (define-type SourceMapper (-> UnlinkedOffset Symbols))
   
   (: make-symbol-table (-> SymbolTable))
   (define (make-symbol-table) (make-hash))
@@ -119,13 +123,16 @@
   (struct v-pair                ([left  : value] [right : value])           #:transparent)
   (struct v-vector              ([elems : values])         #:transparent)
   (struct v-null                (                )         #:transparent)
-  (struct v-continuation        ([continue : label ] [env : v-environment]) #:transparent)
+  (struct v-continuation        ([continue : label ] [env : v-environment] [ stack : values ]) #:transparent)
   (struct v-frame               ([mappings : (HashTable Symbol value)])     #:transparent)
   (struct v-environment         ([frames : v-frames]))
   (define-type v-unboxed (U Integer Symbol Boolean))
   (define-type v-callable (U v-compiled-procedure v-primitive-procedure v-continuation))
-  (define-predicate v-unboxed? v-unboxed)
+  (define-type v-list (U v-null v-pair))
+  (define-predicate v-unboxed?  v-unboxed)
   (define-predicate v-callable? v-callable)
+  (define-predicate v-list?     v-list)
+  
   (define-type value (U Void
                         v-unboxed
                         v-fixnum
