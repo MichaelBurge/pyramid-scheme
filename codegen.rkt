@@ -739,21 +739,27 @@ These optimizations are currently unimplemented:
 
 (: cg-push-vector (Generator MExpr))
 (define-generator (cg-push-vector vec)
+  (cg-mexpr vec)                ; [ vec ]
   (asm 'DUP1)                   ; [ vec; vec ]
   (cg-vector-len stack)         ; [ len; vec ]
-  (asm 'SWAP1)                  ; [ vec; len ]
-  (cg-add stack (const WORD))   ; [ vec+1; len]
-  (asm 'SWAP1)                  ; [ len; vec+1]
+  (asm 'DUP1)                   ; [ orig-len; len; vec ]
+  (asm 'SWAP2)                  ; [ vec; len; orig-len ]
+  (cg-add stack (const WORD))   ; [ vec+1; len; orig-len]
+  (asm 'SWAP1)                  ; [ len; vec+1; orig-len]
   (cgm-repeat stack
-              (λ ()             ; [ len; vec ]
+              (λ ()             ; [ len; vec; orig-len ]
                 (append
-                 (asm 'DUP1)     ; [ len; len; vec ]
-                 (asm 'DUP3)     ; [ vec; len; len; vec ]
-                 (cg-read-address-offset stack stack) ; [ x; len; vec ]
-                 (asm 'SWAP2)    ; [ vec; len; x ]
-                 (asm 'SWAP1)    ; [ len; vec; x ]
-                 )))             ; [ vec; STACK* ]
-  (cg-pop 1))                    ; [ STACK* ]
+                 (asm 'DUP1)     ; [ len; len; vec; orig-len ]
+                 (asm 'DUP4)     ; [ orig-len; len; len; vec; orig-len ]
+                 (asm 'SUB)      ; [ os; len; vec; orig-len ]
+                 (cg-add stack (const 1)) ; [ os'; len; vec; orig-len ]
+                 (asm 'DUP3)     ; [ vec; os; len; vec; orig-len ]
+                 (cg-read-address-offset stack stack) ; [ x; len; vec; orig-len ]
+                 (asm 'SWAP3)    ; [ orig-len; len; vec; x ]
+                 (asm 'SWAP2)    ; [ vec; len; orig-len; x ]
+                 (asm 'SWAP1)    ; [ len; vec; orig-len; x ]
+                 )))             ; [ vec; orig-len; STACK* ]
+  (cg-pop 2))                    ; [ STACK* ]
 
 ; PSEUDOCODE
 ; (define (list->vector list)

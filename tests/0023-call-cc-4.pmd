@@ -1,0 +1,10 @@
+#lang pyramid
+
+(require psl "arith.pmd")
+(require psl "syntax.pmd")
+
+(set-test-result! 4)
+
+(+ 1 (call/cc
+      (λ (escape)
+        (+ 2 (escape 3)))))
