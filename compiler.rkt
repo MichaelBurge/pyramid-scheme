@@ -254,7 +254,7 @@
        (parallel-instruction-sequences
         (append-instruction-sequences
          (label->insts primitive-branch)
-         (end-with-linkage linkage
+         (end-with-linkage primitive-linkage
                            (make-insts '(continue proc argl) (listof target)
                                        (assign target
                                                (op 'apply-primitive-procedure

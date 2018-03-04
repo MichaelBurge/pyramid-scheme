@@ -219,10 +219,10 @@ These optimizations are currently unimplemented:
 (define (op-set-variable-value! name value env) (cg-invoke-primop *label-op-set-variable-value!* name value env))
 
 (: op-return (Generator MExpr))
-(define (op-return value)                       (cg-invoke-primop *label-op-return* value))
+(define (op-return value)                       (cg-jump-primop *label-op-return* value))
 
 (: op-restore-continuation (Generator MExpr))
-(define (op-restore-continuation cont)          (cg-invoke-primop *label-op-restore-continuation* cont))
+(define (op-restore-continuation cont)          (cg-jump-primop *label-op-restore-continuation* cont))
 
 (: op-compiled-procedure? (Generator MExpr))
 (define (op-compiled-procedure? obj)            (cg-invoke-primop *label-op-compiled-procedure?* obj))
@@ -619,8 +619,13 @@ These optimizations are currently unimplemented:
 
 (: cg-pop (Generator (U Integer MExpr)))
 (define-generator (cg-pop size)
-  (let ([ exp : MExpr (if (integer? size) (const size) size)])
-    (cgm-repeat exp (λ () (asm 'POP)))))
+  (if (integer? size)
+      (for/list : EthInstructions ([ i (in-range size)])
+        (evm-op 'POP))
+      (cgm-repeat size (λ ()
+                        (append
+                         (asm 'SWAP1)
+                         (asm 'POP))))))
 
 (: cg-swap (Generator  Integer))
 (define-generator (cg-swap size)
@@ -720,12 +725,13 @@ These optimizations are currently unimplemented:
   (asm 'SWAP1)                 ; [ size; ptr; STACK* ]
   (cgm-repeat stack
               (λ ()          ; [ size; ptr; STACK* ]
-                (asm 'SWAP2) ; [ x; ptr; size; STACK'* ]
-                (asm 'DUP3)  ; [ size; x; ptr; size; STACK'* ]
-                (asm 'DUP3)  ; [ ptr; size; x; ptr; size; STACK'* ]
-                (cg-write-address-offset stack stack stack) ; [ ptr; size; STACK'* ]
-                (asm 'SWAP1) ; [ size; ptr; STACK'* ]
-                )))          ; [ ptr ]
+                (append
+                 (asm 'SWAP2) ; [ x; ptr; size; STACK'* ]
+                 (asm 'DUP3)  ; [ size; x; ptr; size; STACK'* ]
+                 (asm 'DUP3)  ; [ ptr; size; x; ptr; size; STACK'* ]
+                 (cg-write-address-offset stack stack stack) ; [ ptr; size; STACK'* ]
+                 (asm 'SWAP1) ; [ size; ptr; STACK'* ]
+                 ))))         ; [ ptr ]
 
 (: cg-push-vector (Generator MExpr))
 (define-generator (cg-push-vector vec)
@@ -733,13 +739,14 @@ These optimizations are currently unimplemented:
   (cg-vector-len stack)         ; [ len; vec ]
   (cgm-repeat stack
               (λ ()             ; [ len; vec ]
-                (asm 'DUP1)     ; [ len; len; vec ]
-                (asm 'DUP3)     ; [ vec; len; len; vec ]
-                (cg-read-address-offset stack stack) ; [ x; len; vec ]
-                (asm 'SWAP2)    ; [ vec; len; x ]
-                (asm 'SWAP1)    ; [ len; vec; x ]
-                ))              ; [ vec; STACK* ]
-  (cg-pop 1))                   ; [ STACK* ]
+                (append
+                 (asm 'DUP1)     ; [ len; len; vec ]
+                 (asm 'DUP3)     ; [ vec; len; len; vec ]
+                 (cg-read-address-offset stack stack) ; [ x; len; vec ]
+                 (asm 'SWAP2)    ; [ vec; len; x ]
+                 (asm 'SWAP1)    ; [ len; vec; x ]
+                 )))             ; [ vec; STACK* ]
+  (cg-pop 1))                    ; [ STACK* ]
 
 ; PSEUDOCODE
 ; (define (list->vector list)
@@ -1207,7 +1214,7 @@ These optimizations are currently unimplemented:
   (asm 'SWAP1)                                              ; [ ptr; vec; ptr ]
   (cg-write-address-offset stack (const 3) stack)           ; [ ptr ]
   )
-        
+
 (: cg-restore-continuation (Generator MExpr))
 (define-generator (cg-restore-continuation cont)
   (cg-write-reg (reg 'env) cont)            ; [ ]
@@ -1220,6 +1227,9 @@ These optimizations are currently unimplemented:
   (cg-read-address-offset stack (const 1))  ; [ code; cont ]
   (cg-write-reg (reg 'continue) stack)      ; [ cont ]
   (cg-read-address-offset stack (const 3))  ; [ stack-ptr ]
+  (asm 'DUP1)                               ; [ stack-ptr; stack-ptr]
+  (cg-vector-len stack)                     ; [ size; stack-ptr ]
+  (cg-write-reg (reg 'stack-size) stack)    ; [ stack-ptr ]
   (cg-push-vector stack)                    ; [ STACK* ]
   (cg-goto (reg 'continue))                 ; [ STACK* ]
   )
@@ -1313,6 +1323,11 @@ SWAP1 -> [ x1; x2; x3; c ]
          [0 '()]
          [_ (append (cg-swap n)
                     (loop (- n 1)))])))
+
+(: cg-jump-primop (-> MExpr MExpr * EthInstructions))
+(define-generator (cg-jump-primop target . args)
+  (cg-intros (cons target args)) ; [ target; args* ]
+  (cg-goto stack))               ; [ args* ]
 
 (: cg-invoke-primop (-> MExpr MExpr * EthInstructions))
 (define-generator (cg-invoke-primop target . args)
