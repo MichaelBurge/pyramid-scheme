@@ -1,0 +1,7 @@
+#lang pyramid
+
+(set-test-result! 5)
+
+(require psl "syntax.pmd")
+
+(((call/cc (λ (c) c)) (λ (x) x)) 5)

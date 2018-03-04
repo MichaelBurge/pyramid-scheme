@@ -722,21 +722,28 @@ These optimizations are currently unimplemented:
   (cg-mexpr size)              ; [ size; STACK* ]
   (asm 'DUP1)                  ; [ size; size; STACK* ]
   (cg-make-vector stack '())   ; [ ptr; size; STACK* ]
-  (asm 'SWAP1)                 ; [ size; ptr; STACK* ]
+  (cg-add stack (const WORD))  ; [ ptr+1; size; STACK* ]
+  (asm 'SWAP1)                 ; [ size; ptr+1; STACK* ]
   (cgm-repeat stack
-              (λ ()          ; [ size; ptr; STACK* ]
+              (λ ()          ; [ size; ptr+1; STACK* ]
                 (append
-                 (asm 'SWAP2) ; [ x; ptr; size; STACK'* ]
-                 (asm 'DUP3)  ; [ size; x; ptr; size; STACK'* ]
-                 (asm 'DUP3)  ; [ ptr; size; x; ptr; size; STACK'* ]
-                 (cg-write-address-offset stack stack stack) ; [ ptr; size; STACK'* ]
-                 (asm 'SWAP1) ; [ size; ptr; STACK'* ]
-                 ))))         ; [ ptr ]
+                 (asm 'SWAP2) ; [ x; ptr+1; size; STACK'* ]
+                 (asm 'DUP3)  ; [ size; x; ptr+1; size; STACK'* ]
+                 (asm 'DUP3)  ; [ ptr+1; size; x; ptr+1; size; STACK'* ]
+                 (cg-write-address-offset stack stack stack) ; [ ptr+1; size; STACK'* ]
+                 (asm 'SWAP1) ; [ size; ptr+1; STACK'* ]
+                 )))          ; [ ptr+1 ]
+  (cg-sub stack (const WORD)) ; [ ptr ]
+  )
+
 
 (: cg-push-vector (Generator MExpr))
 (define-generator (cg-push-vector vec)
   (asm 'DUP1)                   ; [ vec; vec ]
   (cg-vector-len stack)         ; [ len; vec ]
+  (asm 'SWAP1)                  ; [ vec; len ]
+  (cg-add stack (const WORD))   ; [ vec+1; len]
+  (asm 'SWAP1)                  ; [ len; vec+1]
   (cgm-repeat stack
               (λ ()             ; [ len; vec ]
                 (append
@@ -1213,6 +1220,13 @@ These optimizations are currently unimplemented:
   (asm 'SWAP2)                                              ; [ vec; ptr; ptr ]
   (asm 'SWAP1)                                              ; [ ptr; vec; ptr ]
   (cg-write-address-offset stack (const 3) stack)           ; [ ptr ]
+  (cg-write-reg (reg 'stack-size) stack)                    ; [ ]
+  (cg-continuation-stack (reg 'stack-size))                 ; [ stack]
+  (cg-push-vector stack)                                    ; [ *STACK ]
+  (cg-mexpr (reg 'stack-size))                              ; [ ptr ]
+  (asm 'DUP1)                                               ; [ ptr; ptr ]
+  (cg-continuation-stack-size stack)                        ; [ size; ptr ]
+  (cg-write-reg (reg 'stack-size) stack)                    ; [ ptr ]
   )
 
 (: cg-restore-continuation (Generator MExpr))
@@ -1226,12 +1240,22 @@ These optimizations are currently unimplemented:
   (cg-write-reg (reg 'env) stack)           ; [ cont; cont ]
   (cg-read-address-offset stack (const 1))  ; [ code; cont ]
   (cg-write-reg (reg 'continue) stack)      ; [ cont ]
-  (cg-read-address-offset stack (const 3))  ; [ stack-ptr ]
+  (cg-continuation-stack stack)             ; [ stack-ptr
   (asm 'DUP1)                               ; [ stack-ptr; stack-ptr]
   (cg-vector-len stack)                     ; [ size; stack-ptr ]
   (cg-write-reg (reg 'stack-size) stack)    ; [ stack-ptr ]
   (cg-push-vector stack)                    ; [ STACK* ]
   (cg-goto (reg 'continue))                 ; [ STACK* ]
+  )
+
+(: cg-continuation-stack (Generator MExpr))
+(define-generator (cg-continuation-stack cont)
+  (cg-read-address-offset cont (const 3)))
+
+(: cg-continuation-stack-size (Generator MExpr))
+(define-generator (cg-continuation-stack-size cont)
+  (cg-continuation-stack cont) ; [ vec ]
+  (cg-vector-len stack)        ; [ size ]
   )
 
 ;;; Arithmetic

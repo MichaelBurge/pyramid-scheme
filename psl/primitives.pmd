@@ -138,7 +138,9 @@
 (define (%-null)     (nullop-unboxed (op 'null)))
 
 (defmacro (%-call-with-current-continuation f)
-  `(begin (define cont (asm (assign 'val (op 'save-continuation))))
+  `(begin (define cont (asm
+                        (save (op 'save-continuation))
+                        (restore 'val)))
           (,f cont)
           (asm (assign 'val (op 'left (reg 'argl))))
           ))
