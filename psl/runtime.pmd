@@ -5,6 +5,7 @@
 (require psl "arith.pmd")
 
 ; Primitives
+(define null (%-null))
 (define null? %-null?)
 
 (define fixnum %-box)

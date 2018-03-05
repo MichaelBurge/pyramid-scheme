@@ -159,6 +159,9 @@
 (define (used-vars prog)
   (let* ([ vars : pyr-variables (all-variables prog)]
          [ names : VariableNames ((inst map VariableName pyr-variable) pyr-variable-name vars)]
+         [ assign-vars (all-assigns prog)]
+         [ assign-var-names (map pyr-assign-name assign-vars)]
          )
-    (apply set names)))
+    (set-union (apply set names)
+               (apply set assign-var-names))))
 

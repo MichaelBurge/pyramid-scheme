@@ -1,0 +1,11 @@
+#lang pyramid
+
+(require psl "syntax.pmd")
+
+(set-test-result! 6)
+
+(define *c* null)
+(+ 1 (+ 2 (+ 3 (call/cc (λ (k)
+                          (set! *c* k)
+                          0)))))
+

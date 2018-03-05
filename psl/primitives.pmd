@@ -142,5 +142,4 @@
                         (save (op 'save-continuation))
                         (restore 'val)))
           (,f cont)
-          (asm (assign 'val (op 'left (reg 'argl))))
           ))

@@ -150,6 +150,9 @@
 (: all-lambdas (-> Pyramid pyr-lambdas))
 (define (all-lambdas prog) (all-syntax pyr-lambda? prog))
 
+(: all-assigns (-> Pyramid pyr-assigns))
+(define (all-assigns prog) (all-syntax pyr-assign? prog))
+
 (: application->macro-application (-> pyr-application pyr-macro-application))
 (define (application->macro-application app)
   (define op (cast (pyr-application-operator app) pyr-variable))
