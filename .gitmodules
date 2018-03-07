@@ -1,0 +1,3 @@
+[submodule "ceagle"]
+	path = ceagle
+	url = git@github.com:MichaelBurge/ceagle.git
