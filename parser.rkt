@@ -21,7 +21,7 @@
 (: *handler?* (Parameterof Boolean))
 (define *handler?* (make-parameter #f))
 
-(module* macros typed/racket
+(module* macros racket
   (require (for-syntax (submod "." "..")))
   (require (submod "." ".."))
   (provide (all-defined-out)
@@ -30,16 +30,13 @@
 
   (require (submod "types.rkt" ast))
   
-  (require (for-syntax syntax/parse))
   (require (for-syntax racket/match))
 
   (define-syntax (quasiquote-pyramid stx)
-    (define qq 'quasiquote)
-    (define uq 'unquote)
     (define (loop stx)
       (match stx
-        [(list 'unquote y) `(,uq (shrink-pyramid ,y))]
-        [`(quasiquote  ,y) `(expand-pyramid (,qq ,(loop y)))]
+        [(list 'unquote y) `(,'unquote (shrink-pyramid ,y))]
+        [`(quasiquote  ,y) `(expand-pyramid (,'quasiquote ,(loop y)))]
         [(? list? xs)       (map loop xs)]
         [y y]
         ))

@@ -95,6 +95,8 @@
 (define (floori x) (cast (floor x) Integer))
 
 (module struct racket
+  (provide destruct)
+  
   (require (for-syntax racket/syntax))
   (require (for-syntax racket/list))
   (require (for-syntax racket/struct-info))
