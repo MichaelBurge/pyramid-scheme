@@ -21,6 +21,34 @@
 (: *handler?* (Parameterof Boolean))
 (define *handler?* (make-parameter #f))
 
+(module* macros typed/racket
+  (require (for-syntax (submod "." "..")))
+  (require (submod "." ".."))
+  (provide (all-defined-out)
+           (all-from-out (submod "types.rkt" ast))
+           (all-from-out (submod "." "..")))
+
+  (require (submod "types.rkt" ast))
+  
+  (require (for-syntax syntax/parse))
+  (require (for-syntax racket/match))
+
+  (define-syntax (quasiquote-pyramid stx)
+    (define qq 'quasiquote)
+    (define uq 'unquote)
+    (define (loop stx)
+      (match stx
+        [(list 'unquote y) `(,uq (shrink-pyramid ,y))]
+        [`(quasiquote  ,y) `(expand-pyramid (,qq ,(loop y)))]
+        [(? list? xs)       (map loop xs)]
+        [y y]
+        ))
+    (syntax-case stx ()
+      [(_ exp)
+       (let ([ ret (loop (syntax->datum #'exp))])
+         (datum->syntax #'exp ret))]))
+  )
+
 (: expand-pyramid (-> PyramidQ Pyramid))
 (define (expand-pyramid x)
   (with-parser-frame 'expand-pyramid x

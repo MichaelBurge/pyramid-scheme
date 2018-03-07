@@ -1,39 +1,41 @@
-#lang racket
+#lang typed/racket
 
 ;(require "minimize.rkt")
 ;; (require "test.rkt")
-(require "macro.rkt")
+;(require "macro.rkt")
 ;; (require "globals.rkt")
 ;; (require "ast.rkt")
 (require "types.rkt")
- (require "parser.rkt")
-(require "simplifier.rkt")
-(require "io.rkt")
+(require (submod "parser.rkt" macros))
+;(require "simplifier.rkt")
+;(require "io.rkt")
 
 ;(sequence->exp (list (pyr-variable 'a)))
 
-(%-install-macro-library!)
+;(%-install-macro-library!)
 
 ; (print-ast (pass-expand-macros (expand-pyramid '((5)))))
 
-(print-ast
-(pass-expand-macros
-(pass-expand-macros
- (pass-expand-macros
-   (expand-pyramid
-    '(begin
-       (include psl "syntax.pmd")
-       (define (f a b) a)
-       (let* ([ x 5 ]       ; 5
-              [ y (f x 7) ] ; 12
-              [ z (f x y) ] ; 17
-              )
-         (f y z)) ; 29
-       ))
-  )
- )
-)
-)
+(quasiquote-pyramid `(begin 15 20 ,(pyr-begin (list (pyr-const 5) (pyr-const 10))) 25))
+
+;; (print-ast
+;; (pass-expand-macros
+;; (pass-expand-macros
+;;  (pass-expand-macros
+;;    (expand-pyramid
+;;     '(begin
+;;        (include psl "syntax.pmd")
+;;        (define (f a b) a)
+;;        (let* ([ x 5 ]       ; 5
+;;               [ y (f x 7) ] ; 12
+;;               [ z (f x y) ] ; 17
+;;               )
+;;          (f y z)) ; 29
+;;        ))
+;;   )
+;;  )
+;; )
+;; )
 
 ;; (expand-pyramid
 ;;  `(begin

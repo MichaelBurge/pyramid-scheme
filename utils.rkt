@@ -3,7 +3,8 @@
 (require "typed/binaryio.rkt")
 (require "typed/dict.rkt")
 
-(provide (all-defined-out))
+(provide (all-defined-out)
+         (all-from-out 'struct))
 
 (: maybe->list (All (A) (-> Boolean A (Listof A))))
 (define (maybe->list pred? x) (if pred? (list x) '()))
@@ -93,10 +94,31 @@
 (: floori (-> Real Integer))
 (define (floori x) (cast (floor x) Integer))
 
-;; (if (>= i (bytes-length bs))
-  ;;     0
-  ;;     (bytes->integer (subbytes(bytes-ref bs i)))
+(module struct racket
+  (require (for-syntax racket/syntax))
+  (require (for-syntax racket/list))
+  (require (for-syntax racket/struct-info))
 
-;; (define (bool-f pred on-true on-false x) (implies (pred x) (get x)))
-;; (define (const x) (λ (y) x))
+  (define-syntax (destruct stx)
+    (syntax-case stx ()
+      [(_ ty id)
+       (let* ([ si             (extract-struct-info (syntax-local-value #'ty))]
+              [ accessors      (reverse (fourth si ))]
+              [ accessor->name (λ (acc) (with-syntax ([ acc acc ])
+                                          (format-id stx "~a~a" #'id (strip-prefix #'ty #'acc))))]
+              [ names          (map accessor->name accessors)]
+              [ make-def       (λ (name acc)
+                                 (with-syntax ([ acc (datum->syntax stx acc)]
+                                               [ name name ])
+                                   #`(define name (acc id))))]
+              [ defs           (map make-def names accessors)])
+         #`(begin #,@defs))]))
   
+  (begin-for-syntax
+    (define (strip-prefix prefix name)
+      (string->symbol
+       (substring (symbol->string (syntax->datum name))
+                  (string-length (symbol->string (syntax->datum prefix))))))))
+  
+
+(require 'struct)
