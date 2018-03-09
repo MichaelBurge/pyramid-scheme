@@ -80,7 +80,7 @@
 (: compile-asm (-> Target Linkage pyr-asm inst-seq))
 (define (compile-asm target linkage exp)
   (end-with-linkage linkage
-                    (inst-seq (set) (set) (pyr-asm-insts exp))))
+                    (inst-seq all-regs (set) (pyr-asm-insts exp))))
 
 (: compile-macro-definition (-> Target Linkage pyr-macro-definition inst-seq))
 (define (compile-macro-definition target linkage exp)
@@ -128,7 +128,7 @@
 (: compile-if (-> Target Linkage Pyramid Pyramid Pyramid inst-seq))
 (define (compile-if target linkage pred con alt)
   (let ((t-branch (make-label 'true-branch))
-        (f-branch (make-label 'false-branch))                    
+        (f-branch (make-label 'false-branch))
         (after-if (make-label 'after-if)))
     (let ((consequent-linkage
            (if (eq? linkage 'next) after-if linkage)))
@@ -196,7 +196,7 @@
                 proc-code
                 (preserving '(proc continue)
                             (construct-arglist operand-codes)
-                            (compile-procedure-call target linkage)))))  
+                            (compile-procedure-call target linkage)))))
 
 (: compile-macro-application (-> Target Linkage pyr-macro-application inst-seq))
 (define (compile-macro-application target linkage exp)
@@ -229,7 +229,7 @@
                                          (op 'pair
                                              `(,(reg 'val)
                                                ,(reg 'argl))))))))
-                                             
+
     (if (null? (cdr operand-codes))
         code-for-next-arg
         (preserving '(env)
@@ -272,19 +272,19 @@
 
   (: compile-proc-appl (-> Target (U 'return label) inst-seq))
 (define (compile-proc-appl target linkage)
-  (match (cons target linkage)
-    [(cons 'val 'return)
+  (match* (target linkage)
+    [('val 'return)
      (make-insts '(proc continue) all-regs
                  (assign 'val (op 'compiled-procedure-entry
                                   `(,(reg 'proc))))
                  (goto (reg 'val)))]
-    [(cons _    'return) (error "compile-proc-appl: return linkage implies target should be val" target)]
-    [(cons 'val _) (make-insts '(proc) all-regs
+    [(_    'return) (error "compile-proc-appl: return linkage implies target should be val" target)]
+    [('val _) (make-insts '(proc) all-regs
                                (assign 'continue linkage)
                                (assign 'val (op 'compiled-procedure-entry
                                                 `(,(reg 'proc))))
                                (goto (reg 'val)))]
-    [(cons _ _ )
+    [(_ _)
      (let ((proc-return (make-label 'proc-return)))
        (make-insts '(proc) all-regs
                    (assign 'continue proc-return)
@@ -379,5 +379,3 @@
         [ lst-modifies (if (list? modifies) modifies (set->list modifies))]
         )
     (inst-seq (apply set lst-needs) (apply set lst-modifies) is)))
-
-

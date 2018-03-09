@@ -1,0 +1,13 @@
+#lang pyramid
+
+(set-test-result! 5)
+
+(define (f) #t)
+(define (main)
+  (asm (label 'loop))
+  (if (f) (asm (goto (label 'term))) (begin))
+  (asm (goto (label 'loop)))
+  (asm (label 'term))
+  5)
+
+(main)
