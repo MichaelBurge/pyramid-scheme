@@ -55,9 +55,10 @@
 
 (: compile-const (-> Target Linkage RegisterValue inst-seq))
 (define (compile-const target linkage val)
+  (define mexpr (if (boolean? val) (const val) (boxed-const val)))
   (end-with-linkage linkage
                     (make-insts '() (list target)
-                                (assign target (boxed-const val)))))
+                                (assign target mexpr))))
 
 (: compile-quoted (-> Target Linkage Pyramid inst-seq))
 (define (compile-quoted target linkage exp)
