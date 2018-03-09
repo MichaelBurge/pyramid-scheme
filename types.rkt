@@ -332,7 +332,7 @@
   (define-type world-storage (HashTable Address account-storage)) ; All accounts' storages
   (define-type history-storage (HashTable StorageRoot world-storage)) ; All historical commit checkpoints
 
-  (define-type AbiType (U "void" "uint256" "uint256[]"))
+  (define-type AbiType (U "void" "uint256" "uint256[]" "bool"))
 
   (struct vm-store ([ history : history-storage ]
                     [ world : world-storage ]

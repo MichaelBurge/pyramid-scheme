@@ -71,7 +71,7 @@ There is a standard library of primitive operations.
 -- Optimizations --
 These optimizations are currently unimplemented:
 * Values that are allocated and used within a lexical scope should not have infinite extent. Roll back the allocator pointer.
-* Continuations 
+* Continuations
 -- Constants --
 * Integers are converted into push instructions.
 * Quotes are always variable names. Labels have their own classification in MExpr.
@@ -140,7 +140,7 @@ These optimizations are currently unimplemented:
   (*relocation-table* (make-relocation-table))
   (*reverse-symbol-table* (make-reverse-symbol-table))
   (*asm-namespace*) (namespace-anchor->namespace *asm-anchor*)
-  
+
   (append
    (cg-initialize-program)
    (cg-define-primops)
@@ -514,7 +514,7 @@ These optimizations are currently unimplemented:
 (define-generator (cg-op-list exp)
   (cg-mexpr exp)         ; [ x ]
   (cg-make-nil)          ; [ nil; x ]
-  (cg-reverse 2)         ; [ x; nil ] 
+  (cg-reverse 2)         ; [ x; nil ]
   (cg-cons stack stack)) ; [ x:nil]
 
 
@@ -548,9 +548,10 @@ These optimizations are currently unimplemented:
                (list (evm-push (integer-bytes int) int))))
             ((integer? val) (list (evm-push (integer-bytes val) val)))
             ((list? val)    (cg-make-list (map const val) #f))
+            ((boolean? val) (cg-mexpr-const (const (if val 1 0))))
             (else
              (error "cg-mexpr-const: Unsupported constant" exp))))))
-          
+
 
 (: cg-mexpr-boxed-const (Generator boxed-const))
 (define-generator (cg-mexpr-boxed-const exp)
@@ -673,7 +674,7 @@ These optimizations are currently unimplemented:
   (cg-mul (const WORD) stack)     ; [ os'; addr; val ]
   (cg-add stack stack)            ; [ addr'; val ]
   (cg-write-address stack stack)) ; [ ]
-    
+
 (: asm (-> Symbol EthInstructions))
 (define (asm sym) (list (evm-op sym)))
 
@@ -713,7 +714,7 @@ These optimizations are currently unimplemented:
           (body)                       ; [ size ]
           (cg-sub stack (const 1))     ; [ size' ]
           (cg-goto label-loop)         ; [ size' ]
-          `(,label-term)               ; 
+          `(,label-term)               ;
           (asm 'POP)                   ; [ ]
           ))]))
 
@@ -904,7 +905,7 @@ These optimizations are currently unimplemented:
    (cg-intros (list vec))        ; [ vec ]
    (asm 'DUP1)                   ; [ vec; vec ]
    (cg-vector-len stack)         ; [ len; vec ]
-   `(,loop)                      
+   `(,loop)
    (asm 'DUP1)                   ; [ len; len; vec ]
    (cg-eq? (const 0) stack)      ; [ 1; len; vec ]
    (cg-branch term stack)        ; [ len; vec ]
@@ -1008,9 +1009,9 @@ These optimizations are currently unimplemented:
              (cg-make-fixnum stack) ; [ val''; lst; *vals ]
              '())
          (cg-cons stack stack)    ; [ 'lst; *vals ]
-         (loop (- n 1))         
+         (loop (- n 1))
          ))))
-  
+
 (: cg-allocate (Generator MExpr))              ; Returns a pointer to a newly-allocated block of 256-bit words.
 (define-generator (cg-allocate size)
   (cg-mexpr size)                                ; [ size ]
@@ -1037,7 +1038,7 @@ These optimizations are currently unimplemented:
          (cg-write-address stack stack) ; [ optr; ptr; exp* ]
          (cg-reverse 2)                 ; [ ptr; optr; exp* ]
          (cg-add (const WORD) stack)    ; [ ptr'; optr; exp* ]
-         (loop (cdr exps)))))           
+         (loop (cdr exps)))))
   (cg-pop 1)                            ; [ optr ]
   )
 
@@ -1101,7 +1102,7 @@ These optimizations are currently unimplemented:
      ; Install the primitives
      `(,label-skip)
      )))
-                                  
+
 
 (: cg-empty-environment Generator0)
 (define-generator (cg-empty-environment)
@@ -1124,20 +1125,28 @@ These optimizations are currently unimplemented:
         [ label-vector  (make-label 'cg-return-ty-vector)]
         [ label-compiled-procedure (make-label 'cg-return-ty-compiled-procedure)]
         [ label-nil     (make-label 'cg-return-ty-nil)]
+        [ label-unboxed (make-label 'cg-return-ty-unboxde)]
         )
     (append
      (cg-intros (list exp))     ; [ exp ]
+
+     ; Check for unboxed values first
      (asm 'DUP1)                ; [ exp; exp ]
+     (cg-gt? (const 2) stack)   ; [ bool?; exp ]
+     (cg-branch label-unboxed stack) ; [ exp ]
+
+     ; Otherwise the value is boxed, so branch on the type
+     (asm 'DUP1)
      (cg-tag stack)             ; [ tag; exp ]
-     
+
      (asm 'DUP1)                       ; [ tag; tag; exp ]
      (cg-eq? (const TAG-FIXNUM) stack) ; [ pred; tag; exp ]
      (cg-branch label-uint256 stack)   ; [ tag; exp ]
-     
+
      (asm 'DUP1)                     ; [ tag; tag; exp ]
      (cg-eq? (const TAG-PAIR) stack) ;  [ pred; tag; exp ]
      (cg-branch label-list stack)    ; [ tag; exp ]
-     
+
      (asm 'DUP1)                       ; [ tag; tag; exp ]
      (cg-eq? (const TAG-VECTOR) stack) ; [ pred; tag; exp ]
      (cg-branch label-vector stack)    ; [ tag; exp ]
@@ -1149,8 +1158,13 @@ These optimizations are currently unimplemented:
      (asm 'DUP1) ; [ tag; tag; exp ]
      (cg-eq? (const TAG-NIL) stack) ; [ pred; tag; exp ]
      (cg-branch label-nil stack)
-     
+
      (cg-throw 'cg-return-invalid-type)
+
+     `(,label-unboxed)              ; [ exp ]
+     (cg-make-fixnum stack)         ; [ exp' ]
+     (asm 'DUP1)                    ; [ exp'; exp' ]
+     (cg-goto label-uint256)
 
      `(,label-compiled-procedure)   ; [ tag; exp ]
      (cg-pop 1)                     ; [ exp ]
@@ -1192,7 +1206,7 @@ These optimizations are currently unimplemented:
   (cg-vector-unbox! stack) ; [ vec' ]
   (cg-return-vector stack) ; [ ]
   )
-  
+
 (define cg-return-compiled-procedure cg-return-uint256)
 
 ; Leaves [ x1; x2; ... ; xn; remaining list ] on the stack.
@@ -1209,7 +1223,7 @@ These optimizations are currently unimplemented:
          (cg-cdr stack)           ; [ xs; x ]
          (loop (- n 1)))))        ; [ STACK* ]
   (cg-reverse (+ num 1))) ; +1 because of trailing NIL or tail
-  
+
 ;;; Continuations
 
 (: cg-save-continuation Generator0)
@@ -1278,6 +1292,16 @@ These optimizations are currently unimplemented:
   (cg-intros (list a b))
   (asm 'EQ))
 
+(: cg-lt? (Generator2 MExpr MExpr))
+(define-generator (cg-lt? a b)
+  (cg-intros (list a b))
+  (asm 'LT))
+
+(: cg-gt? (Generator2 MExpr MExpr))
+(define-generator (cg-gt? a b)
+  (cg-intros (list a b))
+  (asm 'GT))
+
 (: cg-mul (Generator2 MExpr MExpr))
 (define-generator (cg-mul a b)
   (cg-intros (list a b))
@@ -1314,7 +1338,7 @@ Stack: [ x1, x2, x3, x4 ]
 Iterate on [ stk, stk, stk, 5, stk ]
 stk is a no-op, so immediately recurse: [ stk, stk, stk, 5 ]
 5 inserted at 3: [ x1,x2,x3,5,x4,10]
-Remaining 3 stk arguments ignored. 
+Remaining 3 stk arguments ignored.
 |#
 (: cg-intros (Generator MExprs)) ; Use at start of a primitive op. Ensures all arguments are on the stack first-to-last.
 (define-generator (cg-intros exprs)
@@ -1383,7 +1407,7 @@ SWAP1 -> [ x1; x2; x3; c ]
           (memf stack? (op-args exp))
           (stack? (op-args exp)))
       false))
-           
+
 
 ; Debug labels are not used for flow control. They generate entries in the relocation table that
 ; help locate the code that generated an assembly fragment. They have 1 byte of overhead for a

@@ -13,12 +13,15 @@
   (define (assert-size n)
     (unless (= (bytes-length bs) n)
       (error "parse-type: Expected size" type n '!= (bytes-length bs))))
-  (cond ((equal? type "void") '())
-        ((equal? type "uint256")
-         (assert-size 32)
-         (parse-uint256 bs))
-        ((equal? type "uint256[]") (parse-array "uint256" bs))
-        (else (error "parse-pyramid-result: Unsupported type:" type))))
+  (match type
+    ["void" '()]
+    ["uint256"
+     (assert-size 32)
+     (parse-uint256 bs)]
+    ["uint256[]" (parse-array "uint256" bs)]
+    ["bool" (= (parse-uint256 bs) 1)]
+    [_ (error "parse-type: Unsupported type:" type)]
+    ))
 
 (: type-size (-> AbiType Integer))
 (define (type-size type)
@@ -39,6 +42,7 @@
 (: infer-type (-> Any AbiType))
 (define (infer-type x)
   (cond
+    ((boolean? x) "bool")
     ((fixnum? x) "uint256")
     ((null? x) "void")
     ((list? x) (match (infer-type (car x))
@@ -52,7 +56,7 @@ Example ABI:
 {
   type: "function",
   name: "x",
-  inputs: 
+  inputs:
   [
    {
     name: "a",
@@ -74,4 +78,4 @@ Example ABI:
 
 
 
-;; (define (export-json abi) (undefined))  
+;; (define (export-json abi) (undefined))
