@@ -96,7 +96,7 @@
 
 (module struct racket
   (provide destruct)
-  
+
   (require (for-syntax racket/syntax))
   (require (for-syntax racket/list))
   (require (for-syntax racket/struct-info))
@@ -115,12 +115,12 @@
                                    #`(define name (acc id))))]
               [ defs           (map make-def names accessors)])
          #`(begin #,@defs))]))
-  
+
   (begin-for-syntax
     (define (strip-prefix prefix name)
       (string->symbol
        (substring (symbol->string (syntax->datum name))
                   (string-length (symbol->string (syntax->datum prefix))))))))
-  
+
 
 (require 'struct)

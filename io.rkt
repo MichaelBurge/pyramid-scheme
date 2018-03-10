@@ -11,15 +11,16 @@
 (require "typed/binaryio.rkt")
 (require "typed/dict.rkt")
 
-(provide (all-defined-out))
+(provide (all-defined-out)
+         (all-from-out 'macros))
 
 (: display-abstract-instruction (-> Instruction Void))
 (define (display-abstract-instruction i)
   (match i
     [(struct pyr-asm _) (print `(,(*abstract-offset*) ,(format-ast i)))]
     [_                  (print `(,(*abstract-offset*) ,(shrink-asm i)))]))
-                 
-  
+
+
 (: display-abstract-instructions (-> (U inst-seq Instructions) Void))
 (define (display-abstract-instructions is)
   (parameterize ([ *abstract-offset* 0])
@@ -113,3 +114,15 @@
 
 (define (display-macros)
   (display `(,"Mapped symbols:" ,(namespace-mapped-symbols (*available-macros*)))))
+
+(module macros racket
+  (require "globals.rkt")
+  (provide (all-defined-out))
+  (define-syntax-rule (verbose-section title level body)
+    (when (verbose? level)
+      (displayln title)
+      body
+      (newline)
+      )))
+
+(require 'macros)
