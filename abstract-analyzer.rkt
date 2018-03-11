@@ -69,7 +69,7 @@
   (define vis (list->vector is))
   (build-abstract-symbol-table is)
   (when (verbose? VERBOSITY-LOW)
-    (printf "PC\tInstruction\tStack\tval\tcontinue\tproc\targl\tenv\n"))
+    (printf "PC\tInstruction\tStack\tval\tcontinue\tproc\targl\tstack-size\tenv\n"))
   (parameterize ([ *num-iterations* 0])
     (let loop ()
       (let ([pc (machine-pc *m*) ])
@@ -485,11 +485,12 @@
 (: v-box (-> RegisterValue value))
 (define (v-box x)
   (match x
-    [(? boolean? _) (error "v-box: Cannot box a boolean")]
-    [(? exact-integer? _) (v-fixnum x)]
-    [(? symbol? _)        (v-symbol x)]
-    [(? list? _)          (v-pair (v-box (first x))
+    [(? boolean?) (error "v-box: Cannot box a boolean")]
+    [(? exact-integer?) (v-fixnum x)]
+    [(? symbol?)        (v-symbol x)]
+    [(? list?)          (v-pair (v-box (first x))
                                   (v-box (cast (rest x) RegisterValue)))]
+    [(? vector?)        (v-vector (vector-map v-box x))]
     [_ (error "v-box: Unknown type" x)]))
 
 (: print-debug-line (-> Void))
@@ -518,3 +519,15 @@
      (eval-op-extend-environment names values (v-list->environment next))]
     [_ (error "v-list->environment: Could not parse as an environment" xs)]
     ))
+
+(: eval-op-vector-read (-> value value value))
+(define (eval-op-vector-read vec os)
+  (assert vec v-vector?)
+  (assert os  exact-integer?)
+  (vector-ref (v-vector-elems vec) os))
+
+(: eval-op-vector-write (-> value value value Void))
+(define (eval-op-vector-write vec os x)
+  (assert vec v-vector?)
+  (assert os  exact-integer?)
+  (vector-set!  (v-vector-elems vec) os x))

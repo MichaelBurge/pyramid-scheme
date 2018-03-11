@@ -72,7 +72,7 @@
      (end-with-linkage linkage
                        (append-instruction-sequences (construct-arglist (map (λ ([ x : Pyramid ])
                                                                                (compile-quoted 'val 'next x))
-                                                                             (cons hd tl)))
+                                                                             (reverse (cons hd tl))))
                                                      (make-insts '(argl) (listof target)
                                                                  (assign target (reg 'argl)))))]
     [else (error "compile-quoted: Unhandled case" exp)]))

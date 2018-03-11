@@ -29,7 +29,7 @@
            (all-from-out (submod "." "..")))
 
   (require (submod "types.rkt" ast))
-  
+
   (require (for-syntax racket/match))
 
   (define-syntax (quasiquote-pyramid stx)
@@ -50,50 +50,51 @@
 (define (expand-pyramid x)
   (with-parser-frame 'expand-pyramid x
   (match x
-    ((? boolean?) (pyr-const x))
-    ((? exact-integer?) (pyr-const x))
-    ((? string?) (pyr-const x))
-    ((? symbol?) (pyr-variable x))
-    (`(quote ,exp) (pyr-quoted (expand-pyramid exp)))
-    (`(set! ,(? symbol? name) ,body)
-     (pyr-assign name (expand-pyramid body)))
-    (`(define ,(? symbol? name) . ,(? list? body))
-     (pyr-definition name (sequence->exp (map expand-pyramid body))))
-    (`(define (,(? symbol? name) . ,(? list? parameters)) . ,(? list? body))
+    [(? boolean?) (pyr-const x)]
+    [(? exact-integer?) (pyr-const x)]
+    [(? string?) (pyr-const x)]
+    [(? vector?) (pyr-const (vector->register-value x))]
+    [(? symbol?) (pyr-variable x)]
+    [`(quote ,exp) (pyr-quoted (expand-pyramid exp))]
+    [`(set! ,(? symbol? name) ,body)
+     (pyr-assign name (expand-pyramid body))]
+    [`(define ,(? symbol? name) . ,(? list? body))
+     (pyr-definition name (sequence->exp (map expand-pyramid body)))]
+    [`(define (,(? symbol? name) . ,(? list? parameters)) . ,(? list? body))
      (pyr-definition name
                      (pyr-lambda (cast parameters (Listof VariableName))
-                                 (sequence->exp (map expand-pyramid body)))))
-    (`(,(or 'λ 'lambda) ,body) (pyr-lambda '() (expand-pyramid body)))
-    (`(,(or 'λ 'lambda) ,parameters . ,(? list? body))
+                                 (sequence->exp (map expand-pyramid body))))]
+    [`(,(or 'λ 'lambda) ,body) (pyr-lambda '() (expand-pyramid body))]
+    [`(,(or 'λ 'lambda) ,parameters . ,(? list? body))
      (let ([ ex-body (sequence->exp (map expand-pyramid body))])
        (if (list? parameters)
            (pyr-lambda (cast parameters (Listof VariableName))
                        ex-body)
            (pyr-lambda (list (cast parameters Symbol))
-                       ex-body))))
-    (`(,(or 'λ 'lambda) . ,(? list? body))
-     (pyr-lambda '() (sequence->exp (map expand-pyramid body))))
-    (`(if ,pred ,cons ,alt)
+                       ex-body)))]
+    [`(,(or 'λ 'lambda) . ,(? list? body))
+     (pyr-lambda '() (sequence->exp (map expand-pyramid body)))]
+    [`(if ,pred ,cons ,alt)
      (pyr-if (expand-pyramid pred)
              (expand-pyramid cons)
-             (expand-pyramid alt)))
-    (`(begin . ,(? list? body))
-     (sequence->exp (map expand-pyramid body)))
-    ((list-rest 'asm ops)
-     (pyr-asm (map parse-asm (cast ops PyramidQs))))
-    (`(defmacro ,(? pyr-identifier? name) . ,(? list? body))
-     (pyr-macro-definition name '() body))
-    (`(defmacro (,name . ,args) . ,body)
+             (expand-pyramid alt))]
+    [`(begin . ,(? list? body))
+     (sequence->exp (map expand-pyramid body))]
+    [(list-rest 'asm ops)
+     (pyr-asm (map parse-asm (cast ops PyramidQs)))]
+    [`(defmacro ,(? pyr-identifier? name) . ,(? list? body))
+     (pyr-macro-definition name '() body)]
+    [`(defmacro (,name . ,args) . ,body)
      (assert (pyr-identifier? name))
      (assert (list? body))
-     (pyr-macro-definition name args `(begin ,@body)))
-    (`(,(? defined-macro? head) . ,(? list? tail))
-     (pyr-macro-application head (map expand-pyramid tail)))
-    (`(,head . ,(? list? tail))
-     (pyr-application (expand-pyramid head) (map expand-pyramid tail)))
-    (_ (begin
+     (pyr-macro-definition name args `(begin ,@body))]
+    [`(,(? defined-macro? head) . ,(? list? tail))
+     (pyr-macro-application head (map expand-pyramid tail))]
+    [`(,head . ,(? list? tail))
+     (pyr-application (expand-pyramid head) (map expand-pyramid tail))]
+    [_ (begin
          (pretty-print x)
-         (error "expand-pyramid: Unexpected form" x))))))
+         (error "expand-pyramid: Unexpected form" x))])))
 
 (: shrink-pyramid (-> Pyramid PyramidQ))
 (define (shrink-pyramid x)
@@ -220,7 +221,7 @@
     [(struct v-compiled-procedure (lbl env)) `(λ ,(shrink-value lbl))]
     [(struct v-primitive-procedure (lbl))    `(λ* ,(shrink-value lbl))]
     [(struct v-pair (left right)) (cons (shrink-value left) (shrink-value right))]
-    [(struct v-vector (vs)) (apply vector (map shrink-value vs))]
+    [(struct v-vector (vs)) (vector-map shrink-value vs)]
     [(struct v-null ()) '()]
     [(struct v-continuation (cont env stack)) `(λ-> ,(shrink-value cont) ,stack)]
     [(struct v-frame (mappings)) mappings]
@@ -267,14 +268,18 @@
   (loop))
 
 (module unsafe racket
-  (provide parse-file)
+  (provide parse-file
+           vector->register-value)
   (define (parse-file filename)
     (eval `(begin (require ,filename) program))
     )
+  (define (vector->register-value x) x)
+
 )
 
 (require/typed 'unsafe
-  [ parse-file (-> String Pyramid) ])
+  [ parse-file (-> String Pyramid) ]
+  [ vector->register-value (-> VectorTop RegisterValue)])
 
 (: read-file (-> String PyramidQ))
 (define (read-file filename)

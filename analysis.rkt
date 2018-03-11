@@ -59,7 +59,7 @@
 (define (print-source-map map)
   (for ([ p (sort-source-map map)])
     (printf "~a\t~a\n" (car p) (cdr p))))
-    
+
 (: full-compile (-> PyramidQ full-compile-result))
 (define (full-compile prog)
   ; (reinitialize-globals!)

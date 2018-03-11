@@ -10,7 +10,9 @@
 ; https://github.com/racket/racket/issues/1101
 
 (module common typed/racket
-  (provide (all-defined-out))
+  (require typed/racket/unsafe)
+  (provide (all-defined-out)
+           register-value?)
 
   (define-type Anys (Listof Any))
   (define-type Symbols (Listof Symbol))
@@ -18,8 +20,19 @@
   (define-type EthWords (Listof EthWord))
   (struct label ([ name : Symbol ]) #:transparent)
   (struct label-definition label ([ offset : Integer ] [ virtual? : Boolean ]) #:transparent)
-  (define-type RegisterValue (U Boolean Symbol Integer String (Listof Integer) (Listof Symbol) (Listof String)))
-  (define-predicate register-value? RegisterValue)
+  (define-type RegisterValue (U Boolean Symbol Integer String (Listof Integer) (Listof Symbol) (Listof String) (Vectorof Integer)))
+  (module unsafe racket
+    (provide register-value?)
+    (define (register-value? x)
+      (or (boolean? x)
+          (symbol? x)
+          (integer? x)
+          (string? x)
+          (list? x)
+          (vector? x)))
+    )
+  (unsafe-require/typed 'unsafe
+    [ register-value? (-> Any Boolean : RegisterValue) ])
   (define-type Verbosity Fixnum)
   (define-type SourceMap (HashTable Symbol Symbols))
   (: make-source-map (-> SourceMap))
@@ -30,7 +43,7 @@
 (module evm-assembly typed/racket
   (require (submod ".." common))
   (provide (all-defined-out))
-  
+
   (struct opcode ([ byte : Byte ] [ name : Symbol ] [ num-reads : Integer ] [ num-writes : Integer ]) #:transparent)
   (struct evm-op      ([ name : Symbol ]) #:transparent)
   (struct evm-push    ([ size : (U 'shrink Byte) ] [ value : (U Integer Symbol label) ]) #:transparent)
@@ -51,13 +64,13 @@
   (define-type LinkedOffset Integer)
   (define-type UnlinkedOffset Integer)
   (define-type SourceMapper (-> UnlinkedOffset Symbols))
-  
+
   (: make-symbol-table (-> SymbolTable))
   (define (make-symbol-table) (make-hash))
-  
+
   (: make-reverse-symbol-table (-> ReverseSymbolTable))
   (define (make-reverse-symbol-table) (make-hash))
-  
+
   (: make-relocation-table (-> RelocationTable))
   (define (make-relocation-table) (set))
   )
@@ -70,12 +83,12 @@
   ;(require (submod ".." ast))
 
   (provide (all-defined-out))
-  
+
   (define-type RegisterName (U 'env 'proc 'continue 'argl 'val 'stack-size))
 
   (struct primop ([ name : Symbol ] [ gen : Procedure ] [ eval : Procedure ]) #:transparent)
   (define-type PrimopTable (HashTable Symbol primop))
-  
+
   (struct assign ([ reg-name : RegisterName ] [ value : MExpr ]) #:transparent)
   (struct test ([ condition : MExpr ]) #:transparent)
   (struct branch ([ dest : MExpr ]) #:transparent)
@@ -121,7 +134,7 @@
   (struct v-compiled-procedure  ([label : label  ] [ env : v-environment])  #:transparent)
   (struct v-primitive-procedure ([label : label  ])        #:transparent)
   (struct v-pair                ([left  : value] [right : value])           #:transparent)
-  (struct v-vector              ([elems : values])         #:transparent)
+  (struct v-vector              ([elems : (Vectorof value)])         #:transparent)
   (struct v-null                (                )         #:transparent)
   (struct v-continuation        ([continue : label ] [env : v-environment] [ stack : values ]) #:transparent)
   (struct v-frame               ([mappings : (HashTable Symbol value)])     #:transparent)
@@ -132,7 +145,7 @@
   (define-predicate v-unboxed?  v-unboxed)
   (define-predicate v-callable? v-callable)
   (define-predicate v-list?     v-list)
-  
+
   (define-type value (U Void
                         v-unboxed
                         v-fixnum
@@ -166,7 +179,7 @@
   (require (submod ".." abstract-machine))
   (provide (all-defined-out)
            (all-from-out (submod ".." common)))
-  
+
   (struct pyr-const ([ value : RegisterValue ]) #:transparent)
   (struct pyr-variable ([ name : Symbol ]) #:transparent)
   (struct pyr-quoted ([ exp : Pyramid ]) #:transparent)
@@ -230,7 +243,7 @@
   (require (submod ".." common))
   (require (submod ".." evm-assembly))
   (provide (all-defined-out))
-  
+
   (define-type CodeHash EthWord)
   (struct simulator ([ accounts : vm-world ] [ store : vm-store ] [ code-db : (HashTable CodeHash Bytes) ] ) #:transparent)
 
@@ -255,7 +268,7 @@
   (define-type AddressEx (U #f Address))
   (define-type StorageRoot EthWord)
   (define-type OnSimulateCallback (-> vm-exec EthInstruction EthWords Void))
-  
+
   (struct vm-account ([ nonce : Integer ] [ balance : EthWord ] [ storage-root : StorageRoot ] [ code-hash : CodeHash ]) #:mutable #:transparent)
   (struct vm-txn ([ nonce : Integer ]
                   [ gas-price : Integer ]
@@ -346,7 +359,7 @@
   (require (submod ".." ast))
   (require (submod ".." simulator))
   (provide (all-defined-out))
-  
+
   (define-type test-mod (-> test-txn Void))
   (define-type test-mods (Listof test-mod))
 
@@ -361,4 +374,3 @@
   (define-type test-accounts (Listof test-account))
   (define-type test-cases (Listof test-case))
   )
-

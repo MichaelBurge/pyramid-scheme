@@ -33,22 +33,24 @@
 
 (: parse-array (-> AbiType Bytes Any))
 (define (parse-array type bs)
-  (let ([ ret null ])
-    (for ([ i (in-range 0 (bytes-length bs) 32) ])
-      (let ([ bs2 (subbytes bs i (+ i 32)) ])
-        (set! ret (cons (parse-uint256 bs2) ret))))
-    ret))
+  (for/list : EthWords ([ i (in-range 0 (bytes-length bs) 32) ])
+    (let ([ bs2 (subbytes bs i (+ i 32)) ])
+      (parse-uint256 bs2))))
 
 (: infer-type (-> Any AbiType))
 (define (infer-type x)
   (cond
-    ((boolean? x) "bool")
-    ((fixnum? x) "uint256")
-    ((null? x) "void")
-    ((list? x) (match (infer-type (car x))
-                 ("uint256" "uint256[]")
-                 (t (error "unexpected list type" t))))
-    (else (error "infer-type: Unknown type" x))))
+    [(boolean? x) "bool"]
+    [(fixnum? x) "uint256"]
+    [(null? x) "void"]
+    [(list? x) (match (infer-type (car x))
+                 ["uint256" "uint256[]"]
+                 [t (error "infer-type: Unexpected list type" t)])]
+    [(vector? x) (match (infer-type (vector-ref x 0))
+                   ["uint256" "uint256[]"]
+                   [t (error "infer-type: Unexpected vector typed" t)])]
+    [else (error "infer-type: Unknown type" x)]
+    ))
 
 #|
 Example ABI:

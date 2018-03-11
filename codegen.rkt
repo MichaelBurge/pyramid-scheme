@@ -543,14 +543,14 @@ These optimizations are currently unimplemented:
 (define-generator (cg-mexpr-const exp)
   (let ((val (const-value exp)))
     (begin
-      (cond ((symbol? val)
+      (cond [(symbol? val)
              (let ((int (symbol->integer val)))
-               (list (evm-push (integer-bytes int) int))))
-            ((integer? val) (list (evm-push (integer-bytes val) val)))
-            ((list? val)    (cg-make-list (map const val) #f))
-            ((boolean? val) (cg-mexpr-const (const (if val 1 0))))
-            (else
-             (error "cg-mexpr-const: Unsupported constant" exp))))))
+               (list (evm-push (integer-bytes int) int)))]
+            [(integer? val) (list (evm-push (integer-bytes val) val))]
+            [(list? val)    (cg-make-list (map const val) #f)]
+            [(boolean? val) (cg-mexpr-const (const (if val 1 0)))]
+            [(vector? val)  (cg-make-vector (const (vector-length val)) (map const (vector->list val)))]
+            [else           (error "cg-mexpr-const: Unsupported constant" exp)]))))
 
 
 (: cg-mexpr-boxed-const (Generator boxed-const))
@@ -561,6 +561,7 @@ These optimizations are currently unimplemented:
              (cg-make-symbol (const (integer-bytes int))))]
           [(integer? val) (cg-make-fixnum (const val))]
           [(list? val)    (cg-make-list (map const val) #t)]
+          [(vector? val)  (cg-make-vector (const (vector-length val)) (map boxed-const (vector->list val)))]
           [else           (error "cg-mexpr-const: Unsupported constant" exp)])))
 
 (unsafe-require/typed "unsafe.rkt"
@@ -623,10 +624,10 @@ These optimizations are currently unimplemented:
   (if (integer? size)
       (for/list : EthInstructions ([ i (in-range size)])
         (evm-op 'POP))
-      (cgm-repeat size (λ ()
-                        (append
-                         (asm 'SWAP1)
-                         (asm 'POP))))))
+      (cgm-repeat size
+                  (append
+                   (asm 'SWAP1)
+                   (asm 'POP)))))
 
 (: cg-swap (Generator  Integer))
 (define-generator (cg-swap size)
@@ -697,12 +698,12 @@ These optimizations are currently unimplemented:
 (define-generator (cg-cdr exp)
   (cg-read-address-offset exp (const 2)))
 
-(: cgm-repeat (Generator2 MExpr Generator0))
+(: cgm-repeat (Generator2 MExpr EthInstructions))
 (define-generator (cgm-repeat size body)
   (match size
     [(const (? exact-integer? x))
      (apply append (for/list : (Listof EthInstructions) ([ i (in-range x)])
-                     (body)))]
+                     body))]
     [_ (let ([ label-loop (make-label 'cgm-repeat-loop)]
              [ label-term (make-label 'cgm-repeat-term)])
          (append
@@ -711,7 +712,7 @@ These optimizations are currently unimplemented:
           (asm 'DUP1)                  ; [ size; size ]
           (asm 'ISZERO)                ; [ 0?; size ]
           (cg-branch label-term stack) ; [ size; ]
-          (body)                       ; [ size ]
+          body                         ; [ size ]
           (cg-sub stack (const 1))     ; [ size' ]
           (cg-goto label-loop)         ; [ size' ]
           `(,label-term)               ;
@@ -726,14 +727,13 @@ These optimizations are currently unimplemented:
   (cg-add stack (const WORD))  ; [ ptr+1; size; STACK* ]
   (asm 'SWAP1)                 ; [ size; ptr+1; STACK* ]
   (cgm-repeat stack
-              (λ ()          ; [ size; ptr+1; STACK* ]
-                (append
-                 (asm 'SWAP2) ; [ x; ptr+1; size; STACK'* ]
-                 (asm 'DUP3)  ; [ size; x; ptr+1; size; STACK'* ]
-                 (asm 'DUP3)  ; [ ptr+1; size; x; ptr+1; size; STACK'* ]
-                 (cg-write-address-offset stack stack stack) ; [ ptr+1; size; STACK'* ]
-                 (asm 'SWAP1) ; [ size; ptr+1; STACK'* ]
-                 )))          ; [ ptr+1 ]
+              (append       ; [ size; ptr+1; STACK* ]
+               (asm 'SWAP2) ; [ x; ptr+1; size; STACK'* ]
+               (asm 'DUP3)  ; [ size; x; ptr+1; size; STACK'* ]
+               (asm 'DUP3)  ; [ ptr+1; size; x; ptr+1; size; STACK'* ]
+               (cg-write-address-offset stack stack stack) ; [ ptr+1; size; STACK'* ]
+               (asm 'SWAP1) ; [ size; ptr+1; STACK'* ]
+               ))           ; [ ptr+1 ]
   (cg-sub stack (const WORD)) ; [ ptr ]
   )
 
@@ -748,19 +748,36 @@ These optimizations are currently unimplemented:
   (cg-add stack (const WORD))   ; [ vec+1; len; orig-len]
   (asm 'SWAP1)                  ; [ len; vec+1; orig-len]
   (cgm-repeat stack
-              (λ ()             ; [ len; vec; orig-len ]
-                (append
-                 (asm 'DUP1)     ; [ len; len; vec; orig-len ]
-                 (asm 'DUP4)     ; [ orig-len; len; len; vec; orig-len ]
-                 (asm 'SUB)      ; [ os; len; vec; orig-len ]
-                 (cg-add stack (const 1)) ; [ os'; len; vec; orig-len ]
-                 (asm 'DUP3)     ; [ vec; os; len; vec; orig-len ]
-                 (cg-read-address-offset stack stack) ; [ x; len; vec; orig-len ]
-                 (asm 'SWAP3)    ; [ orig-len; len; vec; x ]
-                 (asm 'SWAP2)    ; [ vec; len; orig-len; x ]
-                 (asm 'SWAP1)    ; [ len; vec; orig-len; x ]
-                 )))             ; [ vec; orig-len; STACK* ]
-  (cg-pop 2))                    ; [ STACK* ]
+              (append          ; [ len; vec; orig-len ]
+               (asm 'DUP1)     ; [ len; len; vec; orig-len ]
+               (asm 'DUP4)     ; [ orig-len; len; len; vec; orig-len ]
+               (asm 'SUB)      ; [ os; len; vec; orig-len ]
+               (cg-add stack (const 1)) ; [ os'; len; vec; orig-len ]
+               (asm 'DUP3)     ; [ vec; os; len; vec; orig-len ]
+               (cg-read-address-offset stack stack) ; [ x; len; vec; orig-len ]
+               (asm 'SWAP3)    ; [ orig-len; len; vec; x ]
+               (asm 'SWAP2)    ; [ vec; len; orig-len; x ]
+               (asm 'SWAP1)    ; [ len; vec; orig-len; x ]
+               ))              ; [ vec; orig-len; STACK* ]
+  (cg-pop 2))                  ; [ STACK* ]
+
+(: cg-unbox-vector! (Generator MExpr))
+(define-generator (cg-unbox-vector! vec)
+  (cg-mexpr vec)               ; [ vec ]
+  (asm 'DUP1)                  ; [ vec; vec ]
+  (cg-vector-length stack)     ; [ len; vec ]
+  (cgm-repeat stack
+              (append
+               (asm 'DUP1)     ; [ len; len; vec ]
+               (cg-add (const 1) stack); [os; len; vec ]
+               (asm 'DUP1)     ; [ os; os; len; vec ]
+               (asm 'DUP4)     ; [ vec; os; os; len; vec ]
+               (cg-read-address-offset stack stack) ; [ x; os; len; vec ]
+               (cg-fixnum-value stack) ; [ x'; os; len; vec ]
+               (asm 'SWAP1)    ; [ os; x'; len; vec ]
+               (asm 'DUP4)     ; [ vec; os; x'; len; vec ]
+               (cg-write-address-offset stack stack stack) ; [ len; vec ]
+               )))
 
 ; PSEUDOCODE
 ; (define (list->vector list)
@@ -814,7 +831,65 @@ These optimizations are currently unimplemented:
      `(,term)
      (cg-swap 1)                         ; [ vector; list; i ]
      (cg-swap 2)                         ; [ i; list; vector ]
-     (cg-pop 2))))                       ; [ vector ]
+     (cg-pop 2)))) ; [ vector ]
+
+;; ; PSEUDOCODE
+;; ; (define (list->vector list)
+;; ;   (let ((len (list-length list))
+;; ;        ((vec (make-vector len '())))
+;; ;      (define (loop i list)
+;; ;        (if (eq? i len)
+;; ;          vec
+;; ;          (begin
+;; ;            (vector-write vec i (car list))
+;; ;            (loop (+ i 1) (cdr list)))))
+;; ;      (loop 0 list)))
+;; (: cg-list->vector (Generator  MExpr))
+;; (define-generator (cg-list->vector exp)
+;;   (let ((loop (make-label 'loop))
+;;         (term (make-label 'term)))
+;;     (append
+;;      (cg-mexpr exp)                      ; [ list ]
+;;      ; 1. Calculate the length of the list
+;;      (asm 'DUP1)                         ; [ list; list ]
+;;      (cg-list-length stack)              ; [ len; list ]
+;;      (asm 'DUP1)                         ; [ len; len; list ]
+;;      ; 2. Allocate a vector of that size
+;;      (cg-make-vector stack '())          ; [ vector; len; list ]
+;;      (cg-swap 1)                         ; [ len; vector; list ]
+;;      (asm 'DUP1)                         ; [ len; len; vector; list ]
+;;      (asm 'DUP3)                         ; [ vector; len; len; vector; list ]
+;;      (cg-vector-set-length! stack stack) ; [ len; vector; list ]
+
+;;      ; 3. Loop through the list, setting vector elements.
+;;      `(,(evm-push 1 0))                  ; [ i; len; vector; list ]
+;;      ; STACK:                            [ i; len; vector; list ]
+;;      `(,loop)
+;;      ; 4. Check if loop should be terminated
+;;      (asm 'SWAP3)                        ; [ list; len; vector; i ]
+;;      (asm 'DUP1)                         ; [ list; list; len; vector; i]
+;;      (cg-null? stack)                    ; [ term?; list; len; vector; i ]
+;;      (cg-branch term stack)              ; [ list; len; vector; i ]
+;;      (asm 'SWAP3)                        ; [ i; len; vector; list ]
+;;      ; 5. Set vector element, and repeat loop.
+;;      (asm 'DUP1)                         ; [ i; i; len; vector; list ]
+;;      (asm 'DUP5)                         ; [ list; i; i; len; vector; list ]
+;;      (cg-car stack)                      ; [ x; i; i; len; vector; list ]
+;;      (asm 'SWAP1)                        ; [ i; x; i; len; vector; list ]
+;;      (asm 'DUP4)                         ; [ len; i; x; i; len; vector; list ]
+;;      (asm 'SUB)                          ; [ i'; x; i; len; vector; list ]
+;;      (asm 'DUP5)                         ; [ vector; i'; x; i; len; vector; list ]
+;;      (cg-vector-write stack stack stack) ; [ i; len; vector; list ]
+;;      (cg-add stack (const 1))            ; [ i'; len; vector; list ]
+;;      (asm 'SWAP2)                        ; [ len; vector; i' ]
+;;      (cg-cdr stack)                      ; [ list'; vector; i' ]
+;;      (asm 'SWAP2)                        ; [ i'; vector; list' ]
+;;      (cg-goto loop)
+;;      ; STACK:                              [ list; vector; i ]
+;;      `(,term)
+;;      (cg-swap 1)                         ; [ vector; list; i ]
+;;      (cg-swap 2)                         ; [ i; list; vector ]
+;;      (cg-pop 2))))                       ; [ vector ]
 
 (: cg-set-car! (Generator2 MExpr MExpr))
 (define-generator (cg-set-car! addr val)
@@ -864,6 +939,8 @@ These optimizations are currently unimplemented:
 (: cg-vector-len (Generator MExpr))
 (define-generator (cg-vector-len vec)
   (cg-read-address-offset vec (const 1)))
+
+(define cg-vector-length cg-vector-len)
 
 (: cg-vector-write (Generator3 MExpr MExpr MExpr)) ; vector -> offset -> value
 (define-generator (cg-vector-write vec os val)
@@ -1192,18 +1269,18 @@ These optimizations are currently unimplemented:
 
 (: cg-return-vector (Generator MExpr))
 (define-generator (cg-return-vector exp)
-  (asm 'DUP1)                     ; [ vec; vec ]
-  (cg-vector-len stack)           ; [ len; vec ]
-  (cg-mul (const WORD) stack)     ; [ len'; vec ]
-  (cg-reverse 2)                  ; [ vec; len ]
-  (cg-vector-data stack)          ; [ data; len ]
+  (asm 'DUP1)                 ; [ vec; vec ]
+  (cg-vector-len stack)       ; [ len; vec ]
+  (cg-mul (const WORD) stack) ; [ len'; vec ]
+  (cg-reverse 2)              ; [ vec; len ]
+  (cg-vector-unbox! stack)    ; [ vec'; len ]
+  (cg-vector-data stack)      ; [ data; len ]
   (asm 'RETURN)
   )
 
 (: cg-return-list-uint256 (Generator MExpr))
 (define-generator (cg-return-list-uint256 exp)
   (cg-list->vector exp)  ; [ vec ]
-  (cg-vector-unbox! stack) ; [ vec' ]
   (cg-return-vector stack) ; [ ]
   )
 
@@ -1286,6 +1363,8 @@ These optimizations are currently unimplemented:
 (: cg-unbox-integer (Generator MExpr))
 (define-generator (cg-unbox-integer exp)
   (cg-read-address-offset exp (const 1)))
+
+(define cg-fixnum-value cg-unbox-integer)
 
 (: cg-eq? (Generator2 MExpr MExpr))
 (define-generator (cg-eq? a b)

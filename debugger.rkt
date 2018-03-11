@@ -49,7 +49,7 @@
 
 (: memory-dict (-> vm-exec (Listof (List UnlinkedOffset EthWord))))
 (define (memory-dict vm)
-  (for/list : (Listof (List UnlinkedOffset EthWord)) 
+  (for/list : (Listof (List UnlinkedOffset EthWord))
       ([ i (in-range 0 (vm-exec-largest-accessed-memory vm) 32) ])
     (list i (read-memory-word vm i 32))))
 
@@ -186,7 +186,7 @@
          [ end  (+ addr len)]
          )
     (v-vector
-     (for/list ([ i (in-range addr end WORD)])
+     (for/vector : (Vectorof value) ([ i (in-range addr end WORD)])
        (vm-value vm i)))))
 
 (: vm-environment (-> vm-exec EthWord v-environment))
