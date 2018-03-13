@@ -131,6 +131,7 @@
   (define-type RegisterNames (Setof RegisterName))
   (struct v-fixnum              ([value : Integer])        #:transparent)
   (struct v-symbol              ([value : Symbol ])        #:transparent)
+  (struct v-pointer             ([ptr   : Integer])        #:transparent)
   (struct v-compiled-procedure  ([label : label  ] [ env : v-environment])  #:transparent)
   (struct v-primitive-procedure ([label : label  ])        #:transparent)
   (struct v-pair                ([left  : value] [right : value])           #:transparent)
@@ -150,6 +151,7 @@
                         v-unboxed
                         v-fixnum
                         v-symbol
+                        v-pointer
                         v-compiled-procedure
                         v-primitive-procedure
                         v-pair

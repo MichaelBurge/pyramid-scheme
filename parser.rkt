@@ -218,6 +218,7 @@
   (match e
     [(struct v-fixnum (v)) `#&,v]
     [(struct v-symbol (v)) `#&,v]
+    [(struct v-pointer (ptr)) ptr]
     [(struct v-compiled-procedure (lbl env)) `(λ ,(shrink-value lbl))]
     [(struct v-primitive-procedure (lbl))    `(λ* ,(shrink-value lbl))]
     [(struct v-pair (left right)) (cons (shrink-value left) (shrink-value right))]

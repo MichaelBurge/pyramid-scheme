@@ -91,6 +91,9 @@
               #:when (char-graphic? c))
      c)))
 
+(: map-parameter (All (A) (-> (Parameterof A) (-> A A) Void)))
+(define (map-parameter p f) (p (f (p))))
+
 (: floori (-> Real Integer))
 (define (floori x) (cast (floor x) Integer))
 

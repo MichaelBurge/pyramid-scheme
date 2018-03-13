@@ -13,6 +13,7 @@
    ;        Name                      EVM Assembly Generator          Abstract Interpreter
    ; No-ops: These are compiled to nothing, but have semantic meaning
    [primop 'bool->unboxed             cg-identity                     eval-op-bool->unboxed]
+   [primop 'word->pointer             cg-identity                     eval-op-word->pointer]
    ; Variables
    [primop 'define-variable!          op-define-variable!             eval-op-define-variable!]
    [primop 'set-variable-value!       op-set-variable-value!          eval-op-set-variable-value!]

@@ -126,3 +126,5 @@
 (define MAX-ITERATIONS 1000000)
 (define DEFAULT-GAS-PRICE 10)
 (define DEFAULT-GAS-LIMIT 1000000)
+(define ALLOCATION-RANGE-PADDING 1000) ; Length of gaps between abstract analyzer's address space allocations. Catches most out-of-range writes.
+(define WORD #x20) ; 256-bit words / 8 bit granularity addresses = 32 8-bit words, or 0x20.

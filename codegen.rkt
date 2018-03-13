@@ -115,8 +115,6 @@ These optimizations are currently unimplemented:
   (define MEM-NIL           #xc0)
   (define MEM-ALLOCATOR     #xe0)
   (define MEM-DYNAMIC-START #x100) ; This should be the highest hardcoded memory address.
-
-  (define WORD       #x20) ; 256-bit words / 8 bit granularity addresses = 32 8-bit words, or 0x20.
   )
 
 (require 'constants)

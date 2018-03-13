@@ -6,9 +6,9 @@
            interval-map-ref
            IntervalMap)
   (require typed/racket/unsafe)
-  
+
   (define-type (IntervalMap A) Any)
-  
+
   (unsafe-require/typed data/interval-map
     [ make-interval-map (All (A) (-> (IntervalMap A)))]
     [ interval-map-set! (All (A) (-> (IntervalMap A) Integer Integer A Void))]
@@ -17,7 +17,7 @@
 
 (module json typed/racket
   (provide jsexpr->string)
-  
+
   (require/typed json
     [ jsexpr->string (-> Any String)]
     ))

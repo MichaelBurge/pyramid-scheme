@@ -11,6 +11,7 @@
 (require (submod "types.rkt" common))
 (require (submod "types.rkt" abstract-machine))
 (require (submod "types.rkt" evm-assembly))
+(require "typed/binaryio.rkt")
 
 (: *m* machine)
 (define *m* (machine 0 ; pc
@@ -58,6 +59,38 @@
     ))
 
 (require 'unsafe)
+
+(module allocator typed/racket
+  (require "globals.rkt")
+  (require "utils.rkt")
+  (require (submod "typed.rkt" data/interval-map))
+  (provide (all-defined-out))
+
+  (define-type AllocationRanges (IntervalMap Bytes))
+  (: make-allocation-ranges (-> AllocationRanges))
+  (define (make-allocation-ranges) (make-interval-map))
+
+  (: *allocation-ranges* (Parameterof AllocationRanges))
+  (define *allocation-ranges* (make-parameter (make-allocation-ranges)))
+
+  (: *allocation-ptr* (Parameterof Integer))
+  (define *allocation-ptr* (make-parameter 0))
+
+  (: allocate-range! (-> Integer Integer))
+  (define (allocate-range! len)
+    (define ptr (*allocation-ptr*))
+    (interval-map-set! (*allocation-ranges*) ptr (+ ptr len) (make-bytes len))
+    (map-parameter *allocation-ptr* (λ ([ x : Integer ]) (+ x ptr len ALLOCATION-RANGE-PADDING)))
+    ptr
+    )
+
+  (: get-allocation (-> Integer Integer Bytes))
+  (define (get-allocation ptr os)
+    (interval-map-ref (*allocation-ranges*) (+ ptr (* os WORD))))
+
+  )
+
+(require 'allocator)
 
 (: verify-instructions (-> Instructions Void))
 (define (verify-instructions is)
@@ -389,18 +422,40 @@
     [_ (error "eval-tag: Unknown case" x)]))
 
 (: eval-op-allocate (-> value value))
-(define (eval-op-allocate x) (undefined))
+(define (eval-op-allocate size)
+  (assert size exact-integer?)
+  (v-pointer (allocate-range! size))
+  )
 
-(: eval-op-read-memory (-> value * value))
-(define (eval-op-read-memory . xs) (undefined))
+(: eval-op-read-memory (-> value value value))
+(define (eval-op-read-memory ptr os)
+  (with-asserts ([ ptr v-pointer? ]
+                 [ os integer?    ])
+    (: bs Bytes)
+    (define bs (get-allocation (v-pointer-ptr ptr) os))
+    (bytes->integer bs
+                    #f
+                    #t
+                    os
+                    (+ os WORD))))
 
-(: eval-op-write-memory (-> value * value))
-(define (eval-op-write-memory . xs) (undefined))
+(: eval-op-write-memory (-> value value value value))
+(define (eval-op-write-memory ptr os val)
+  (with-asserts ([ ptr v-pointer? ]
+                 [ os  exact-integer? ]
+                 [ val exact-integer? ])
+    (: bs Bytes)
+    (define bs (get-allocation (v-pointer-ptr ptr) os))
+    ; If (bytes-copy!) triggers an exception, on the EVM this would instead corrupt nearby memory.
+    (bytes-copy! bs os (integer->bytes val 32 #f #t))
+    ))
 
 (: eval-op-make-fixnum (-> value value))
 (define (eval-op-make-fixnum x)
-  (assert x exact-integer?)
-  (v-fixnum x))
+  (match x
+    [(? exact-integer?) (v-fixnum x)]
+    [(? v-pointer?) (v-fixnum (v-pointer-ptr x))]
+    [_ (error "eval-op-make-fixnum: Unknown case" x)]))
 
 (: eval-op-fixnum-value (-> value value))
 (define (eval-op-fixnum-value x)
@@ -531,3 +586,9 @@
   (assert vec v-vector?)
   (assert os  exact-integer?)
   (vector-set!  (v-vector-elems vec) os x))
+
+(: eval-op-word->pointer (-> value value))
+(define (eval-op-word->pointer x)
+  (assert x exact-integer?)
+  (v-pointer x)
+  )

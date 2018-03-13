@@ -3,6 +3,7 @@
 (require "types.rkt")
 (require "ast.rkt")
 (require "io.rkt")
+(require "parser.rkt")
 (require racket/pretty)
 
 (require typed/racket/unsafe)
@@ -39,7 +40,6 @@
                                     (begin
                                       (install-macro-exp! x)
                                       (pyr-begin '())))))
-  ; (pretty-print prog)
   (define prog3 (fixpass
                  (λ (x)
                    (transform-ast-descendants-on x pyr-macro-application? expand-macro))
@@ -115,7 +115,7 @@
                             (hash-ref simple-definitions var)
                             x))))])
         prog))))
-                       
+
 (: fixpass (-> Pass Pyramid Pyramid))
 (define (fixpass pass prog)
   (let ([ newprog (pass prog) ])
@@ -140,7 +140,7 @@
                                   (match (pyr-application-operator x)
                                     [ (struct pyr-variable ((? macro? name)))
                                       (application->macro-application x)]
-                                    [ _ x]))))                                
+                                    [ _ x]))))
 
 (: pass-remove-empty-asms Pass)
 (define (pass-remove-empty-asms ast)
@@ -164,4 +164,3 @@
          )
     (set-union (apply set names)
                (apply set assign-var-names))))
-
