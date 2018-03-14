@@ -147,7 +147,7 @@
 
 (: vm-fixnum (-> vm-exec EthWord v-fixnum))
 (define (vm-fixnum vm ptr)
-  (v-fixnum (read-memory-word vm (+ ptr #x20) 32)))
+  (v-fixnum (read-memory-word vm (+ ptr #x20) 32) ptr))
 
 (: vm-symbol (-> vm-exec EthWord v-symbol))
 (define (vm-symbol vm ptr)

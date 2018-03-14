@@ -64,23 +64,36 @@
   (require "globals.rkt")
   (require "utils.rkt")
   (require (submod "typed.rkt" data/interval-map))
+  (require (submod "types.rkt" abstract-machine))
   (provide (all-defined-out))
 
+  (define-type AllocationFixnums (HashTable Integer v-fixnum))
   (define-type AllocationRanges (IntervalMap Bytes))
+
   (: make-allocation-ranges (-> AllocationRanges))
   (define (make-allocation-ranges) (make-interval-map))
+
+  (: make-allocation-fixnums (-> AllocationFixnums))
+  (define (make-allocation-fixnums) (make-hash))
 
   (: *allocation-ranges* (Parameterof AllocationRanges))
   (define *allocation-ranges* (make-parameter (make-allocation-ranges)))
 
   (: *allocation-ptr* (Parameterof Integer))
-  (define *allocation-ptr* (make-parameter 0))
+  (define *allocation-ptr* (make-parameter 1337))
+
+  (: *allocation-fixnums* (Parameterof AllocationFixnums))
+  (define *allocation-fixnums* (make-parameter (make-allocation-fixnums)))
+
+  (: tick-allocator! (-> Integer Void))
+  (define (tick-allocator! size)
+    (*allocation-ptr* (+ (*allocation-ptr*) size ALLOCATION-RANGE-PADDING)))
 
   (: allocate-range! (-> Integer Integer))
   (define (allocate-range! len)
     (define ptr (*allocation-ptr*))
     (interval-map-set! (*allocation-ranges*) ptr (+ ptr len) (make-bytes len))
-    (map-parameter *allocation-ptr* (λ ([ x : Integer ]) (+ x ptr len ALLOCATION-RANGE-PADDING)))
+    (tick-allocator! len)
     ptr
     )
 
@@ -88,6 +101,18 @@
   (define (get-allocation ptr os)
     (interval-map-ref (*allocation-ranges*) (+ ptr (* os WORD))))
 
+  (: make-v-fixnum (-> Integer v-fixnum))
+  (define (make-v-fixnum val)
+    (define ptr (*allocation-ptr*))
+    (define fx (v-fixnum val ptr))
+    (hash-set! (*allocation-fixnums*) ptr fx)
+    (tick-allocator! WORD)
+    fx
+    )
+
+  (: get-allocated-fixnum (-> Integer (U #f v-fixnum)))
+  (define (get-allocated-fixnum addr)
+    (hash-ref (*allocation-fixnums*) addr #f))
   )
 
 (require 'allocator)
@@ -294,7 +319,7 @@
 (: eval-op-box (-> value value))
 (define (eval-op-box val)
   (match val
-    [(? exact-integer? _) (v-fixnum val)]
+    [(? exact-integer? _) (make-v-fixnum val)]
     [_ (error "eval-op-box: Should only box unboxed values")]))
 
 (: eval-evm-op (-> evm-op (U Void value)))
@@ -424,37 +449,37 @@
 (: eval-op-allocate (-> value value))
 (define (eval-op-allocate size)
   (assert size exact-integer?)
-  (v-pointer (allocate-range! size))
+  (allocate-range! size)
   )
 
 (: eval-op-read-memory (-> value value value))
 (define (eval-op-read-memory ptr os)
-  (with-asserts ([ ptr v-pointer? ]
-                 [ os integer?    ])
+  (with-asserts ([ ptr exact-integer? ]
+                 [ os exact-integer?    ])
     (: bs Bytes)
-    (define bs (get-allocation (v-pointer-ptr ptr) os))
-    (bytes->integer bs
-                    #f
-                    #t
-                    os
-                    (+ os WORD))))
+    (define bs (get-allocation ptr os))
+    (define word (bytes->integer bs #f #t os (+ os WORD)))
+    (match (get-allocated-fixnum word)
+      [#f word]
+      [fx fx])))
 
 (: eval-op-write-memory (-> value value value value))
 (define (eval-op-write-memory ptr os val)
-  (with-asserts ([ ptr v-pointer? ]
+  (with-asserts ([ ptr exact-integer? ]
                  [ os  exact-integer? ]
                  [ val exact-integer? ])
-    (: bs Bytes)
-    (define bs (get-allocation (v-pointer-ptr ptr) os))
-    ; If (bytes-copy!) triggers an exception, on the EVM this would instead corrupt nearby memory.
-    (bytes-copy! bs os (integer->bytes val 32 #f #t))
+    (match (get-allocated-fixnum (- ptr WORD))
+      [#f (let ([ bs (get-allocation ptr os)])
+            ; If (bytes-copy!) triggers an exception, on the EVM this would instead corrupt nearby memory.
+            (bytes-copy! bs os (integer->bytes val 32 #f #t)))]
+      [(? v-fixnum? fx) (set-v-fixnum-value! fx val)])
     ))
 
 (: eval-op-make-fixnum (-> value value))
 (define (eval-op-make-fixnum x)
   (match x
-    [(? exact-integer?) (v-fixnum x)]
-    [(? v-pointer?) (v-fixnum (v-pointer-ptr x))]
+    [(? exact-integer?) (make-v-fixnum x)]
+    [(? v-fixnum?) (make-v-fixnum (v-fixnum-ptr x))]
     [_ (error "eval-op-make-fixnum: Unknown case" x)]))
 
 (: eval-op-fixnum-value (-> value value))
@@ -541,7 +566,7 @@
 (define (v-box x)
   (match x
     [(? boolean?) (error "v-box: Cannot box a boolean")]
-    [(? exact-integer?) (v-fixnum x)]
+    [(? exact-integer?) (make-v-fixnum x)]
     [(? symbol?)        (v-symbol x)]
     [(? list?)          (v-pair (v-box (first x))
                                   (v-box (cast (rest x) RegisterValue)))]
@@ -590,5 +615,5 @@
 (: eval-op-word->pointer (-> value value))
 (define (eval-op-word->pointer x)
   (assert x exact-integer?)
-  (v-pointer x)
+  x
   )

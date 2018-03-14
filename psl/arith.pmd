@@ -33,4 +33,3 @@
            (cond ((fixnum? x) (equal-fixnum? x))
                  ((symbol? x) (equal-fixnum? x))
                  (else (%-throw))))))
-

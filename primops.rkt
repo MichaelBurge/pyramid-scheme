@@ -26,10 +26,11 @@
    [primop 'write-memory              cg-write-address-offset         eval-op-write-memory]
    ; Booleans
    [primop 'false?                    cg-op-false?                    eval-op-false?]
+   ; Unboxed words
+   [primop 'add                       cg-add                          eval-op-add]
    ; Fixnums
    [primop 'make-fixnum               cg-make-fixnum                  eval-op-make-fixnum]
    [primop 'fixnum-value              cg-fixnum-value                 eval-op-fixnum-value]
-   [primop 'add                       cg-add                          eval-op-add]
    ; Continuations
    [primop 'save-continuation         cg-save-continuation            eval-op-save-continuation]
    [primop 'restore-continuation!     op-restore-continuation         eval-op-restore-continuation]

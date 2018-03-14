@@ -46,7 +46,8 @@ Functions defined here are available to Pyramid programs within macros.
   (attach "macro.rkt")
   (attach "ast.rkt")
   (attach "utils.rkt")
-    
+  (attach 'racket/match)
+
   ; Debug tools
   (attach "io.rkt")
   (attach 'racket/pretty)
@@ -93,7 +94,7 @@ Functions defined here are available to Pyramid programs within macros.
 ;;                         ret))])
 ;;     (map parse-ty tys)))
 
-;; (: %-register-export 
+;; (: %-register-export
 ;; (define (%-register-export sig)
 ;;   (*exports* (cons sig (*exports*))))
 
@@ -158,7 +159,7 @@ Functions defined here are available to Pyramid programs within macros.
   (match exp
     [(list 'init modifiers ...) (test-txn modifiers null)]
     [x (error "make-test-deploy: Unexpected syntax" x)]))
-  
+
 (: make-test-txn (-> PyramidQ test-txn))
 (define (make-test-txn exp)
   (match exp
