@@ -20,7 +20,7 @@
   (define-type EthWords (Listof EthWord))
   (struct label ([ name : Symbol ]) #:transparent)
   (struct label-definition label ([ offset : Integer ] [ virtual? : Boolean ]) #:transparent)
-  (define-type RegisterValue (U Boolean Symbol Integer String (Listof Integer) (Listof Symbol) (Listof String) (Vectorof Integer)))
+  (define-type RegisterValue (U Boolean Symbol Integer String Char (Listof Integer) (Listof Symbol) (Listof String) (Vectorof Integer)))
   (module unsafe racket
     (provide register-value?)
     (define (register-value? x)
@@ -131,6 +131,7 @@
   (define-type RegisterNames (Setof RegisterName))
   (struct v-fixnum              ([value : Integer] [ ptr : Integer ]) #:mutable #:transparent)
   (struct v-symbol              ([value : Symbol ])        #:transparent)
+  (struct v-char                ([value : Char   ])        #:transparent)
   (struct v-compiled-procedure  ([label : label  ] [ env : v-environment])  #:transparent)
   (struct v-primitive-procedure ([label : label  ])        #:transparent)
   (struct v-pair                ([left  : value] [right : value])           #:transparent)
@@ -150,6 +151,7 @@
                         v-unboxed
                         v-fixnum
                         v-symbol
+                        v-char
                         v-compiled-procedure
                         v-primitive-procedure
                         v-pair

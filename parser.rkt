@@ -53,6 +53,7 @@
     [(? boolean?) (pyr-const x)]
     [(? exact-integer?) (pyr-const x)]
     [(? string?) (pyr-const x)]
+    [(? char?)   (pyr-const x)]
     [(? vector?) (pyr-const (vector->register-value x))]
     [(? symbol?) (pyr-variable x)]
     [`(quote ,exp) (pyr-quoted (expand-pyramid exp))]

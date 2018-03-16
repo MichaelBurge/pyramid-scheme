@@ -50,6 +50,7 @@ Boxed values are pointers to a tag. Depending on the tag, additional data follow
  * 7: Continuation:        3 words     - continue register, env register, and stack vector
  * 8: Frame:               2 words     - Pointer to names, pointer to values
  * 9: Environment:         2 words     - Pointer to frame, pointer to enclosing environment
+ * 10: Character           1 word      - The Unicode codepoint for the character
 
 Additionally, there are derived objects used in the standard library:
  * List:        Null | (pair X List)
@@ -105,6 +106,7 @@ These optimizations are currently unimplemented:
   (define TAG-CONTINUATION        7)
   (define TAG-FRAME               8)
   (define TAG-ENVIRONMENT         9)
+  (define TAG-CHARACTER           10)
 
   (define MEM-ENV           #x00)
   (define MEM-PROC          #x20)
@@ -545,9 +547,10 @@ These optimizations are currently unimplemented:
              (let ((int (symbol->integer val)))
                (list (evm-push (integer-bytes int) int)))]
             [(integer? val) (list (evm-push (integer-bytes val) val))]
-            [(list? val)    (cg-make-list (map const val) #f)]
+            [(list?    val) (cg-make-list (map const val) #f)]
             [(boolean? val) (cg-mexpr-const (const (if val 1 0)))]
-            [(vector? val)  (cg-make-vector (const (vector-length val)) (map const (vector->list val)))]
+            [(vector?  val) (cg-make-vector (const (vector-length val)) (map const (vector->list val)))]
+            [(char?    val) (list (evm-push 'shrink (char->integer val)))]
             [else           (error "cg-mexpr-const: Unsupported constant" exp)]))))
 
 
@@ -560,7 +563,8 @@ These optimizations are currently unimplemented:
           [(integer? val) (cg-make-fixnum (const val))]
           [(list? val)    (cg-make-list (map const val) #t)]
           [(vector? val)  (cg-make-vector (const (vector-length val)) (map boxed-const (vector->list val)))]
-          [else           (error "cg-mexpr-const: Unsupported constant" exp)])))
+          [(char? val)    (cg-make-char (const val))]
+          [else           (error "cg-mexpr-boxed-const: Unsupported constant" exp)])))
 
 (unsafe-require/typed "unsafe.rkt"
                       [ unsafe-apply (-> Procedure (Listof Any) EthInstructions)])
@@ -1218,6 +1222,10 @@ These optimizations are currently unimplemented:
      (cg-eq? (const TAG-FIXNUM) stack) ; [ pred; tag; exp ]
      (cg-branch label-uint256 stack)   ; [ tag; exp ]
 
+     (asm 'DUP1)                          ; [ tag; tag; exp ]
+     (cg-eq? (const TAG-CHARACTER) stack) ; [ pred; tag; exp ]
+     (cg-branch label-uint256 stack)      ; [ tag; exp ]
+
      (asm 'DUP1)                     ; [ tag; tag; exp ]
      (cg-eq? (const TAG-PAIR) stack) ;  [ pred; tag; exp ]
      (cg-branch label-list stack)    ; [ tag; exp ]
@@ -1393,6 +1401,11 @@ These optimizations are currently unimplemented:
 (define-generator (cg-sub a b)
   (cg-intros (list a b))
   (asm 'SUB))
+
+;;; Characters
+(: cg-make-char (Generator MExpr))
+(define-generator (cg-make-char x)
+  (cg-allocate-initialize (const 2) (list (const TAG-CHARACTER) x)))
 
 #|
 

@@ -574,6 +574,7 @@
     [(? list?)          (v-pair (v-box (first x))
                                   (v-box (cast (rest x) RegisterValue)))]
     [(? vector?)        (v-vector (vector-map v-box x))]
+    [(? char?)          (v-char x)]
     [_ (error "v-box: Unknown type" x)]))
 
 (: print-debug-line (-> Void))
