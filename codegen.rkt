@@ -1512,3 +1512,12 @@ SWAP1 -> [ x1; x2; x3; c ]
 (define (cg-throw sym)
   (append (debug-label sym)
           (asm 'REVERT)))
+
+; Fixnums, symbols, and characters are all stored the same way. Use define-generator to generate a sourcemap frame, though.
+(: cg-character-value (Generator MExpr))
+(define-generator (cg-character-value x)
+  (cg-fixnum-value x))
+
+(: cg-symbol-value (Generator MExpr))
+(define-generator (cg-symbol-value x)
+  (cg-fixnum-value x))

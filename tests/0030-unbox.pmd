@@ -1,0 +1,11 @@
+#lang pyramid
+
+(require psl "primitives.pmd")
+
+(set-test-result! 70)
+
+(%-box
+ (%#-+ (%-unbox #\A)   ; 65
+ (%#-+ (%-unbox 5)     ; 5
+ (%#-- (%-unbox 'B)    ; Don't care about 'B, just that we can unbox it.
+       (%-unbox 'B)))))

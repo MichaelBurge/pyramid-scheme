@@ -5,6 +5,15 @@
 
 ; Helpers
 
+(defmacro (cond . cases)
+  (match cases
+    ['() '(%-unreachable)]
+    [`((else ,x)) x]
+    [`((,pred ,cons) . ,rest) `(if ,pred ,cons (cond ,@rest))]
+    ))
+
+(defmacro (%-unreachable) `(%-throw))
+
 (defmacro (intro-var v1 . fs)
   (list* 'asm
          `(save (op 'lookup-variable-value (const (quote ,v1)) (reg 'env)))
@@ -97,12 +106,15 @@
 (define (%-calldatacopy a b c)   (triop  (evm 'CALLDATACOPY)))
 (define (%-timestamp)            (nullop (evm 'TIMESTAMP)))
 
-(define (%-tag a)            (unop    (op 'type stack)))
-(define (%-store-read a)     (unop    (evm 'SLOAD)))
-(define (%-store-write! a b) (biproc  (evm 'SSTORE)))
-(define (%-box a)            (unop-unboxed (op 'make-fixnum stack)))
-(define (%-unbox a)          (unop-unboxed (op 'fixnum-value stack)))
-(define (%-fixnum-lvalue x)  (%-word->pointer (%-unbox (%-+ (%-box x) WORD))))
+(define (%#-tag a)            (unop-unboxed (op 'type stack)))
+(define (%-store-read a)      (unop    (evm 'SLOAD)))
+(define (%-store-write! a b)  (biproc  (evm 'SSTORE)))
+(define (%-box a)             (unop-unboxed (op 'make-fixnum stack)))
+(define (%-unbox-fixnum a)    (unop-unboxed (op 'fixnum-value stack)))
+(define (%-unbox-character a) (unop-unboxed (op 'character-value stack)))
+(define (%-unbox-symbol a)    (unop-unboxed (op 'symbol-value stack)))
+
+(define (%-fixnum-lvalue x)  (%-word->pointer (%-unbox-fixnum (%-+ (%-box x) WORD))))
 (define (%-word->pointer a)  (unop-unboxed (op 'word->pointer stack)))
 (define (%#-mem-alloc a)      (unop-unboxed (op 'allocate stack)))
 
@@ -149,17 +161,17 @@
        (save (op 'make-fixnum stack))
        (restore 'val)))
 
-(define %-TAG-FIXNUM              0)
-(define %-TAG-SYMBOL              1)
-(define %-TAG-COMPILED-PROCEDURE  2)
-(define %-TAG-PRIMITIVE-PROCEDURE 3)
-(define %-TAG-PAIR                4)
-(define %-TAG-VECTOR              5)
-(define %-TAG-NIL                 6)
-(define %-TAG-CONTINUATION        7)
-(define %-TAG-FRAME               8)
-(define %-TAG-ENVIRONMENT         9)
-(define %-TAG-CHARACTER           10)
+(define %#-TAG-FIXNUM              (%-unbox-fixnum 0))
+(define %#-TAG-SYMBOL              (%-unbox-fixnum 1))
+(define %#-TAG-COMPILED-PROCEDURE  (%-unbox-fixnum 2))
+(define %#-TAG-PRIMITIVE-PROCEDURE (%-unbox-fixnum 3))
+(define %#-TAG-PAIR                (%-unbox-fixnum 4))
+(define %#-TAG-VECTOR              (%-unbox-fixnum 5))
+(define %#-TAG-NIL                 (%-unbox-fixnum 6))
+(define %#-TAG-CONTINUATION        (%-unbox-fixnum 7))
+(define %#-TAG-FRAME               (%-unbox-fixnum 8))
+(define %#-TAG-ENVIRONMENT         (%-unbox-fixnum 9))
+(define %#-TAG-CHARACTER           (%-unbox-fixnum 10))
 
 (define %-MEM-ENV            #x20)
 (define %-MEM-PROC           #x40)
@@ -173,6 +185,10 @@
 (define WORD #x20)
 
 ; Runtime support
+(define (%-symbol?    x) (%#-= (%#-tag x) %#-TAG-SYMBOL))
+(define (%-fixnum?    x) (%#-= (%#-tag x) %#-TAG-FIXNUM))
+(define (%-character? x) (%#-= (%#-tag x) %#-TAG-CHARACTER))
+
 (define (%-pair a b) (binop-unboxed (op 'pair stack stack)))
 (define (%-left a)   (unop-unboxed (op 'left stack)))
 (define (%-right a)  (unop-unboxed (op 'right stack)))
@@ -198,3 +214,9 @@
 
 (define (%#-bytes->words x)
   (%#-/ x (%-unbox WORD)))
+
+(define (%-unbox a)
+  (cond [(%-fixnum?    a) (%-unbox-fixnum    a)]
+        [(%-character? a) (%-unbox-character a)]
+        [(%-symbol?    a) (%-unbox-symbol    a)]
+        ))

@@ -31,6 +31,8 @@
    ; Fixnums
    [primop 'make-fixnum               cg-make-fixnum                  eval-op-make-fixnum]
    [primop 'fixnum-value              cg-fixnum-value                 eval-op-fixnum-value]
+   ; Symbols
+   [primop 'symbol-value              cg-symbol-value                 eval-op-symbol-value]
    ; Continuations
    [primop 'save-continuation         cg-save-continuation            eval-op-save-continuation]
    [primop 'restore-continuation!     op-restore-continuation         eval-op-restore-continuation]
@@ -54,6 +56,8 @@
    ; Vectors
    [primop 'read-vector               cg-vector-read                  eval-op-vector-read]
    [primop 'write-vector              cg-vector-write                 eval-op-vector-write]
+   ; Characters
+   [primop 'character-value           cg-character-value              eval-op-character-value]
    ))
 
 (: make-primop-table (-> PrimopTable))

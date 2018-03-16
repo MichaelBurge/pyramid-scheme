@@ -440,14 +440,17 @@
 (define (eval-op-tag x)
   (match x
     [(? v-unboxed? _) (error "eval-tag: Unboxed values don't have tags" x)]
-    [(struct v-fixnum _)  0]
-    [(struct v-symbol _)  1]
-    [(struct v-compiled-procedure _) 2]
+    [(struct v-fixnum              _) 0]
+    [(struct v-symbol              _) 1]
+    [(struct v-compiled-procedure  _) 2]
     [(struct v-primitive-procedure _) 3]
-    [(struct v-pair _) 4]
-    [(struct v-vector _) 5]
-    [(struct v-null _) 6]
-    [(struct v-continuation _) 7]
+    [(struct v-pair                _) 4]
+    [(struct v-vector              _) 5]
+    [(struct v-null                _) 6]
+    [(struct v-continuation        _) 7]
+    [(struct v-frame               _) 8]
+    [(struct v-environment         _) 9]
+    [(struct v-char                _) 10]
     [_ (error "eval-tag: Unknown case" x)]))
 
 (: eval-op-allocate (-> value value))
@@ -622,4 +625,16 @@
 (define (eval-op-word->pointer x)
   (assert x exact-integer?)
   x
+  )
+
+(: eval-op-symbol-value (-> value value))
+(define (eval-op-symbol-value x)
+  (assert x v-symbol?)
+  (symbol->integer (v-symbol-value x))
+  )
+
+(: eval-op-character-value (-> value value))
+(define (eval-op-character-value x)
+  (assert x v-char?)
+  (char->integer (v-char-value x))
   )
