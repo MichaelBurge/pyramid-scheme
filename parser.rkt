@@ -271,7 +271,8 @@
   (provide parse-file
            vector->register-value)
   (define (parse-file filename)
-    (eval `(begin (require ,filename) program))
+    (dynamic-require filename 'program)
+    ;(eval `(module pyramid-loader racket/load (begin (require ,filename) program)))
     )
   (define (vector->register-value x) x)
 

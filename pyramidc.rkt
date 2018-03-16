@@ -18,6 +18,8 @@
 
 (require "typed/binaryio.rkt")
 
+(provide main)
+
 (module unsafe typed/racket/no-check
   (require "globals.rkt")
   (provide file-to-compile)
@@ -42,8 +44,6 @@
      #:args (filename) ; expect one command-line argument: <filename>
      filename)))
 
-(require/typed 'unsafe [ file-to-compile String ])
-
 (: verbose-output (-> PyramidQ Void))
 (define (verbose-output prog)
   (match (full-compile prog)
@@ -52,13 +52,13 @@
        (newline) (display prog)
        (newline) (display "Abstract Instructions:") (newline)
        (display-abstract-instructions abstract-is)
-       
+
        ; (newline) (display "EVM Instructions:") (newline) (display-all eth-is)
        ; (print-symbol-table (*symbol-table*))
        (print-relocations (*relocation-table*))
        (print-disassembly bs))]
     ))
-  
+
 (: standard-output (-> PyramidQ Void))
 (define (standard-output prog)
   (let ([bs (full-compile-result-bytes (full-compile prog))])
@@ -69,16 +69,18 @@
 (define (install-primops!)
   (*primops* (make-primop-table)))
 
-(: main (-> Void))
-(define (main)
+(: main (-> String Void))
+(define (main filename)
   (install-primops!)
   (%-install-macro-library!)
-  (let ([ prog (read-file file-to-compile) ])
-    (cond ((*test?*)    (assert-test file-to-compile prog))
+  (let ([ prog (read-file filename )])
+    (cond ((*test?*)    (assert-test filename prog))
           ((verbose? 1) (verbose-output prog))
           (else         (standard-output prog)))
     (when (verbose? VERBOSITY-MEDIUM)
       (display-macros))
     ))
 
-(main)
+(module* main #f
+  (require/typed (submod ".." unsafe) [ file-to-compile String ])
+  (main file-to-compile))

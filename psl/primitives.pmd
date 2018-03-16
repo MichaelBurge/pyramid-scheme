@@ -56,6 +56,7 @@
 (define (%->= a b)    (binop-unboxed-o (evm 'GE)))
 (define (%-<= a b)    (binop-unboxed-o (evm 'LE)))
 
+(define (%#-not a)     (unop-unboxed  (evm 'ISZERO)))
 (define (%#-+ a b)     (binop-unboxed (evm 'ADD)))
 (define (%#-* a b)     (binop-unboxed (evm 'MUL)))
 (define (%#-- a b)     (binop-unboxed (evm 'SUB)))
@@ -64,8 +65,8 @@
 (define (%#-= a b)     (binop-unboxed (evm 'EQ)))
 (define (%#-> a b)     (binop-unboxed (evm 'GT)))
 (define (%#-< a b)     (binop-unboxed (evm 'LT)))
-(define (%#->= a b)    (binop-unboxed (evm 'GE)))
-(define (%#-<= a b)    (binop-unboxed (evm 'LE)))
+(define (%#->= a b)    (%#-not (%#-< a b)))
+(define (%#-<= a b)    (%#->= b a))
 
 (define (%-ptr-= a b) (binop-unboxed (evm 'EQ)))
 (define (%-suicide a) (unproc (evm 'SUICIDE)))
@@ -180,3 +181,16 @@
                         (restore 'val)))
           (,f cont)
           ))
+
+; Common utilities
+(define (%#-memcpy to from size)
+  (define size-words (%#-bytes->words size))
+  (define (loop n)
+    (if (%#->= n size-words)
+        to
+        (begin (%#-mem-write! to n (%#-mem-read from n))
+               (loop (%#-+ n (%-unbox 1))))))
+  (loop (%-unbox 0)))
+
+(define (%#-bytes->words x)
+  (%#-/ x (%-unbox WORD)))

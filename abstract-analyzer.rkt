@@ -64,7 +64,7 @@
   (require "globals.rkt")
   (require "utils.rkt")
   (require (submod "typed.rkt" data/interval-map))
-  (require (submod "types.rkt" abstract-machine))
+  (require (except-in (submod "types.rkt" abstract-machine) values))
   (provide (all-defined-out))
 
   (define-type AllocationFixnums (HashTable Integer v-fixnum))
@@ -97,9 +97,13 @@
     ptr
     )
 
-  (: get-allocation (-> Integer Integer Bytes))
+  (: get-allocation (-> Integer Integer (Values Integer Bytes)))
   (define (get-allocation ptr os)
-    (interval-map-ref (*allocation-ranges*) (+ ptr (* os WORD))))
+    (let-values ([(start end bs) (interval-map-ref/bounds (*allocation-ranges*)
+                                                          ptr)])
+      (values (+ (- ptr start) (* os WORD))
+              bs)
+      ))
 
   (: make-v-fixnum (-> Integer v-fixnum))
   (define (make-v-fixnum val)
@@ -127,7 +131,7 @@
   (define vis (list->vector is))
   (build-abstract-symbol-table is)
   (when (verbose? VERBOSITY-LOW)
-    (printf "PC\tInstruction\tStack\tval\tcontinue\tproc\targl\tstack-size\tenv\n"))
+    (printf "PC\tInstruction\tStack\tval\tcontinue\tproc\targl\tstack-size\tenv\tallocated ranges\tallocated words\n"))
   (parameterize ([ *num-iterations* 0])
     (let loop ()
       (let ([pc (machine-pc *m*) ])
@@ -353,7 +357,7 @@
     ['ADD (binop +)]
     ['SUB (binop -)]
     ['MUL (binop *)]
-    ['ISZERO (unop  (λ (a)   (if (= a 0) 1 0)))]
+    ['ISZERO (match (pop-stack) [#t #f] [#f #t] [0 1] [(? integer?) 0])]
     ['DIV    (binop (λ (a b) (if (equal? 0 b) 0 (floori (/ a b)))))]
     ['MOD    (binop (λ (a b) (if (equal? 0 b) 0 (modulo a b))))]
     ['JUMP (jump-evm (pop-stack))]
@@ -456,11 +460,10 @@
 (define (eval-op-read-memory ptr os)
   (with-asserts ([ ptr exact-integer? ]
                  [ os exact-integer?    ])
-    (: bs Bytes)
-    (define bs (get-allocation ptr os))
-    (define word (bytes->integer bs #f #t os (+ os WORD)))
-    (match (get-allocated-fixnum word)
-      [#f word]
+    (match (get-allocated-fixnum (+ ptr os))
+      [#f (let*-values ([(os2 bs) (get-allocation ptr os) ]
+                        [(word)   (bytes->integer bs #f #t os2 (+ os2 WORD))])
+            word)]
       [fx fx])))
 
 (: eval-op-write-memory (-> value value value value))
@@ -469,9 +472,9 @@
                  [ os  exact-integer? ]
                  [ val exact-integer? ])
     (match (get-allocated-fixnum (- ptr WORD))
-      [#f (let ([ bs (get-allocation ptr os)])
+      [#f (let-values ([(os2 bs) (get-allocation ptr os)])
             ; If (bytes-copy!) triggers an exception, on the EVM this would instead corrupt nearby memory.
-            (bytes-copy! bs os (integer->bytes val 32 #f #t)))]
+            (bytes-copy! bs os2 (integer->bytes val 32 #f #t)))]
       [(? v-fixnum? fx) (set-v-fixnum-value! fx val)])
     ))
 
@@ -576,7 +579,7 @@
 (: print-debug-line (-> Void))
 (define (print-debug-line)
   (define pc (+ 1 (machine-pc *m*)))
-  (printf "~a\t~v\t~v\t~v\t~v\t~v\t~v\t~v\t~v\n"
+  (printf "~a\t~v\t~v\t~v\t~v\t~v\t~v\t~v\t~v\t~v\t~v\n"
           (match (*evm-pc*)
             [-1 pc]
             [x  (format "~a:~a" pc (*evm-pc*))])
@@ -588,6 +591,8 @@
           (shrink-value (machine-argl     *m*))
           (shrink-value (machine-stack-size *m*))
           (shrink-value (machine-env      *m*) #:env? #t)
+          (*allocation-ranges*)
+          (*allocation-fixnums*)
           ))
 
 (: v-list->environment (-> v-list v-environment))

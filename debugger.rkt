@@ -44,7 +44,9 @@
               (shrink-value (vm-register vm 'stack-size))
               (shrink-value (vm-register vm 'env) #:env? #t)
               (jsexpr->string (vm-exec-stack vm))
-              (jsexpr->string (memory-dict vm))
+              (if (verbose? VERBOSITY-MEDIUM)
+                  (jsexpr->string (memory-dict vm))
+                  "")
               ))))
 
 (: memory-dict (-> vm-exec (Listof (List UnlinkedOffset EthWord))))
