@@ -335,13 +335,28 @@
     (if (integer? res)
         res
         (error "eval-evm-op: Expected an integer" res)))
+  (: pop-integer* (-> Integer))
+  (define (pop-integer*)
+    (match (pop-stack)
+      [(? integer? x) x]
+      [(? boolean? x) (if x 1 0)]
+      [x (error "eval-evm-op: Expected an integer or boolean" x)]
+      ))
   (: binop (-> (-> Integer Integer value) value))
   (define (binop  f)
     (let* ([ a (pop-integer) ]
            [ b (pop-integer) ])
       (f a b)))
+  (: binop* (-> (-> Integer Integer value) value))
+  (define (binop* f)
+    (let* ([ a (pop-integer*) ]
+           [ b (pop-integer*) ])
+      (f a b )))
   (: unop (-> (-> Integer value) value))
   (define (unop f) (f (pop-integer)))
+  (: unop* (-> (-> Integer value) value))
+  (define (unop* f) (f (pop-integer*)))
+
   (: proc (-> Integer Void))
   (define (proc n) (begin (for ([ i (in-range n)])
                             (pop-integer))))
@@ -349,16 +364,21 @@
   (define (const n x) (begin (proc n)
                              x))
   (match (evm-op-name x)
-    ['EQ  (binop =)]
+    ['EQ  (binop* =)]
     ['GT  (binop >)]
     ['LT  (binop <)]
     ['GE  (binop >=)]
     ['LE  (binop <=)]
+    ['AND (binop* bitwise-and)]
+    ['OR  (binop* bitwise-ior)]
+    ['XOR (binop* bitwise-xor)]
+    ['NOT (unop*  bitwise-not)]
+    ['EXP (binop (λ (a b) (cast (expt a b) Integer)))]
     ['ADD (binop +)]
     ['SUB (binop -)]
     ['MUL (binop *)]
     ['ISZERO (match (pop-stack) [#t #f] [#f #t] [0 1] [(? integer?) 0])]
-    ['DIV    (binop (λ (a b) (if (equal? 0 b) 0 (floori (/ a b)))))]
+    ['DIV    (binop (λ (a b) (if (equal? 0 b) 0 (exact-floor (/ a b)))))]
     ['MOD    (binop (λ (a b) (if (equal? 0 b) 0 (modulo a b))))]
     ['JUMP (jump-evm (pop-stack))]
     ; TODO: Everything below is a stub until we get an SMT solver or something

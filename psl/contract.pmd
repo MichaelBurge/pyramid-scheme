@@ -17,4 +17,4 @@
 (define (assert-deposit amount)
   (assert (%->= (%-callvalue) amount)))
 
-(define (block-reentrancy-attacks) (assert (%-ptr-= (%-caller) (%-origin))))
+(define (block-reentrancy-attacks) (assert (%#-= (%-caller) (%-origin))))

@@ -55,7 +55,7 @@
       (simulate! vm MAX-ITERATIONS)
       (error "apply-txn-create!: Reached end of function without explicit termination")
     )))
-  
+
 
 (: apply-txn-message! (-> simulator vm-txn simulation-result-ex))
 (define (apply-txn-message! sim txn)
@@ -66,7 +66,7 @@
          [ vm (make-vm-exec sim txn bytecode)]
          )
     (with-handlers ([ exn:evm:return? (λ ([ x : exn:evm:return ])
-                                        
+
                                         (let ([ bs : Bytes (exn:evm:return-result x) ])
                                           (simulation-result vm bs (vm->receipt vm bs))))]
                     [ exn:evm? (λ ([ x : exn:evm ]) x)])
@@ -130,9 +130,9 @@
 (define W_mid '(ADDMOD MULMOD JUMP))
 (define W_high '(JUMPI))
 (define W_extcode '(EXTCODESIZE))
-                    
+
 (: vm->receipt (-> vm-exec Bytes vm-txn-receipt))
-(define (vm->receipt vm bs) 
+(define (vm->receipt vm bs)
   (vm-txn-receipt (simulator-accounts (vm-exec-sim vm)) ; post-transaction world
                   (vm-exec-gas vm)                   ; cumulative gas
                   'undefined                         ; log bloom
@@ -199,7 +199,7 @@
 (: next-instruction (-> vm-exec EthInstruction))
 (define (next-instruction vm)
   (instruction-at vm (vm-exec-pc vm)))
-  
+
 (: simulate-one! (-> vm-exec EthInstruction Void))
 (define (simulate-one! vm i)
   (when (evm-bytes? i)
@@ -234,16 +234,23 @@
 
 (: simulate-asm! (-> vm-exec Symbol Void))
 (define (simulate-asm! vm sym)
+  (: truncate-int (-> Integer Integer))
+  (define (truncate-int x) (bitwise-bit-field x 0 256))
   (match sym
     [ 'ISZERO    (simulate-unop!  vm (λ (a) (if (= a 0) 1 0)))]
     [ 'ADD       (simulate-binop! vm (λ (a b) (+ a b)))]
     [ 'SUB       (simulate-binop! vm (λ (a b) (- a b)))]
     [ 'MUL       (simulate-binop! vm (λ (a b) (* a b)))]
-    [ 'DIV       (simulate-binop! vm (λ (a b) (if (equal? 0 b) 0 (floori (/ a b)))))]
+    [ 'DIV       (simulate-binop! vm (λ (a b) (if (equal? 0 b) 0 (exact-floor (/ a b)))))]
     [ 'MOD       (simulate-binop! vm (λ (a b) (if (equal? 0 b) 0 (modulo a b))))]
     [ 'EQ        (simulate-binop! vm (λ (a b) (if (= a b) 1 0)))]
     [ 'LT        (simulate-binop! vm (λ (a b) (if (< a b) 1 0)))]
     [ 'GT        (simulate-binop! vm (λ (a b) (if (> a b) 1 0)))]
+    [ 'AND       (simulate-binop! vm (λ (a b) (bitwise-and a b)))]
+    [ 'OR        (simulate-binop! vm (λ (a b) (bitwise-ior a b)))]
+    [ 'XOR       (simulate-binop! vm (λ (a b) (bitwise-xor a b)))]
+    [ 'NOT       (simulate-unop!  vm (λ (a) (truncate-int (bitwise-not a))))]
+    [ 'EXP       (simulate-binop! vm (λ (a b) (exact-floor (expt a b))))]
     [ 'POP       (simulate-pop!   vm)]
     [ 'DUP1      (simulate-dup!   vm 1)]
     [ 'DUP2      (simulate-dup!   vm 2)]
@@ -325,7 +332,7 @@
   (let* ([ addr (pop-stack! vm) ]
          [ val (read-storage vm addr) ])
     (push-stack! vm val)))
-    
+
 (: simulate-sstore! (-> vm-exec Void))
 (define (simulate-sstore! vm)
   (let* ([ addr (pop-stack! vm) ]
@@ -414,7 +421,7 @@
     (transfer-money! vm val from to) ; TODO: Change this to apply-txn-message!
     (push-stack! vm 1) ; TODO: CALL shouldn't always succeed.
     ))
-    
+
 (: simulate-calldataload! (-> vm-exec Void))
 (define (simulate-calldataload! vm)
   (let* ([ i (pop-stack! vm)]
@@ -558,7 +565,7 @@
         ((is-asm 'EXP)
          (if (eq? 0 (get-stack vm 1))
              G_exp
-             (+ G_exp (* G_expbyte (+ 1 (floori (logb 256 (get-stack vm 1))))))))
+             (+ G_exp (* G_expbyte (+ 1 (exact-floor (logb 256 (get-stack vm 1))))))))
         ((is-asms '(CALLDATACOPY CODECOPY)) (+ G_verylow (* G_copy (ceiling (/ (get-stack vm 2) 32)))))
         ((is-asm 'EXTCODECOPY) (+ G_extcode (* G_copy (ceiling (/ (get-stack vm 3) 32)))))
         ((is-asm 'LOG0) (+ G_log (* G_logdata (get-stack vm 1)) (* 0 G_logtopic)))
@@ -708,4 +715,3 @@
 
 (: vm-exec-bytecode (-> vm-exec Bytes))
 (define (vm-exec-bytecode vm) (vm-exec-environment-bytecode (vm-exec-env vm)))
-

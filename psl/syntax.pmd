@@ -48,3 +48,10 @@
 
 (define (call/cc f)
   (%-call-with-current-continuation f))
+
+(defmacro (syntax-fold f . xs)
+  (match xs
+    ['() (error "syntax-fold: must have at least 1 element")]
+    [(list x) x]
+    [(list-rest x rest) `(,f ,x (syntax-fold ,f ,@rest))]
+    ))
