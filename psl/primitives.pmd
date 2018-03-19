@@ -147,6 +147,12 @@
        (restore 'val)
        ))
 
+(defmacro (%#-bool->word x)
+  `(begin ,x
+          (asm (save (op 'bool->unboxed (reg 'val)))
+               (restore 'val))
+          ))
+
 (defmacro (%-bool->fixnum a)
   `(begin
      ,a
@@ -221,7 +227,7 @@
   (loop (%-unbox 0)))
 
 (define (%#-bytes->words x)
-  (%#-/ x (%-unbox WORD)))
+  (%#-u/ x (%-unbox WORD)))
 
 (define (%-unbox a)
   (cond [(%-fixnum?    a) (%-unbox-fixnum    a)]

@@ -11,7 +11,7 @@
 (require (submod "types.rkt" common))
 (require (submod "types.rkt" abstract-machine))
 (require (submod "types.rkt" evm-assembly))
-(require "typed/binaryio.rkt")
+(require (submod "typed.rkt" binaryio))
 
 (: *m* machine)
 (define *m* (machine 0 ; pc
@@ -23,19 +23,19 @@
                      0 ; stack-size
                      null ; stack
                      #f)) ; halted?
-(: *abstract-symbol-table* (HashTable Symbol Integer))
+(: *abstract-symbol-table* (HashTable Symbol 0..∞))
 (define *abstract-symbol-table* (make-hash))
-(: *evm-symbol-table* (HashTable Symbol Integer))
+(: *evm-symbol-table* (HashTable Symbol 0..∞))
 (define *evm-symbol-table* (make-hash))
 (: *current-instruction* (Parameterof Instruction))
 (define *current-instruction* (make-parameter (assign 'val (const 0))))
 (: *current-evm-instruction* (Parameterof EthInstruction))
 (define *current-evm-instruction* (make-parameter (evm-op 'UNSET)))
 
-(: *evm-pc* (Parameterof Integer))
-(define *evm-pc* (make-parameter -1))
+(: *evm-pc* (Parameterof 0..∞))
+(define *evm-pc* (make-parameter 0))
 
-(: *num-iterations* (Parameterof Integer))
+(: *num-iterations* (Parameterof 0..∞))
 (define *num-iterations* (make-parameter 0))
 
 (module unsafe typed/racket
@@ -151,12 +151,12 @@
     (error "tick-iteration!: Didn't stop after iterations" n))
   (*num-iterations* (+ 1 n)))
 
-(: build-symbol-table (All (A) (-> (Listof (U A label-definition)) (HashTable Symbol Integer))))
+(: build-symbol-table (All (A) (-> (Listof (U A label-definition)) (HashTable Symbol 0..∞))))
 (define (build-symbol-table is)
-  (: ret (HashTable Symbol Integer))
+  (: ret (HashTable Symbol 0..∞))
   (define ret (make-hash))
   (for ([i is]
-        [ id (in-range (length is))])
+        [ id : 0..∞ (in-range (length is))])
     (match i
       [(struct label-definition (name offset virtual?)) (hash-set! ret name id)]
       [_ (void)]))
@@ -176,7 +176,7 @@
     [(struct label-definition (name offset virtual?)) (next)]
     [(struct assign (reg-name e)) (write-reg reg-name (eval-mexpr e)) (next)]
     [(struct test (condition))    (push-stack (eval-mexpr condition)) (next)]
-    [(struct branch (dest))       (if (pop-stack)                     (jump (eval-mexpr dest)) (next))]
+    [(struct branch (dest))       (if (value->bool (pop-stack))       (jump (eval-mexpr dest)) (next))]
     [(struct goto (dest))                                             (jump (eval-mexpr dest))]
     [(struct save (e))            (push-stack (eval-mexpr e))         (next)]
     [(struct restore (reg-name))  (write-reg reg-name (pop-stack))    (next)]
@@ -205,7 +205,7 @@
     ['val        (set-machine-val!        *m* v)]
     ['stack-size (begin
                    (assert v exact-integer?)
-                   (set-machine-stack-size! *m* (cast v Integer))
+                   (set-machine-stack-size! *m* (cast v 0..∞))
                    (let ([ size (length (machine-stack *m*))])
                      (unless (= size v)
                        (error "write-reg: Attempted to write an incorrect stack size" v size))))]
@@ -372,7 +372,7 @@
     ['AND (binop* bitwise-and)]
     ['OR  (binop* bitwise-ior)]
     ['XOR (binop* bitwise-xor)]
-    ['NOT (unop*  bitwise-not)]
+    ['NOT (unop*  (compose truncate-int bitwise-not))]
     ['EXP (binop (λ (a b) (cast (expt a b) Integer)))]
     ['ADD (binop +)]
     ['SUB (binop -)]
@@ -446,7 +446,7 @@
 
 (: eval-op-false? (-> value value))
 (define (eval-op-false? value)
-  (if value #f #t))
+  (if (value->bool value) #f #t))
 
 (: eval-op-singleton (-> value value))
 (define (eval-op-singleton v)
@@ -482,7 +482,7 @@
 (: eval-op-read-memory (-> value value value))
 (define (eval-op-read-memory ptr os)
   (with-asserts ([ ptr exact-integer? ]
-                 [ os exact-integer?    ])
+                 [ os exact-integer?  ])
     (match (get-allocated-fixnum (+ ptr os))
       [#f (let*-values ([(os2 bs) (get-allocation ptr os) ]
                         [(word)   (bytes->integer bs #f #t os2 (+ os2 WORD))])
@@ -491,9 +491,10 @@
 
 (: eval-op-write-memory (-> value value value value))
 (define (eval-op-write-memory ptr os val)
-  (with-asserts ([ ptr exact-integer? ]
-                 [ os  exact-integer? ]
-                 [ val exact-integer? ])
+
+  (with-asserts ([ ptr 0..∞? ]
+                 [ os  0..∞? ]
+                 [ val 0..∞? ])
     (match (get-allocated-fixnum (- ptr WORD))
       [#f (let-values ([(os2 bs) (get-allocation ptr os)])
             ; If (bytes-copy!) triggers an exception, on the EVM this would instead corrupt nearby memory.
@@ -658,3 +659,11 @@
   (assert x v-char?)
   (char->integer (v-char-value x))
   )
+
+(: value->bool (-> value Boolean))
+(define (value->bool x)
+  (match x
+    [0  #f]
+    [#f #f]
+    [x  #t]
+    ))

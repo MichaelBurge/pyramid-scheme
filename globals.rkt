@@ -52,13 +52,13 @@
 (: *exports* (Parameterof (Listof Any)))
 (define *exports* (make-parameter null)) ; Used to generate the standard ABI for the current Pyramid contract
 
-(: *loader-size* (Parameterof Integer))
+(: *loader-size* (Parameterof 0..∞))
 (define *loader-size* (make-parameter 0)) ; Size of the most recently generated loader
 
 (: *byte-offset* (Parameterof UnlinkedOffset))
 (define *byte-offset* (make-parameter 0)) ; Used during serialization to track output stream position
 
-(: *abstract-offset* (Parameterof Integer))
+(: *abstract-offset* (Parameterof 0..∞))
 (define *abstract-offset* (make-parameter 0)) ; Used to generate debug labels. Index of the last-generated abstract machine instruction.
 
 (: *symbol-table* (Parameterof SymbolTable))
@@ -85,20 +85,20 @@
 (: *required-modules* (Parameterof (Setof Any)))
 (define *required-modules* (make-parameter (set)))
 
-(: *addresses-by-name* (Parameterof (HashTable Symbol Address)))
-(define *addresses-by-name* (make-parameter (make-symbol-table)))
+(: *addresses-by-name* (Parameterof AddressTable))
+(define *addresses-by-name* (make-parameter (make-address-table)))
 
-(: *txn-nonce* (Parameterof Integer))
+(: *txn-nonce* (Parameterof 0..∞))
 (define *txn-nonce* (make-parameter 0))
 
-(: *account-nonce* (Parameterof Integer))
+(: *account-nonce* (Parameterof 0..∞))
 (define *account-nonce* (make-parameter 100))
 
 ; TODO: Contract address should use actual Ethereum spec rather than a counter
-(: *contract-create-counter* (Parameterof Integer))
+(: *contract-create-counter* (Parameterof 0..∞))
 (define *contract-create-counter* (make-parameter 200))
 
-(: *label-counter* (Parameterof Integer))
+(: *label-counter* (Parameterof 0..∞))
 (define *label-counter* (make-parameter 0))
 
 (: *primops* (Parameterof PrimopTable))
@@ -106,7 +106,7 @@
   (let ([ tbl : PrimopTable (make-hash)])
     (make-parameter tbl)))
 
-(: *recursion-depth* (Parameterof Integer))
+(: *recursion-depth* (Parameterof 0..∞))
 (define *recursion-depth* (make-parameter 10))
 
 (: *evm-source-map-stack* (Parameterof (Listof Symbol)))
@@ -120,7 +120,7 @@
 (define *on-simulate-instruction* (make-parameter on-simulate-nop))
 
 ; Constants
-(define assumed-label-size 2) ; TODO: Number of bytes to leave behind for label relocations. This makes it difficult to write programs larger than 65536 bytes.
+(define assumed-label-size 3) ; TODO: Number of bytes to leave behind for label relocations. This makes it difficult to write programs larger than 65536 bytes.
 (define *assumed-label-size* assumed-label-size)
 (define MEMORY-SIZE 200000)
 (define MAX-ITERATIONS 1000000)

@@ -2,7 +2,7 @@
 
 (require (submod "types.rkt" common))
 (require (submod "types.rkt" simulator))
-(require "typed/binaryio.rkt")
+(require (submod "typed.rkt" binaryio))
 
 (provide infer-type
          parse-type)
@@ -23,13 +23,13 @@
     [_ (error "parse-type: Unsupported type:" type)]
     ))
 
-(: type-size (-> AbiType Integer))
+(: type-size (-> AbiType Positive-Integer))
 (define (type-size type)
   (cond ((eq? type "uint256") 32)
         (else (error "type-size: Unsupported type" type))))
 
 (: parse-uint256 (-> Bytes EthWord))
-(define (parse-uint256 bs) (bytes->integer bs #f #t))
+(define (parse-uint256 bs) (bytes->nonnegative bs))
 
 (: parse-array (-> AbiType Bytes Any))
 (define (parse-array type bs)

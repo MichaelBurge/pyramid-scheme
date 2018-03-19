@@ -16,7 +16,7 @@
 (require "compiler.rkt")
 (require racket/match)
 
-(require "typed/binaryio.rkt")
+(require (submod "typed.rkt" binaryio))
 
 (provide (all-defined-out)
          make-label
@@ -151,7 +151,7 @@ Functions defined here are available to Pyramid programs within macros.
 (: make-test-account (-> PyramidQ test-account))
 (define (make-test-account exp)
   (match exp
-    [`((quote ,(? symbol? name)) ,(? exact-integer? balance)) (test-account name balance)]
+    [`((quote ,(? symbol? name)) ,(? exact-nonnegative-integer? balance)) (test-account name balance)]
     [ _ (error "make-test-account: Unknown syntax" exp)]))
 
 (: make-test-deploy (-> PyramidQ test-txn))

@@ -16,7 +16,7 @@
 (require/typed "primops.rkt"
   [ make-primop-table (-> PrimopTable)])
 
-(require "typed/binaryio.rkt")
+(require (submod "typed.rkt" binaryio))
 
 (provide main)
 

@@ -23,7 +23,7 @@
 (require "simulator.rkt")
 (require "debugger.rkt")
 
-(require "typed/binaryio.rkt")
+(require (submod "typed.rkt" binaryio))
 
 (provide (all-defined-out))
 
@@ -93,7 +93,7 @@
                  exec-result
                  )]
               [x (error "run-test-case: Unexpected item" x)])))))
-  
+
 (: run-test-suite (-> String Bytes test-suite Void))
 (define (run-test-suite name bytecode suite)
   (for ([ x (test-suite-cases suite) ])
@@ -151,7 +151,7 @@
 (define (apply-init-modifier! exp txn)
   (match exp
     [(list 'value val)
-     (begin (assert val exact-integer?)
+     (begin (assert val 0..∞?)
             (set-vm-txn-value! txn val)
             null)]
     [(list 'sender (list 'quote name))
@@ -164,7 +164,7 @@
 (define (apply-txn-modifier! exp txn)
   (match exp
     [(list 'value val)
-     (begin (assert val exact-integer?)
+     (begin (assert val 0..∞?)
             (set-vm-txn-value! txn val)
             null)]
     [(list 'sender (list 'quote name))
@@ -177,7 +177,7 @@
               (set-vm-txn-data! txn (integer->bytes addr 32 #f #t)))
             null)]
     [(list 'assert-balance (list 'quote addr-name) val)
-     (begin (assert val exact-integer?)
+     (begin (assert val 0..∞?)
             (assert addr-name symbol?)
             (list (expectation-account-value addr-name val)))]
     [(list 'assert-return expected)
@@ -222,4 +222,3 @@
 ; (serialize-print (codegen-one (assign 'val (const 9999))))
 ; (display-all (inst-seq-statements (compile-pyramid prog-application 'val 'next)))
 ; (full-debug-output prog-macro)
-

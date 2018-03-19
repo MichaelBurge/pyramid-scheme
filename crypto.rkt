@@ -1,6 +1,6 @@
 #lang typed/racket
 
-(require "typed/binaryio.rkt")
+(require (submod "typed.rkt" binaryio))
 
 (provide (all-defined-out))
 
@@ -13,6 +13,6 @@
         (lambda ()
           (system "keccak-256sum"))))))
 
-(: keccak-256-word (-> Bytes Integer))
+(: keccak-256-word (-> Bytes Nonnegative-Integer))
 (define (keccak-256-word bs)
-  (bytes->integer bs #f #t))
+  (bytes->nonnegative bs))

@@ -12,8 +12,6 @@
    [ set-add! (All (A) (-> (Setof A) A Void))]
    [ mutable-set (All (A) (-> (Setof A)))])
 
-; (require "typed/set.rkt")
-
 (provide (all-defined-out))
 
 (: simplify Pass)

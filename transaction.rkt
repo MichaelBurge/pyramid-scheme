@@ -22,7 +22,7 @@
           0                 ; s
           bytecode          ; input
           ))
-          
+
 (: make-txn-message (-> Address EthWord Bytes vm-txn))
 (define (make-txn-message to value input)
   (when (null? to)
@@ -38,7 +38,7 @@
           input             ; input
           ))
 
-(: alloc-txn-nonce (-> Integer))
+(: alloc-txn-nonce (-> 0..∞ ))
 (define (alloc-txn-nonce) (tick-counter! *txn-nonce*))
 
 ; TODO: Deduce this from v,r,s

@@ -8,8 +8,8 @@
 (require "parser.rkt")
 (require "wallet.rkt")
 
-(require "typed/binaryio.rkt")
-(require "typed/dict.rkt")
+(require (submod "typed.rkt" binaryio))
+(require (submod "typed.rkt" dict))
 
 (provide (all-defined-out)
          (all-from-out 'macros))

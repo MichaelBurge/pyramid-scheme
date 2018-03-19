@@ -21,8 +21,8 @@
 (unsafe-require/typed "unsafe.rkt"
                      [ unsafe-cast (All (A B) (-> A B))])
 
-(require "typed/binaryio.rkt")
-(require "typed/dict.rkt")
+(require (submod "typed.rkt" binaryio))
+(require (submod "typed.rkt" dict))
 
 (provide
  make-simulator
@@ -184,7 +184,7 @@
            sim
            ))
 
-(: simulate! (-> vm-exec Integer Void))
+(: simulate! (-> vm-exec 0..∞ Void))
 (define (simulate! vm max-iterations)
   (if (<= max-iterations 0)
       (raise (exn:evm:did-not-halt "run-until-return" (current-continuation-marks) vm max-iterations))
@@ -192,9 +192,9 @@
         (simulate-one! vm (next-instruction vm))
         (simulate! vm (- max-iterations 1)))))
 
-(: instruction-at (-> vm-exec Integer EthInstruction))
+(: instruction-at (-> vm-exec 0..∞ EthInstruction))
 (define (instruction-at vm addr)
-    (disassemble-one (vm-exec-bytecode vm) addr))
+  (disassemble-one (vm-exec-bytecode vm) addr))
 
 (: next-instruction (-> vm-exec EthInstruction))
 (define (next-instruction vm)
@@ -216,7 +216,7 @@
     (match i
       [(struct label-definition _)          (simulate-nop!  vm)]
       [(struct evm-push ((? byte? size)
-                         (? integer? val))) (simulate-push! vm size val)]
+                         (? exact-nonnegative-integer? val))) (simulate-push! vm size val)]
       [(struct evm-push _)                  (error "simulate-one!: Can only push integers" i)]
       [(struct evm-op (sym))                (simulate-asm!  vm (evm-op-name i))]
       [_                                    (error "Unknown opcode found - simulate-one:" i)]
@@ -234,12 +234,10 @@
 
 (: simulate-asm! (-> vm-exec Symbol Void))
 (define (simulate-asm! vm sym)
-  (: truncate-int (-> Integer Integer))
-  (define (truncate-int x) (bitwise-bit-field x 0 256))
   (match sym
     [ 'ISZERO    (simulate-unop!  vm (λ (a) (if (= a 0) 1 0)))]
     [ 'ADD       (simulate-binop! vm (λ (a b) (+ a b)))]
-    [ 'SUB       (simulate-binop! vm (λ (a b) (- a b)))]
+    [ 'SUB       (simulate-binop! vm (λ (a b) (assert-0..∞ (- a b))))]
     [ 'MUL       (simulate-binop! vm (λ (a b) (* a b)))]
     [ 'DIV       (simulate-binop! vm (λ (a b) (if (equal? 0 b) 0 (exact-floor (/ a b)))))]
     [ 'MOD       (simulate-binop! vm (λ (a b) (if (equal? 0 b) 0 (modulo a b))))]
@@ -290,26 +288,26 @@
     [ _          (error "simulate-asm - Unimplemented vm-exec instruction found:" sym)]
     ))
 
-(: simulate-unop! (-> vm-exec (-> Integer Integer) Void))
+(: simulate-unop! (-> vm-exec (-> EthWord EthWord) Void))
 (define (simulate-unop! vm f)
   (let ((x1 (pop-stack! vm)))
-    (push-stack! vm (f x1))))
+    (push-stack! vm (assert-0..∞ (f x1)))))
 
-(: simulate-binop! (-> vm-exec (-> Integer Integer Integer) Void))
+(: simulate-binop! (-> vm-exec (-> EthWord EthWord EthWord) Void))
 (define (simulate-binop! vm f)
   (let* ([x1 (pop-stack! vm)]
          [x2 (pop-stack! vm)])
-    (push-stack! vm (f x1 x2))))
+    (push-stack! vm (assert-0..∞ (f x1 x2)))))
 
 (: simulate-pop! (-> vm-exec Void))
 (define (simulate-pop! vm) (void (pop-stack! vm)))
 
-(: simulate-dup! (-> vm-exec Integer Void))
+(: simulate-dup! (-> vm-exec 1..∞ Void))
 (define (simulate-dup! vm amount)
   (let ([ x (get-stack vm (- amount 1)) ])
     (push-stack! vm x)))
 
-(: simulate-swap! (-> vm-exec Integer Void))
+(: simulate-swap! (-> vm-exec 0..∞ Void))
 (define (simulate-swap! vm amount)
   (let* ([x1 (get-stack vm 0)]
          [x2 (get-stack vm amount)]
@@ -430,10 +428,9 @@
          [ val (bytes-or-zero bs i 32)])
     (push-stack! vm val)))
 
-(: read-memory-word (-> vm-exec EthWord EthWord Integer))
+(: read-memory-word (-> vm-exec EthWord EthWord EthWord))
 (define (read-memory-word vm addr len)
-  (bytes->integer (read-memory vm addr len)
-                  #f))
+  (bytes->nonnegative (read-memory vm addr len)))
 
 (: read-memory (-> vm-exec EthWord EthWord Bytes))
 (define (read-memory vm addr len)
@@ -493,7 +490,7 @@
   (let ([ old (vm-exec-largest-accessed-memory vm) ])
     (set-vm-exec-largest-accessed-memory! vm (max old addr))))
 
-(: get-stack (-> vm-exec Integer EthWord))
+(: get-stack (-> vm-exec 0..∞ EthWord))
 (define (get-stack vm amount)
   (list-ref (vm-exec-stack vm) amount))
 
@@ -509,7 +506,7 @@
 (define empty-hash (hex-string->bytes "C5D2460186F7233C927E7DB2DCC703C0E500B653CA82273B7BFAD8045D85A470"))
 
 (: empty-hash-word EthWord)
-(define empty-hash-word (bytes->integer empty-hash #f #t))
+(define empty-hash-word (bytes->nonnegative empty-hash))
 
 (: empty? (-> vm-exec Address Boolean))
 (define (empty? vm addr)
@@ -526,13 +523,13 @@
   (or (not (account vm addr))
       (empty? vm addr)))
 
-(: L (-> EthWord EthWord))
-(define (L n) (- n (floor (/ n 64))))
+(: L (-> Integer EthWord))
+(define (L n) (assert-0..∞ (- n (exact-floor (/ n 64)))))
 
 (: logb (-> Number Number Real))
 (define (logb b x) (cast (/ (log x) (log b)) Real))
 
-(: instruction-gas (-> vm-exec EthInstruction Integer))
+(: instruction-gas (-> vm-exec EthInstruction 0..∞))
 (define (instruction-gas vm i)
   (define (C_sstore)
     (let ([ addr ( get-stack vm 0) ]
@@ -540,17 +537,17 @@
       (if (and (= (read-storage vm addr) 0) (> val 0))
           G_sset
           G_sreset)))
+  (: C_call (-> Integer))
   (define (C_call)
     (let* ([ gas       (get-stack vm 0) ]
            [ addr      (get-stack vm 1) ]
            [ val       (get-stack vm 2) ]
-           [ gas?      (>= gas 0) ]
-           [ val?      (>= val 0) ]
+           [ val?      (> val 0) ]
            [ u_g       (vm-exec-gas vm)]
-           [ C_xfer    (if gas? G_callvalue 0)]
+           [ C_xfer    (if val? G_callvalue 0)]
            [ C_new     (if (and (dead? vm addr) val?) G_newaccount 0)]
            [ C_extra   (+ G_call C_xfer C_new) ]
-           [ C_gascap  (if (>= u_g C_extra)
+           [ C_gascap (if (>= u_g C_extra)
                            (min gas (L (- u_g C_extra)))
                            gas)]
            [ C_callgas (+ C_gascap (if val? G_callstipend 0))]
@@ -561,39 +558,40 @@
   (define (is-asm sym) (equal? i (evm-op sym)))
   (: is-asms (-> Symbols Boolean))
   (define (is-asms syms) (ormap is-asm syms))
-  (cond ((is-asm 'SSTORE) (C_sstore))
-        ((is-asm 'EXP)
-         (if (eq? 0 (get-stack vm 1))
-             G_exp
-             (+ G_exp (* G_expbyte (+ 1 (exact-floor (logb 256 (get-stack vm 1))))))))
-        ((is-asms '(CALLDATACOPY CODECOPY)) (+ G_verylow (* G_copy (ceiling (/ (get-stack vm 2) 32)))))
-        ((is-asm 'EXTCODECOPY) (+ G_extcode (* G_copy (ceiling (/ (get-stack vm 3) 32)))))
-        ((is-asm 'LOG0) (+ G_log (* G_logdata (get-stack vm 1)) (* 0 G_logtopic)))
-        ((is-asm 'LOG1) (+ G_log (* G_logdata (get-stack vm 1)) (* 1 G_logtopic)))
-        ((is-asm 'LOG2) (+ G_log (* G_logdata (get-stack vm 1)) (* 2 G_logtopic)))
-        ((is-asm 'LOG3) (+ G_log (* G_logdata (get-stack vm 1)) (* 3 G_logtopic)))
-        ((is-asm 'LOG4) (+ G_log (* G_logdata (get-stack vm 1)) (* 4 G_logtopic)))
-        ((is-asms '(CALL CALLCODE DELEGATECALL)) (C_call))
-        ((is-asm 'SUICIDE)   (C_suicide))
-        ((is-asm 'CREATE)    G_create)
-        ((is-asm 'SHA3)      (+ G_sha3 (* G_sha3word (ceiling (/ (get-stack vm 1) 32)))))
-        ((is-asm 'JUMPDEST)  G_jumpdest)
-        ((is-asm 'SLOAD)     G_sload)
-        ((is-asms W_zero)    G_zero)
-        ((is-asms W_base)    G_base)
-        ((is-asms W_verylow) G_verylow)
-        ((is-asms dups)      G_verylow)
-        ((is-asms swaps)     G_verylow)
-        ((evm-push? i)       G_verylow)
-        ((is-asms W_low)     G_low)
-        ((is-asms W_mid)     G_mid)
-        ((is-asms W_high)    G_high)
-        ((is-asms W_extcode) G_extcode)
-        ((is-asm 'BALANCE)   G_balance)
-        ((is-asm 'BLOCKHASH) G_blockhash)
-        ((is-asm 'REVERT)    0)
-        (else
-         (error "Unknown instruction - instruction-gas:" i))))
+  (assert-0..∞
+   (cond ((is-asm 'SSTORE) (C_sstore))
+         ((is-asm 'EXP)
+          (if (eq? 0 (get-stack vm 1))
+              G_exp
+              (+ G_exp (* G_expbyte (+ 1 (exact-floor (logb 256 (get-stack vm 1))))))))
+         ((is-asms '(CALLDATACOPY CODECOPY)) (+ G_verylow (* G_copy (ceiling (/ (get-stack vm 2) 32)))))
+         ((is-asm 'EXTCODECOPY) (+ G_extcode (* G_copy (ceiling (/ (get-stack vm 3) 32)))))
+         ((is-asm 'LOG0) (+ G_log (* G_logdata (get-stack vm 1)) (* 0 G_logtopic)))
+         ((is-asm 'LOG1) (+ G_log (* G_logdata (get-stack vm 1)) (* 1 G_logtopic)))
+         ((is-asm 'LOG2) (+ G_log (* G_logdata (get-stack vm 1)) (* 2 G_logtopic)))
+         ((is-asm 'LOG3) (+ G_log (* G_logdata (get-stack vm 1)) (* 3 G_logtopic)))
+         ((is-asm 'LOG4) (+ G_log (* G_logdata (get-stack vm 1)) (* 4 G_logtopic)))
+         ((is-asms '(CALL CALLCODE DELEGATECALL)) (C_call))
+         ((is-asm 'SUICIDE)   (C_suicide))
+         ((is-asm 'CREATE)    G_create)
+         ((is-asm 'SHA3)      (+ G_sha3 (* G_sha3word (ceiling (/ (get-stack vm 1) 32)))))
+         ((is-asm 'JUMPDEST)  G_jumpdest)
+         ((is-asm 'SLOAD)     G_sload)
+         ((is-asms W_zero)    G_zero)
+         ((is-asms W_base)    G_base)
+         ((is-asms W_verylow) G_verylow)
+         ((is-asms dups)      G_verylow)
+         ((is-asms swaps)     G_verylow)
+         ((evm-push? i)       G_verylow)
+         ((is-asms W_low)     G_low)
+         ((is-asms W_mid)     G_mid)
+         ((is-asms W_high)    G_high)
+         ((is-asms W_extcode) G_extcode)
+         ((is-asm 'BALANCE)   G_balance)
+         ((is-asm 'BLOCKHASH) G_blockhash)
+         ((is-asm 'REVERT)    0)
+         (else
+          (error "Unknown instruction - instruction-gas:" i)))))
 
 (: assert-landing-pad (-> vm-exec Address Void))
 (define (assert-landing-pad vm addr)
@@ -683,16 +681,17 @@
          [ to-bal   (if to-acc   (vm-account-balance to-acc)   0)]
          [ sim      (vm-exec-sim vm)]
          )
-    (unless (>= from-bal amount)
-      (error "transfer-money!: Insufficient balance" (find-addr-name from)))
-    (when (> amount 0)
-      (unless from-acc
-        (print-account-balances vm)
-        (error "transfer-money!: Invalid sender" from amount (*addresses-by-name*)))
-      (set-vm-account-balance! from-acc (- from-bal amount))
-      (if to-acc
-          (set-vm-account-balance! to-acc   (+ to-bal   amount))
-          (void (create-account! sim to amount (bytes)))))))
+    (match* (amount (- from-bal amount))
+      [(0 _) (void)]
+      [(_ (? negative? x)) (error "transfer-money!: Insufficient balance" (find-addr-name from))]
+      [((? positive-integer? amount) (? exact-nonnegative-integer? new-from-bal))
+       (unless from-acc
+         (print-account-balances vm)
+         (error "transfer-money!: Invalid sender" from amount (*addresses-by-name*)))
+       (set-vm-account-balance! from-acc new-from-bal)
+       (if to-acc
+           (set-vm-account-balance! to-acc   (+ to-bal   amount))
+           (void (create-account! sim to amount (bytes))))])))
 
 (: vm-exec-contract (-> vm-exec Address))
 (define (vm-exec-contract vm)

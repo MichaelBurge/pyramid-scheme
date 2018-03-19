@@ -16,6 +16,7 @@
   (hash-ref (*addresses-by-name*)
             sym
             (λ ()
+              (: addr Address)
               (define addr (tick-counter! *account-nonce*))
               (register-addr-name! sym addr)
               addr)))
@@ -32,7 +33,7 @@
   (if kv
       (car kv)
       #f))
-         
+
 (: register-addr-name! (-> Symbol Address Void))
 (define (register-addr-name! sym addr)
   (hash-set! (*addresses-by-name*) sym addr))

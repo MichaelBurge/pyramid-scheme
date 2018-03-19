@@ -10,7 +10,7 @@
 (require "globals.rkt")
 (require racket/list)
 
-(require "typed/binaryio.rkt")
+(require (submod "typed.rkt" binaryio))
 
 (provide ;codegen
  ;codegen-list
@@ -192,20 +192,20 @@ These optimizations are currently unimplemented:
 (define-generator (cg-perform i)
   (cg-mexpr (perform-action i))) ; TODO: Watch the number of stack writes here to pop them.
 
-(: reg-address (-> reg Integer))
+(: reg-address (-> reg 0..∞))
 (define (reg-address r)
   (register-address (reg-name r)))
 
-  (: register-address (-> RegisterName Integer))
-  (define (register-address r)
-    (match r
-      ['env        MEM-ENV]
-      ['proc       MEM-PROC]
-      ['continue   MEM-CONTINUE]
-      ['argl       MEM-ARGL]
-      ['val        MEM-VAL]
-      ['stack-size MEM-STACK-SIZE]
-      [x (error "reg-address: Unknown register" x)]))
+(: register-address (-> RegisterName 0..∞))
+(define (register-address r)
+  (match r
+    ['env        MEM-ENV]
+    ['proc       MEM-PROC]
+    ['continue   MEM-CONTINUE]
+    ['argl       MEM-ARGL]
+    ['val        MEM-VAL]
+    ['stack-size MEM-STACK-SIZE]
+    [x (error "reg-address: Unknown register" x)]))
 
 ;;; Primitive operations emitted by the abstract compiler
 

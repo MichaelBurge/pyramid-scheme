@@ -1,7 +1,7 @@
 #lang typed/racket
 
-(require "typed/binaryio.rkt")
-(require "typed/dict.rkt")
+(require (submod "typed.rkt" binaryio))
+(require (submod "typed.rkt" dict))
 
 (provide (all-defined-out)
          (all-from-out 'struct))
@@ -41,7 +41,7 @@
   (displayln xs))
 
 
-(: tick-counter! (-> (Parameter Integer) Integer))
+(: tick-counter! (-> (Parameter Nonnegative-Integer) Nonnegative-Integer))
 (define (tick-counter! x)
   (let ([ val (x) ])
     (x (+ 1 val))
@@ -56,13 +56,14 @@
       #t
       #f))
 
-(: bytes-or-zero (-> Bytes Integer Integer Integer))
+(: bytes-or-zero (-> Bytes Nonnegative-Integer Nonnegative-Integer Nonnegative-Integer))
 (define (bytes-or-zero bs i len)
   (if (>= i (bytes-length bs))
       0
-      (bytes->integer bs #f #t i
-                      (min (+ i len)
-                           (bytes-length bs)))))
+      (cast (bytes->integer bs #f #t i
+                            (min (+ i len)
+                                 (bytes-length bs)))
+            Nonnegative-Integer)))
 
 (: symbol->integer (-> Symbol Integer)) ; TODO: I think the "official" ABI uses a Keccak hash for this.
 (define (symbol->integer sym)
@@ -124,3 +125,9 @@
 
 
 (require 'struct)
+
+(: assert-0..∞ (-> Integer Nonnegative-Integer))
+(define (assert-0..∞ n) (cast n Nonnegative-Integer))
+
+(: truncate-int (-> Integer Nonnegative-Integer))
+(define (truncate-int x) (assert-0..∞ (bitwise-bit-field x 0 256)))

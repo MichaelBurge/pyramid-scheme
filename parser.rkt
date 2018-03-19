@@ -8,7 +8,7 @@
 (require "utils.rkt")
 (require "globals.rkt")
 
-(require "typed/binaryio.rkt")
+(require (submod "typed.rkt" binaryio))
 
 (require/typed racket/pretty
   [ pretty-print (-> Any Void)])

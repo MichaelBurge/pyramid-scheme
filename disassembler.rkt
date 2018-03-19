@@ -1,15 +1,16 @@
 #lang typed/racket
 
+(require (submod "types.rkt" common))
 (require (submod "types.rkt" evm-assembly))
 (require "serializer.rkt")
 (require "utils.rkt")
 (require "globals.rkt")
 
-(require "typed/binaryio.rkt")
-(require "typed/dict.rkt")
+(require (submod "typed.rkt" binaryio))
+(require (submod "typed.rkt" dict))
 (provide (all-defined-out))
 
-(: disassemble-one (-> Bytes Integer EthInstruction))
+(: disassemble-one (-> Bytes 0..∞ EthInstruction))
 (define (disassemble-one bs i)
   (let* ([ byte (cast (bytes-or-zero bs i 1) Byte)])
     (if (hash-has-key? opcodes-by-byte byte)
@@ -22,7 +23,7 @@
         (else          (evm-op (opcode-name op)))
         ))
 
-   
+
 (: disassemble-push (-> Bytes Integer EthInstruction))
 (define (disassemble-push bs i)
   (let ([ op (hash-ref opcodes-by-byte (bytes-ref bs i)) ])
@@ -37,14 +38,14 @@
 (: print-disassembly (-> Bytes Void))
 (define (print-disassembly bs)
   (let ((reverse-symbol-table (invert-hash (*symbol-table*))))
-    (: loop (-> Integer Void))
+    (: loop (-> 0..∞ Void))
     (define (loop n)
       (if (>= n (- (bytes-length bs) 1))
           (void)
           (begin
             (printf "~x" n)
             (write-char #\tab)
-            (display (reverse-symbol-name reverse-symbol-table (- n (*loader-size*))))
+            (display (reverse-symbol-name reverse-symbol-table (assert-0..∞ (- n (*loader-size*)))))
             ;; (print `(,(bytes-ref bs n)
             ;;          ,(push-op? (hash-ref opcodes-by-byte (bytes-ref bs n)))
             ;;          ,(op-extra-size (hash-ref opcodes-by-byte (bytes-ref bs n)))))
