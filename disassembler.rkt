@@ -45,7 +45,7 @@
           (begin
             (printf "~x" n)
             (write-char #\tab)
-            (display (reverse-symbol-name reverse-symbol-table (assert-0..∞ (- n (*loader-size*)))))
+            (display (reverse-symbol-name reverse-symbol-table (- n (*loader-size*))))
             ;; (print `(,(bytes-ref bs n)
             ;;          ,(push-op? (hash-ref opcodes-by-byte (bytes-ref bs n)))
             ;;          ,(op-extra-size (hash-ref opcodes-by-byte (bytes-ref bs n)))))

@@ -385,6 +385,8 @@ Either a label or integer can be pushed onto the stack.
   (hash-ref (*symbol-table*) sym))
 
 
-(: reverse-symbol-name (-> ReverseSymbolTable 0..∞ Symbol))
+(: reverse-symbol-name (-> ReverseSymbolTable Integer Symbol))
 (define (reverse-symbol-name reverse-symbol-table n)
-  (hash-ref reverse-symbol-table n (λ () '||)))
+  (if (< n 0)
+      '||
+      (hash-ref reverse-symbol-table n (λ () '||))))
