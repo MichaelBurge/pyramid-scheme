@@ -1,0 +1,7 @@
+#lang pyramid
+
+(require psl "arith.pmd")
+
+(set-test-result! 1)
+
+(+ -5 6)

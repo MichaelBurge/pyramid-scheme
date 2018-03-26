@@ -546,7 +546,9 @@ These optimizations are currently unimplemented:
       (cond [(symbol? val)
              (let ((int (symbol->integer val)))
                (list (evm-push (integer-bytes int) int)))]
-            [(integer? val) (list (evm-push (integer-bytes val) val))]
+            [(nonnegative-integer? val) (list (evm-push (integer-bytes val) val))]
+            [(negative-integer? val) (let ([ word-val (truncate-int (+ WORDLIMIT val))])
+                                       (list (evm-push (integer-bytes word-val) word-val)))]
             [(list?    val) (cg-make-list (map const val) #f)]
             [(boolean? val) (cg-mexpr-const (const (if val 1 0)))]
             [(vector?  val) (cg-make-vector (const (vector-length val)) (map const (vector->list val)))]

@@ -36,6 +36,7 @@
     (define (loop stx)
       (match stx
         [(list 'unquote y) `(,'unquote (shrink-pyramid ,y))]
+        [(list 'unquote-splicing ys) `(,'unquote-splicing (map shrink-pyramid ,ys))]
         [`(quasiquote  ,y) `(expand-pyramid (,'quasiquote ,(loop y)))]
         [(? list? xs)       (map loop xs)]
         [y y]
@@ -272,8 +273,17 @@
 (module unsafe racket
   (provide parse-file
            vector->register-value)
+  (require "globals.rkt")
   (define (parse-file filename)
-    (dynamic-require filename 'program)
+    (define pi (dynamic-require filename 'program-info))
+    (match pi
+      [(list source-code abstract-syntax program)
+       (when (verbose? VERBOSITY-MEDIUM)
+         (pretty-print `(PARSE-TREE ,source-code)))
+       (when (verbose? VERBOSITY-LOW)
+         (pretty-print `(SYNTAX-TREE ,abstract-syntax)))
+       program
+       ])
     ;(eval `(module pyramid-loader racket/load (begin (require ,filename) program)))
     )
   (define (vector->register-value x) x)

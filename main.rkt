@@ -11,7 +11,7 @@
   (require "parser.rkt")
   (require "types.rkt")
   (require racket/pretty)
-  
+
   (provide read read-syntax)
 
   (define (read in)
@@ -31,5 +31,7 @@
 (define-syntax (pyramid-module-begin stx)
   (syntax-case stx ()
     [(_ x) #`(#%module-begin
-              (provide program)
-              (define program (expand-pyramid (syntax->datum #'x))))]))
+              (provide program-info)
+
+              (define program-info
+                (list (quote x) #f (expand-pyramid (syntax->datum #'x)))))]))

@@ -237,7 +237,7 @@
   (match sym
     [ 'ISZERO    (simulate-unop!  vm (λ (a) (if (= a 0) 1 0)))]
     [ 'ADD       (simulate-binop! vm (λ (a b) (+ a b)))]
-    [ 'SUB       (simulate-binop! vm (λ (a b) (assert-0..∞ (- a b))))]
+    [ 'SUB       (simulate-binop! vm (λ (a b) (- a b)))]
     [ 'MUL       (simulate-binop! vm (λ (a b) (* a b)))]
     [ 'DIV       (simulate-binop! vm (λ (a b) (if (equal? 0 b) 0 (exact-floor (/ a b)))))]
     [ 'MOD       (simulate-binop! vm (λ (a b) (if (equal? 0 b) 0 (modulo a b))))]
@@ -293,11 +293,11 @@
   (let ((x1 (pop-stack! vm)))
     (push-stack! vm (assert-0..∞ (f x1)))))
 
-(: simulate-binop! (-> vm-exec (-> EthWord EthWord EthWord) Void))
+(: simulate-binop! (-> vm-exec (-> EthWord EthWord Integer) Void))
 (define (simulate-binop! vm f)
   (let* ([x1 (pop-stack! vm)]
          [x2 (pop-stack! vm)])
-    (push-stack! vm (assert-0..∞ (f x1 x2)))))
+    (push-stack! vm (truncate-int (f x1 x2)))))
 
 (: simulate-pop! (-> vm-exec Void))
 (define (simulate-pop! vm) (void (pop-stack! vm)))

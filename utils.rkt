@@ -6,6 +6,8 @@
 (provide (all-defined-out)
          (all-from-out 'struct))
 
+(define WORDLIMIT (arithmetic-shift 1 256))
+
 (: maybe->list (All (A) (-> Boolean A (Listof A))))
 (define (maybe->list pred? x) (if pred? (list x) '()))
 
@@ -126,8 +128,19 @@
 
 (require 'struct)
 
-(: assert-0..∞ (-> Integer Nonnegative-Integer))
-(define (assert-0..∞ n) (cast n Nonnegative-Integer))
+;(: assert-0..∞ (-> Integer Nonnegative-Integer))
+(define-syntax-rule (assert-0..∞ n) (cast n Nonnegative-Integer))
 
 (: truncate-int (-> Integer Nonnegative-Integer))
-(define (truncate-int x) (assert-0..∞ (bitwise-bit-field x 0 256)))
+(define (truncate-int x)
+  (assert-0..∞
+   (if (>= x WORDLIMIT)
+       (- x WORDLIMIT)
+       (if (< x 0)
+           (+ WORDLIMIT x)
+           x))))
+
+
+(: symbol-append (-> Symbol * Symbol))
+(define (symbol-append . xs)
+  (string->symbol (apply string-append (map symbol->string xs))))

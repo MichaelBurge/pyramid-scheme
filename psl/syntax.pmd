@@ -55,3 +55,21 @@
     [(list x) x]
     [(list-rest x rest) `(,f ,x (syntax-fold ,f ,@rest))]
     ))
+
+(defmacro (generic-case pred e . xs)
+  (define value-e (gensym 'case))
+  (define (loop xs)
+    (match xs
+      ['()                      '(void)]
+      [(cons `(else ,body) '()) body]
+      [(cons `((,x) ,body) xs)
+       `(if (,pred ,value-e ,x)
+            ,body
+            ,(loop xs))]
+      ))
+  `(begin (define ,value-e ,e) ; (define) are hoisted to the parent's continuation frame
+          ,(loop xs))
+  )
+
+(defmacro (%#-case e . xs)
+  `(generic-case %#-= ,e ,@xs))
