@@ -7,6 +7,7 @@
 (require (submod "types.rkt" evm-assembly))
 (require (submod "types.rkt" simulator))
 (require (submod "types.rkt" abstract-machine))
+(require (submod "types.rkt" pyramidc))
 
 (provide (all-defined-out))
 

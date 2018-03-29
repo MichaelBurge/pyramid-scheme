@@ -5,6 +5,7 @@
 (require (submod "types.rkt" ast))
 (require (submod "types.rkt" abstract-machine))
 (require (submod "types.rkt" evm-assembly))
+(require (submod "types.rkt" pyramidc))
 (require "utils.rkt")
 (require "globals.rkt")
 
@@ -271,32 +272,56 @@
   (loop))
 
 (module unsafe racket
-  (provide parse-file
+  (provide parse-translation-unit
            vector->register-value)
+  (require (submod "types.rkt" pyramidc))
   (require "globals.rkt")
-  (define (parse-file filename)
-    (define pi (dynamic-require filename 'program-info))
-    (match pi
-      [(list source-code abstract-syntax program)
-       (when (verbose? VERBOSITY-MEDIUM)
-         (pretty-print `(PARSE-TREE ,source-code)))
-       (when (verbose? VERBOSITY-LOW)
-         (pretty-print `(SYNTAX-TREE ,abstract-syntax)))
-       program
-       ])
+  (require "utils.rkt")
+
+  (define (parse-translation-unit filename execute?)
+    ;(define make-translation-unit (dynamic-rerequire filename 'make-translation-unit))
+    (define make-translation-unit (dynamic-require filename 'make-translation-unit))
+    ;(dynamic-require filename 0)
+    ;(define make-translation-unit
+    ;(namespace-require filename)
+    ;(define make-translation-unit (eval 'make-translation-unit))
     ;(eval `(module pyramid-loader racket/load (begin (require ,filename) program)))
+    (define tu (make-translation-unit execute?))
+    (destruct translation-unit tu)
+    (when (verbose? VERBOSITY-MEDIUM)
+      (pretty-print `(PARSE-TREE ,tu-source-code)))
+    (when (verbose? VERBOSITY-LOW)
+      (pretty-print `(SYNTAX-TREE ,tu-abstract-syntax)))
+    (when (verbose? VERBOSITY-MEDIUM)
+      (pretty-print `(DEPENDENCIES ,tu-dependencies)))
+    tu
     )
+
   (define (vector->register-value x) x)
 
 )
 
 (require/typed 'unsafe
-  [ parse-file (-> String Pyramid) ]
+  [ parse-translation-unit (-> String Boolean translation-unit)]
   [ vector->register-value (-> VectorTop RegisterValue)])
 
-(: read-file (-> String PyramidQ))
-(define (read-file filename)
-  (shrink-pyramid (parse-file filename)))
+(: flatten-translation-units (-> translation-unit Pyramid))
+(define (flatten-translation-units tu)
+  (: tu-dependencies translation-units)
+  (define tu-dependencies (translation-unit-dependencies tu))
+  (pyr-begin (append (map flatten-translation-units tu-dependencies)
+                     (list (translation-unit-compiled tu))))
+  )
+
+(: parse-file (-> String Boolean Pyramid))
+(define (parse-file filename execute?)
+  (define tu (parse-translation-unit filename execute?))
+  (flatten-translation-units tu)
+  )
+
+(: read-file (-> String #:execute? Boolean PyramidQ))
+(define (read-file filename #:execute? execute?)
+  (shrink-pyramid (parse-file filename execute?)))
 
 (: sequence->exp (-> Pyramids Pyramid))
 (define (sequence->exp seq)

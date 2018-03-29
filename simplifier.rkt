@@ -12,7 +12,9 @@
    [ set-add! (All (A) (-> (Setof A) A Void))]
    [ mutable-set (All (A) (-> (Setof A)))])
 
-(provide (all-defined-out))
+(provide simplify
+         simplify-macros
+         (all-defined-out))
 
 (: simplify Pass)
 (define (simplify prog)
@@ -45,6 +47,9 @@
   (define prog4 (pass-deduce-macros prog3))
   prog4
   )
+
+(: simplify-macros Pass)
+(define simplify-macros pass-expand-macros)
 
 (: pass-remove-unused-definitions Pass)
 (define (pass-remove-unused-definitions prog)

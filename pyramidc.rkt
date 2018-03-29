@@ -73,7 +73,7 @@
 (define (main filename)
   (install-primops!)
   (%-install-macro-library!)
-  (let ([ prog (read-file filename )])
+  (let ([ prog (read-file filename #:execute? #t)])
     (cond ((*test?*)    (assert-test filename prog))
           ((verbose? 1) (verbose-output prog))
           (else         (standard-output prog)))

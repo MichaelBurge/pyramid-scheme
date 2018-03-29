@@ -2,9 +2,11 @@
 
 (require (for-syntax "parser.rkt"))
 (require "parser.rkt")
+(require (submod "types.rkt" pyramidc))
 (provide read
          read-syntax
          (rename-out [pyramid-module-begin #%module-begin])
+         translation-unit
          )
 
 (module reader racket
@@ -31,7 +33,14 @@
 (define-syntax (pyramid-module-begin stx)
   (syntax-case stx ()
     [(_ x) #`(#%module-begin
-              (provide program-info)
+              (provide make-translation-unit)
 
-              (define program-info
-                (list (quote x) #f (expand-pyramid (syntax->datum #'x)))))]))
+              (define (make-translation-unit execute?)
+                (translation-unit 'pyramid
+                                  (quote x)
+                                  #f
+                                  (expand-pyramid (syntax->datum #'x))
+                                  '()
+                                  )
+                )
+              )]))

@@ -9,7 +9,10 @@
 (define WORDLIMIT (arithmetic-shift 1 256))
 
 (: maybe->list (All (A) (-> Boolean A (Listof A))))
-(define (maybe->list pred? x) (if pred? (list x) '()))
+(define (maybe->list pred? x)
+  (if pred?
+      (list x)
+      '()))
 
 (: integer-bytes (-> Integer Byte))
 (define (integer-bytes n)

@@ -176,13 +176,17 @@ Functions defined here are available to Pyramid programs within macros.
 
 ;; (define (%-selector sig) (keccak-256 (string->bytes/utf-8 (%-sig-str sig))))
 
+(: macro-read-file (-> String PyramidQ))
+(define (macro-read-file path)
+  (read-file path #:execute? #f))
+
 (: %-include (case-> (-> String Any) (-> Symbol String Any)))
 (define %-include
   (case-lambda
     ([mod] (parameterize ([ current-directory (*include-directory*) ])
-             (read-file mod)))
+             (macro-read-file mod)))
     ([collection mod] (parameterize ([ current-directory (get-collection-directory collection) ])
-                        (read-file mod)))
+                        (macro-read-file mod)))
     ))
 
 (: include-unless-cached (-> Symbol String Any))

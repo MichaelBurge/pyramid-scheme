@@ -376,11 +376,27 @@
   (struct test-expectation ([ name : String ] [ expected : Any ] [ actual : (-> simulation-result-ex Any)]) #:transparent)
   (struct test-txn ([ mods : PyramidQs ] [ tests : (Listof test-expectation) ]) #:transparent #:mutable)
   (struct test-account ([ name : Symbol ] [ balance : EthWord ]) #:transparent)
-  (struct test-case ([ name : String ] [ accounts : test-accounts ] [ deploy-txn : test-txn ][ msg-txns : test-txns]) #:transparent #:mutable)
+  (struct test-case ([ name : String ] [ accounts : test-accounts ] [ deploy-txn : test-txn ] [ msg-txns : test-txns]) #:transparent #:mutable)
   (struct test-suite ([ name : String ] [ cases : (Listof test-case) ]) #:transparent)
 
   (define-type test-expectations (Listof test-expectation))
   (define-type test-txns (Listof test-txn))
   (define-type test-accounts (Listof test-account))
   (define-type test-cases (Listof test-case))
+  )
+
+(module pyramidc typed/racket
+  (require typed/racket/unsafe)
+  (require (submod ".." ast))
+  (unsafe-provide (all-defined-out))
+
+  (struct translation-unit ([ language : Symbol ]
+                            [ source-code : Sexp ]
+                            [ abstract-syntax : Any ]
+                            [ compiled : Pyramid ]
+                            [ dependencies : translation-units ]
+                            )
+    #:transparent
+    )
+  (define-type translation-units (Listof translation-unit))
   )
