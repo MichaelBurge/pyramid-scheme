@@ -129,6 +129,20 @@
 (define (%#-mem-read a b) (binop-unboxed (op 'read-memory stack stack)))
 (define (%#-mem-write! a b c) (triproc-unboxed (op 'write-memory stack stack stack)))
 
+(defmacro (%#-unbox-arguments f . xs)
+  `(,f ,@(for/list ([ x xs])
+           (if (exact-integer? x)
+               `(%-unbox ,x)
+               x))))
+
+(defmacro (%#-mem-alloc-init a . xs)
+  `((λ ()
+      (define ptr (%#-mem-alloc ,a))
+      ,@(for/list ([ x xs ]
+                   [ n (in-naturals)])
+          `(%#-mem-write! ptr (%-unbox ,n) ,x))
+      ptr)))
+
 (define (%-vector-read a b)
   (asm (save (op 'lookup-variable-value (const 'b) (reg 'env)))
        (save (op 'fixnum-value          stack))
