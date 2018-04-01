@@ -51,6 +51,7 @@ Boxed values are pointers to a tag. Depending on the tag, additional data follow
  * 8: Frame:               2 words     - Pointer to names, pointer to values
  * 9: Environment:         2 words     - Pointer to frame, pointer to enclosing environment
  * 10: Character           1 word      - The Unicode codepoint for the character
+ * 11: Bytes               1 + ceil(n/WORD) words - A size n, followed by enough words to hold n bytes
 
 Additionally, there are derived objects used in the standard library:
  * List:        Null | (pair X List)
@@ -107,6 +108,7 @@ These optimizations are currently unimplemented:
   (define TAG-FRAME               8)
   (define TAG-ENVIRONMENT         9)
   (define TAG-CHARACTER           10)
+  (define TAG-BYTES               11)
 
   (define MEM-ENV           #x00)
   (define MEM-PROC          #x20)
@@ -542,18 +544,17 @@ These optimizations are currently unimplemented:
 (: cg-mexpr-const (Generator const))
 (define-generator (cg-mexpr-const exp)
   (let ((val (const-value exp)))
-    (begin
-      (cond [(symbol? val)
-             (let ((int (symbol->integer val)))
-               (list (evm-push (integer-bytes int) int)))]
-            [(nonnegative-integer? val) (list (evm-push (integer-bytes val) val))]
-            [(negative-integer? val) (let ([ word-val (truncate-int (+ WORDLIMIT val))])
-                                       (list (evm-push (integer-bytes word-val) word-val)))]
-            [(list?    val) (cg-make-list (map const val) #f)]
-            [(boolean? val) (cg-mexpr-const (const (if val 1 0)))]
-            [(vector?  val) (cg-make-vector (const (vector-length val)) (map const (vector->list val)))]
-            [(char?    val) (list (evm-push 'shrink (char->integer val)))]
-            [else           (error "cg-mexpr-const: Unsupported constant" exp)]))))
+    (cond [(symbol? val)
+           (let ((int (symbol->integer val)))
+             (list (evm-push (integer-bytes int) int)))]
+          [(nonnegative-integer? val) (list (evm-push (integer-bytes val) val))]
+          [(negative-integer? val) (let ([ word-val (truncate-int (+ WORDLIMIT val))])
+                                     (list (evm-push (integer-bytes word-val) word-val)))]
+          [(list?    val) (cg-make-list (map const val) #f)]
+          [(boolean? val) (cg-mexpr-const (const (if val 1 0)))]
+          [(vector?  val) (cg-make-vector (const (vector-length val)) (map const (vector->list val)))]
+          [(char?    val) (list (evm-push 'shrink (char->integer val)))]
+          [else           (error "cg-mexpr-const: Unsupported constant" exp)])))
 
 
 (: cg-mexpr-boxed-const (Generator boxed-const))
@@ -566,6 +567,7 @@ These optimizations are currently unimplemented:
           [(list? val)    (cg-make-list (map const val) #t)]
           [(vector? val)  (cg-make-vector (const (vector-length val)) (map boxed-const (vector->list val)))]
           [(char? val)    (cg-make-char (const val))]
+          [(string? val)  (cg-make-bytes-literal (string->bytes/utf-8 val))]
           [else           (error "cg-mexpr-boxed-const: Unsupported constant" exp)])))
 
 (unsafe-require/typed "unsafe.rkt"
@@ -1206,7 +1208,8 @@ These optimizations are currently unimplemented:
         [ label-vector  (make-label 'cg-return-ty-vector)]
         [ label-compiled-procedure (make-label 'cg-return-ty-compiled-procedure)]
         [ label-nil     (make-label 'cg-return-ty-nil)]
-        [ label-unboxed (make-label 'cg-return-ty-unboxde)]
+        [ label-unboxed (make-label 'cg-return-ty-unboxed)]
+        [ label-bytes   (make-label 'cg-return-ty-bytes)]
         )
     (append
      (cg-intros (list exp))     ; [ exp ]
@@ -1244,6 +1247,10 @@ These optimizations are currently unimplemented:
      (cg-eq? (const TAG-NIL) stack) ; [ pred; tag; exp ]
      (cg-branch label-nil stack)
 
+     (asm 'DUP1) ; [ tag; tag; exp ]
+     (cg-eq? (const TAG-BYTES) stack) ; [ pred; tag; exp ]
+     (cg-branch label-bytes stack)
+
      (cg-throw 'cg-return-invalid-type)
 
      `(,label-unboxed)              ; [ exp ]
@@ -1265,6 +1272,9 @@ These optimizations are currently unimplemented:
      (cg-return-uint256 stack)
      `(,label-nil)
      (asm 'STOP)
+     `(,label-bytes)
+     (cg-pop 1)                 ; [ exp ]
+     (cg-return-bytes stack)
      )))
 
 (: cg-return-uint256 (Generator MExpr))
@@ -1290,6 +1300,16 @@ These optimizations are currently unimplemented:
 (define-generator (cg-return-list-uint256 exp)
   (cg-list->vector exp)  ; [ vec ]
   (cg-return-vector stack) ; [ ]
+  )
+
+(: cg-return-bytes (Generator MExpr))
+(define-generator (cg-return-bytes exp)
+  (cg-mexpr exp) ; [ bs ]
+  (asm 'DUP1) ; [ bs; bs ]
+  (cg-bytes-len stack) ; [ len ; bs]
+  (cg-swap 1) ; [ bs; len ]
+  (cg-bytes-data stack) ; [ data; len ]
+  (asm 'RETURN)
   )
 
 (define cg-return-compiled-procedure cg-return-uint256)
@@ -1523,3 +1543,38 @@ SWAP1 -> [ x1; x2; x3; c ]
 (: cg-symbol-value (Generator MExpr))
 (define-generator (cg-symbol-value x)
   (cg-fixnum-value x))
+
+; TODO: Move literals to the end of the program to avoid generating a JUMP
+(: cg-make-bytes-literal (Generator Bytes))
+(define-generator (cg-make-bytes-literal bs)
+  (let ([ lbl-data (make-label 'literal 1)]
+        [ lbl-after (make-label 'literal-after)])
+    (append (cg-goto lbl-after)
+            `(,lbl-data)
+            (list (evm-bytes bs))
+            `(,lbl-after) ; [ ]
+            (cg-allocate (const (+ 2 (bytes-length bs)))) ; [ mem-ptr ]
+            (asm 'DUP1)                             ; [ mem-ptr; mem-ptr ]
+            (cg-write-address stack (const TAG-BYTES)) ; [ mem-ptr ]
+            (asm 'DUP1)                             ; [ mem-ptr; mem-ptr ]
+            (cg-add stack (const WORD))             ; [ mem-ptr+; mem-ptr]
+            (cg-write-address stack (const (bytes-length bs))) ; [ mem-ptr ]
+            (list
+             (evm-push 'shrink (bytes-length bs)) ; [ size; mem-ptr ]
+             (evm-push 'shrink lbl-data)          ; [ code-ptr; size; mem-ptr ]
+             (evm-op 'DUP3)                       ; [ mem-ptr; code-ptr; size; mem-ptr ]
+             (evm-push 'shrink (* 2 WORD))        ; [ data-offet; mem-ptr; code-ptr; size; mem-ptr ]
+             (evm-op 'ADD)                        ; [ mem-ptr*; code-ptr; size; mem-ptr]
+             (evm-op 'CODECOPY)                   ; [ mem-ptr]
+             ))
+    ))
+
+(: cg-bytes-len (Generator MExpr))
+(define-generator (cg-bytes-len bs)
+  (cg-add bs (const WORD))
+  (cg-read-address stack)
+  )
+
+(: cg-bytes-data (Generator MExpr))
+(define-generator (cg-bytes-data bs)
+  (cg-add bs (const (* 2 WORD))))

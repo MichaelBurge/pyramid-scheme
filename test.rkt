@@ -31,7 +31,7 @@
 (define (assert-equal name expected actual debug-info)
   (if (equal? expected actual)
       (begin
-        (display `("Test Passed: " ,name ,expected ,actual ,debug-info))
+        (display `("Test Passed: " ,name (,expected) (,actual) ,debug-info))
         (newline))
       (error "Test failed: " name expected actual))
   )

@@ -1,0 +1,9 @@
+#lang pyramid
+
+(require psl "primitives.pmd")
+
+(set-test-result! 3000)
+
+(define x (%-unbox -1000))
+
+(%-box (%#-+ x (%-unbox 4000)))

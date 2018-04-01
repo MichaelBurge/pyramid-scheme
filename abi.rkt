@@ -7,6 +7,8 @@
 (provide infer-type
          parse-type)
 
+; https://solidity.readthedocs.io/en/develop/abi-spec.html
+
 (: parse-type (-> AbiType Bytes Any))
 (define (parse-type type bs)
   (: assert-size (-> Integer Void))
@@ -20,6 +22,8 @@
      (parse-uint256 bs)]
     ["uint256[]" (parse-array "uint256" bs)]
     ["bool" (= (parse-uint256 bs) 1)]
+    ["bytes" bs]
+    ["string" (bytes->string/utf-8 bs)]
     [_ (error "parse-type: Unsupported type:" type)]
     ))
 
@@ -49,6 +53,7 @@
     [(vector? x) (match (infer-type (vector-ref x 0))
                    ["uint256" "uint256[]"]
                    [t (error "infer-type: Unexpected vector typed" t)])]
+    [(string? x) "string"]
     [else (error "infer-type: Unknown type" x)]
     ))
 

@@ -148,6 +148,8 @@
   (struct v-continuation        ([continue : label ] [env : v-environment] [ stack : values ]) #:transparent)
   (struct v-frame               ([mappings : (HashTable Symbol value)])     #:transparent)
   (struct v-environment         ([frames : v-frames]))
+  (struct v-bytes               ([bs : Bytes ]) #:transparent)
+  (struct v-string              ([str : String ]) #:transparent)
   (define-type v-unboxed (U Integer Symbol Boolean))
   (define-type v-callable (U v-compiled-procedure v-primitive-procedure v-continuation))
   (define-type v-list (U v-null v-pair))
@@ -168,6 +170,8 @@
                         v-continuation
                         v-frame
                         v-environment
+                        v-bytes
+                        v-string
                         label))
   (define-type v-frames (Listof v-frame))
   (define-type values (Listof value))
@@ -355,7 +359,7 @@
   (define-type history-storage (HashTable StorageRoot world-storage)) ; All historical commit checkpoints
   (define-type MemoryOffset Offset)
 
-  (define-type AbiType (U "void" "uint256" "uint256[]" "bool"))
+  (define-type AbiType (U "void" "uint256" "uint256[]" "bool" "bytes" "string"))
 
   (struct vm-store ([ history : history-storage ]
                     [ world : world-storage ]

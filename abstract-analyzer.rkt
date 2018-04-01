@@ -492,13 +492,13 @@
 (: eval-op-write-memory (-> value value value value))
 (define (eval-op-write-memory ptr os val)
 
-  (with-asserts ([ ptr 0..∞? ]
-                 [ os  0..∞? ]
-                 [ val 0..∞? ])
+  (with-asserts ([ ptr exact-integer? ]
+                 [ os  exact-integer? ]
+                 [ val exact-integer? ])
     (match (get-allocated-fixnum (- ptr WORD))
       [#f (let-values ([(os2 bs) (get-allocation ptr os)])
             ; If (bytes-copy!) triggers an exception, on the EVM this would instead corrupt nearby memory.
-            (bytes-copy! bs os2 (integer->bytes val 32 #f #t)))]
+            (bytes-copy! bs os2 (integer->bytes (truncate-int val) 32 #f #t)))]
       [(? v-fixnum? fx) (set-v-fixnum-value! fx val)])
     ))
 
@@ -599,6 +599,7 @@
                                   (v-box (cast (rest x) RegisterValue)))]
     [(? vector?)        (v-vector (vector-map v-box x))]
     [(? char?)          (v-char x)]
+    [(? string?)        (v-bytes (string->bytes/utf-8 x))]
     [_ (error "v-box: Unknown type" x)]))
 
 (: print-debug-line (-> Void))
