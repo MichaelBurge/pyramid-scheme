@@ -123,7 +123,7 @@
 ; Constants
 (define assumed-label-size 3) ; TODO: Number of bytes to leave behind for label relocations. This makes it difficult to write programs larger than 65536 bytes.
 (define *assumed-label-size* assumed-label-size)
-(define MEMORY-SIZE 200000)
+(define MEMORY-SIZE 2000000)
 (define MAX-ITERATIONS 1000000)
 (define DEFAULT-GAS-PRICE 10)
 (define DEFAULT-GAS-LIMIT 1000000)

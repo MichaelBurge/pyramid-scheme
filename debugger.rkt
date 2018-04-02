@@ -218,7 +218,7 @@
 
 (: make-evm-sourcemapper (-> SymbolTable SourceMap SourceMapper))
 (define (make-evm-sourcemapper syms srcs)
-  (define infinity 1000000)
+  (define infinity #xFFFFFFFF)
   (: m (IntervalMap Symbols))
   (define m (make-interval-map))
   (interval-map-set! m 0 infinity '(UNKNOWN))

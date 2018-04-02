@@ -69,7 +69,8 @@
     (*on-simulate-instruction* (on-simulate-debug (*symbol-table*) (*evm-source-map*))))
   (let* ([ sim            (make-simulator)]
          [ deploy-txn     (second (test-case-deploy-txn->vm-txn cs bytecode))]
-         [ deploy-result  (cast (apply-txn-create! sim deploy-txn) simulation-result)]
+         [ deploy-result* (apply-txn-create! sim deploy-txn)]
+         [ deploy-result  (if (simulation-result? deploy-result*) deploy-result* (error "run-test-case: Received exception" deploy-result*))]
          [ contract?      (vm-txn-receipt-contract-address (simulation-result-txn-receipt deploy-result))]
          [ contract       (if contract? contract? (error "Unable to deploy contract" deploy-result))]
          [ expect-txns    (test-case-msg-txns->vm-txns cs contract)]

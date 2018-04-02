@@ -37,10 +37,11 @@
 ; Outputs 3 column TSV
 (: print-disassembly (-> Bytes Void))
 (define (print-disassembly bs)
+  (define end (- (bytes-length bs) 1))
   (let ((reverse-symbol-table (invert-hash (*symbol-table*))))
     (: loop (-> 0..∞ Void))
     (define (loop n)
-      (if (>= n (- (bytes-length bs) 1))
+      (if (>= n end)
           (void)
           (begin
             (printf "~x" n)

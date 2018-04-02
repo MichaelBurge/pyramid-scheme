@@ -12,6 +12,7 @@
 (require (submod "types.rkt" abstract-machine))
 (require (submod "types.rkt" evm-assembly))
 (require (submod "typed.rkt" binaryio))
+(require math)
 
 (: *m* machine)
 (define *m* (machine 0 ; pc
@@ -373,7 +374,7 @@
     ['OR  (binop* bitwise-ior)]
     ['XOR (binop* bitwise-xor)]
     ['NOT (unop*  (compose truncate-int bitwise-not))]
-    ['EXP (binop (λ (a b) (cast (expt a b) Integer)))]
+    ['EXP (binop (λ (a b) (modular-expt a b WORDLIMIT)))]
     ['ADD (binop +)]
     ['SUB (binop -)]
     ['MUL (binop *)]
@@ -471,6 +472,7 @@
     [(struct v-frame               _) 8]
     [(struct v-environment         _) 9]
     [(struct v-char                _) 10]
+    [(struct v-bytes               _) 11]
     [_ (error "eval-tag: Unknown case" x)]))
 
 (: eval-op-allocate (-> value value))
@@ -616,9 +618,9 @@
           (shrink-value (machine-proc     *m*))
           (shrink-value (machine-argl     *m*))
           (shrink-value (machine-stack-size *m*))
-          (shrink-value (machine-env      *m*) #:env? #t)
-          (*allocation-ranges*)
-          (*allocation-fixnums*)
+          (shrink-value (machine-env      *m*) #:env? (verbose? VERBOSITY-HIGH))
+          (if (verbose? VERBOSITY-MEDIUM) (*allocation-ranges*) '())
+          (if (verbose? VERBOSITY-MEDIUM) (*allocation-fixnums*) '())
           ))
 
 (: v-list->environment (-> v-list v-environment))

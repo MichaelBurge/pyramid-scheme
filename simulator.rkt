@@ -17,6 +17,7 @@
 (require "parser.rkt")
 (require "abstract-analyzer.rkt")
 (require typed/racket/unsafe)
+(require math)
 
 (unsafe-require/typed "unsafe.rkt"
                      [ unsafe-cast (All (A B) (-> A B))])
@@ -248,7 +249,7 @@
     [ 'OR        (simulate-binop! vm (λ (a b) (bitwise-ior a b)))]
     [ 'XOR       (simulate-binop! vm (λ (a b) (bitwise-xor a b)))]
     [ 'NOT       (simulate-unop!  vm (λ (a) (truncate-int (bitwise-not a))))]
-    [ 'EXP       (simulate-binop! vm (λ (a b) (exact-floor (expt a b))))]
+    [ 'EXP       (simulate-binop! vm (λ (a b) (modular-expt a b WORDLIMIT)))]
     [ 'POP       (simulate-pop!   vm)]
     [ 'DUP1      (simulate-dup!   vm 1)]
     [ 'DUP2      (simulate-dup!   vm 2)]
