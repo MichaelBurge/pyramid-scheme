@@ -53,7 +53,7 @@ I recommend Emacs with `racket-mode`. You should add Pyramid's `.pmd` extension 
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE.md](LICENSE.md) file for details
+This project is licensed under the GNU AGPL 3.0 - see the [LICENSE.md](LICENSE.md) file for details
 
 ## Built With
 
