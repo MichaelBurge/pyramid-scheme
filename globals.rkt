@@ -53,13 +53,13 @@
 (: *exports* (Parameterof (Listof Any)))
 (define *exports* (make-parameter null)) ; Used to generate the standard ABI for the current Pyramid contract
 
-(: *loader-size* (Parameterof 0..∞))
+(: *loader-size* (Parameterof Natural))
 (define *loader-size* (make-parameter 0)) ; Size of the most recently generated loader
 
 (: *byte-offset* (Parameterof UnlinkedOffset))
 (define *byte-offset* (make-parameter 0)) ; Used during serialization to track output stream position
 
-(: *abstract-offset* (Parameterof 0..∞))
+(: *abstract-offset* (Parameterof Natural))
 (define *abstract-offset* (make-parameter 0)) ; Used to generate debug labels. Index of the last-generated abstract machine instruction.
 
 (: *symbol-table* (Parameterof SymbolTable))
@@ -89,17 +89,17 @@
 (: *addresses-by-name* (Parameterof AddressTable))
 (define *addresses-by-name* (make-parameter (make-address-table)))
 
-(: *txn-nonce* (Parameterof 0..∞))
+(: *txn-nonce* (Parameterof Natural))
 (define *txn-nonce* (make-parameter 0))
 
-(: *account-nonce* (Parameterof 0..∞))
+(: *account-nonce* (Parameterof Natural))
 (define *account-nonce* (make-parameter 100))
 
 ; TODO: Contract address should use actual Ethereum spec rather than a counter
-(: *contract-create-counter* (Parameterof 0..∞))
+(: *contract-create-counter* (Parameterof Natural))
 (define *contract-create-counter* (make-parameter 200))
 
-(: *label-counter* (Parameterof 0..∞))
+(: *label-counter* (Parameterof Natural))
 (define *label-counter* (make-parameter 0))
 
 (: *primops* (Parameterof PrimopTable))
@@ -107,7 +107,7 @@
   (let ([ tbl : PrimopTable (make-hash)])
     (make-parameter tbl)))
 
-(: *recursion-depth* (Parameterof 0..∞))
+(: *recursion-depth* (Parameterof Natural))
 (define *recursion-depth* (make-parameter 10))
 
 (: *evm-source-map-stack* (Parameterof (Listof Symbol)))
@@ -120,6 +120,12 @@
 (define (on-simulate-nop vm i reads) (void))
 (define *on-simulate-instruction* (make-parameter on-simulate-nop))
 
+(: on-log-nop (-> vm-exec Bytes EthWords Void))
+(define (on-log-nop vm bs tags) (void))
+
+(: *on-log* (Parameterof (-> vm-exec Bytes EthWords Void)))
+(define *on-log* (make-parameter on-log-nop))
+
 ; Constants
 (define assumed-label-size 3) ; TODO: Number of bytes to leave behind for label relocations. This makes it difficult to write programs larger than 65536 bytes.
 (define *assumed-label-size* assumed-label-size)
@@ -129,3 +135,4 @@
 (define DEFAULT-GAS-LIMIT 1000000)
 (define ALLOCATION-RANGE-PADDING 1000) ; Length of gaps between abstract analyzer's address space allocations. Catches most out-of-range writes.
 (define WORD #x20) ; 256-bit words / 8 bit granularity addresses = 32 8-bit words, or 0x20.
+(define IOCTL-TAG 0)

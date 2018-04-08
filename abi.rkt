@@ -43,18 +43,19 @@
 
 (: infer-type (-> Any AbiType))
 (define (infer-type x)
-  (cond
-    [(boolean? x) "bool"]
-    [(fixnum? x) "uint256"]
-    [(null? x) "void"]
-    [(list? x) (match (infer-type (car x))
+  (match x
+    [(? boolean?) "bool"]
+    [(? fixnum?) "uint256"]
+    [(? null?) "void"]
+    [`(%-unbox ,y) (infer-type y)]
+    [(? list?) (match (infer-type (car x))
                  ["uint256" "uint256[]"]
                  [t (error "infer-type: Unexpected list type" t)])]
-    [(vector? x) (match (infer-type (vector-ref x 0))
+    [(? vector?) (match (infer-type (vector-ref x 0))
                    ["uint256" "uint256[]"]
                    [t (error "infer-type: Unexpected vector typed" t)])]
-    [(string? x) "string"]
-    [else (error "infer-type: Unknown type" x)]
+    [(? string?) "string"]
+    [_ (error "infer-type: Unknown type" x)]
     ))
 
 #|

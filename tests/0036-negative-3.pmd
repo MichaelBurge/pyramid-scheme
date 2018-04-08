@@ -1,0 +1,12 @@
+#lang pyramid
+
+(require psl "primitives.pmd")
+
+(set-test-result! 0)
+
+(define ptr (%#-mem-alloc (%-unbox 32)))
+(%#-mem-write! ptr (%-unbox 0) (%-unbox -1))
+(define x (%#-mem-read ptr (%-unbox 0)))
+
+(%#-bitshiftr (%-unbox 1)
+              (%#-- (%-unbox 0) x))

@@ -185,7 +185,7 @@
            sim
            ))
 
-(: simulate! (-> vm-exec 0..∞ Void))
+(: simulate! (-> vm-exec Natural Void))
 (define (simulate! vm max-iterations)
   (if (<= max-iterations 0)
       (raise (exn:evm:did-not-halt "run-until-return" (current-continuation-marks) vm max-iterations))
@@ -193,7 +193,7 @@
         (simulate-one! vm (next-instruction vm))
         (simulate! vm (- max-iterations 1)))))
 
-(: instruction-at (-> vm-exec 0..∞ EthInstruction))
+(: instruction-at (-> vm-exec Natural EthInstruction))
 (define (instruction-at vm addr)
   (disassemble-one (vm-exec-bytecode vm) addr))
 
@@ -245,6 +245,8 @@
     [ 'EQ        (simulate-binop! vm (λ (a b) (if (= a b) 1 0)))]
     [ 'LT        (simulate-binop! vm (λ (a b) (if (< a b) 1 0)))]
     [ 'GT        (simulate-binop! vm (λ (a b) (if (> a b) 1 0)))]
+    [ 'SLT       (simulate-binop! vm (λ (a b) (if (< (word->integer a) (word->integer b)) 1 0)))]
+    [ 'SGT       (simulate-binop! vm (λ (a b) (if (> (word->integer a) (word->integer b)) 1 0)))]
     [ 'AND       (simulate-binop! vm (λ (a b) (bitwise-and a b)))]
     [ 'OR        (simulate-binop! vm (λ (a b) (bitwise-ior a b)))]
     [ 'XOR       (simulate-binop! vm (λ (a b) (bitwise-xor a b)))]
@@ -285,14 +287,18 @@
     [ 'CALLDATALOAD (simulate-calldataload! vm)]
     [ 'BALANCE   (simulate-balance! vm)]
     [ 'CALL      (simulate-call! vm)]
-    [ 'LOG0      (begin (pop-stack! vm) (pop-stack! vm) (void)) ]
+    [ 'LOG0      (simulate-log vm 0)]
+    [ 'LOG1      (simulate-log vm 1)]
+    [ 'LOG2      (simulate-log vm 2)]
+    [ 'LOG3      (simulate-log vm 3)]
+    [ 'LOG4      (simulate-log vm 4)]
     [ _          (error "simulate-asm - Unimplemented vm-exec instruction found:" sym)]
     ))
 
 (: simulate-unop! (-> vm-exec (-> EthWord EthWord) Void))
 (define (simulate-unop! vm f)
   (let ((x1 (pop-stack! vm)))
-    (push-stack! vm (assert-0..∞ (f x1)))))
+    (push-stack! vm (assert-natural (f x1)))))
 
 (: simulate-binop! (-> vm-exec (-> EthWord EthWord Integer) Void))
 (define (simulate-binop! vm f)
@@ -303,12 +309,12 @@
 (: simulate-pop! (-> vm-exec Void))
 (define (simulate-pop! vm) (void (pop-stack! vm)))
 
-(: simulate-dup! (-> vm-exec 1..∞ Void))
+(: simulate-dup! (-> vm-exec Positive-Integer Void))
 (define (simulate-dup! vm amount)
   (let ([ x (get-stack vm (- amount 1)) ])
     (push-stack! vm x)))
 
-(: simulate-swap! (-> vm-exec 0..∞ Void))
+(: simulate-swap! (-> vm-exec Natural Void))
 (define (simulate-swap! vm amount)
   (let* ([x1 (get-stack vm 0)]
          [x2 (get-stack vm amount)]
@@ -429,6 +435,15 @@
          [ val (bytes-or-zero bs i 32)])
     (push-stack! vm val)))
 
+(: simulate-log (-> vm-exec Natural Void))
+(define (simulate-log vm num-tags)
+  (let* ([ ptr (pop-stack! vm) ]
+         [ len (pop-stack! vm) ]
+         [ ts  (for/list : EthWords ([ i (in-range num-tags) ])
+                 (pop-stack! vm))]
+         [ bs  (read-memory vm ptr len)])
+    ((*on-log*) vm bs ts)))
+
 (: read-memory-word (-> vm-exec EthWord EthWord EthWord))
 (define (read-memory-word vm addr len)
   (bytes->nonnegative (read-memory vm addr len)))
@@ -491,7 +506,7 @@
   (let ([ old (vm-exec-largest-accessed-memory vm) ])
     (set-vm-exec-largest-accessed-memory! vm (max old addr))))
 
-(: get-stack (-> vm-exec 0..∞ EthWord))
+(: get-stack (-> vm-exec Natural EthWord))
 (define (get-stack vm amount)
   (list-ref (vm-exec-stack vm) amount))
 
@@ -525,12 +540,12 @@
       (empty? vm addr)))
 
 (: L (-> Integer EthWord))
-(define (L n) (assert-0..∞ (- n (exact-floor (/ n 64)))))
+(define (L n) (assert-natural (- n (exact-floor (/ n 64)))))
 
 (: logb (-> Number Number Real))
 (define (logb b x) (cast (/ (log x) (log b)) Real))
 
-(: instruction-gas (-> vm-exec EthInstruction 0..∞))
+(: instruction-gas (-> vm-exec EthInstruction Natural))
 (define (instruction-gas vm i)
   (define (C_sstore)
     (let ([ addr ( get-stack vm 0) ]
@@ -559,7 +574,7 @@
   (define (is-asm sym) (equal? i (evm-op sym)))
   (: is-asms (-> Symbols Boolean))
   (define (is-asms syms) (ormap is-asm syms))
-  (assert-0..∞
+  (assert-natural
    (cond ((is-asm 'SSTORE) (C_sstore))
          ((is-asm 'EXP)
           (if (eq? 0 (get-stack vm 1))

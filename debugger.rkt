@@ -1,6 +1,7 @@
 #lang typed/racket
 
-(provide on-simulate-debug)
+(provide on-simulate-debug
+         on-log-print)
 
 (require (submod "types.rkt" common))
 (require (submod "types.rkt" simulator))
@@ -14,6 +15,7 @@
 (require "codegen.rkt")
 (require "utils.rkt")
 (require "abstract-analyzer.rkt")
+(require (submod "typed.rkt" binaryio))
 (require (submod "typed.rkt" data/interval-map))
 (require (submod "typed.rkt" json))
 
@@ -48,6 +50,21 @@
                   (jsexpr->string (memory-dict vm))
                   "")
               ))))
+
+(: on-log-print (-> vm-exec Bytes EthWords Void))
+(define (on-log-print vm bs ts)
+  (: ioctl? (-> Any Boolean))
+  (define (ioctl? t) (equal? t IOCTL-TAG))
+  (match ts
+    [(list-no-order (? ioctl?) t) (handle-ioctl vm bs (cast t EthWord))]
+    [_ (println `(,ts ,bs))]
+    ))
+
+(: handle-ioctl (-> vm-exec Bytes EthWord Void))
+(define (handle-ioctl vm bs t)
+  (match t
+    [0 (println `(LOGNUM ,(bytes->integer bs #f)))]
+    ))
 
 (: memory-dict (-> vm-exec (Listof (List UnlinkedOffset EthWord))))
 (define (memory-dict vm)
@@ -187,7 +204,7 @@
          [ end  (+ addr len)]
          )
     (v-vector
-     (for/vector : (Vectorof value) ([ i : 0..∞ (in-range addr end WORD)])
+     (for/vector : (Vectorof value) ([ i : Natural (in-range addr end WORD)])
        (vm-value vm i)))))
 
 (: vm-environment (-> vm-exec EthWord v-environment))

@@ -52,11 +52,15 @@
 (define (expand-pyramid x)
   (with-parser-frame 'expand-pyramid x
   (match x
-    [(? boolean?) (pyr-const x)]
-    [(? exact-integer?) (pyr-const x)]
-    [(? string?) (pyr-const x)]
-    [(? char?)   (pyr-const x)]
-    [(? vector?) (pyr-const (vector->register-value x))]
+    [(? boolean?) (pyr-const x #f)]
+    [(? exact-integer?) (pyr-const x #t)]
+    [(? string?) (pyr-const x #t)]
+    [(? char?)   (pyr-const x #t)]
+    [(? vector?) (pyr-const (vector->register-value x) #t)]
+    [`(%-unbox (quote ,(? symbol? x))) (pyr-const x #f)]
+    [`(%-unbox ,(? exact-integer? x)) (pyr-const x #f)]
+    [`(%-box (quote ,(? symbol? x))) (pyr-const x #t)]
+    [`(%-box ,(? exact-integer? x)) (pyr-const x #t)]
     [(? symbol?) (pyr-variable x)]
     [`(quote ,exp) (pyr-quoted (expand-pyramid exp))]
     [`(set! ,(? symbol? name) ,body)
@@ -99,10 +103,20 @@
          (pretty-print x)
          (error "expand-pyramid: Unexpected form" x))])))
 
+(: explicit-unbox? (-> Pyramid Boolean))
+(define (explicit-unbox? x)
+  (match x
+    [(struct pyr-const (v boxed?)) (if (boolean? v)
+                                       #f
+                                       (not boxed?))]
+    ))
+
 (: shrink-pyramid (-> Pyramid PyramidQ))
 (define (shrink-pyramid x)
   (match x
-    [(struct pyr-const (v))                         v]
+    [(struct pyr-const (v boxed?))                  (if (explicit-unbox? x)
+                                                        `(%-unbox ,(if (symbol? v) `(quote ,v) v))
+                                                        v)]
     [(struct pyr-variable (v))                      v]
     [(struct pyr-quoted (exp))                      `(quote ,(shrink-pyramid exp))]
     [(struct pyr-assign (name value))               `(set! ,name ,(shrink-pyramid value))]

@@ -72,10 +72,14 @@
 (define (%#-u/ a b)    (binop-unboxed (evm 'DIV)))
 (define (%#-u% a b)    (binop-unboxed (evm 'MOD)))
 (define (%#-= a b)     (binop-unboxed (evm 'EQ)))
-(define (%#-> a b)     (binop-unboxed (evm 'GT)))
-(define (%#-< a b)     (binop-unboxed (evm 'LT)))
-(define (%#->= a b)    (%#-not (%#-< a b)))
-(define (%#-<= a b)    (%#->= b a))
+(define (%#-u> a b)     (binop-unboxed (evm 'GT)))
+(define (%#-u< a b)     (binop-unboxed (evm 'LT)))
+(define (%#-u>= a b)    (%#-not (%#-u< a b)))
+(define (%#-u<= a b)    (%#-u>= b a))
+(define (%#-s> a b)     (binop-unboxed (evm 'SGT)))
+(define (%#-s< a b)     (binop-unboxed (evm 'SLT)))
+(define (%#-s>= a b)    (%#-not (%#-s< a b)))
+(define (%#-s<= a b)    (%#-s>= b a))
 (define (%#-exp a b)   (binop-unboxed (evm 'EXP)))
 (define (%#-and a b)   (binop-unboxed (evm 'AND)))
 (define (%#-or a b)    (binop-unboxed (evm 'OR)))
@@ -89,22 +93,37 @@
 (define (%-suicide a) (unproc (evm 'SUICIDE)))
 (define (%-address)   (nullop (evm 'ADDRESS)))
 (define (%-balance a) (unop   (evm 'BALANCE)))
-;; (define (%-log0-fixnum x)
-;;   (asm (save (const 32)))          ; [ 32 ]
-;;   (intro-var x)                    ; [ x ; 32 ]
-;;   (asm (op 'add (const #x20) stack); [ x'; 32 ]
-;;        (evm 'LOG0))                ; [ ]
-;;   )
-;; (define (%-log1 bs t)
-;;   (intro-var t)                   ; [ t ]
-;;   (intro-var bs)                  ; [ bs; t ]
-;;   (asm (op 'DUP1)                 ; [ bs; bs; t ]
-;;        (cg-vector-len stack)      ; [ len; bs; t ]
-;;        (cg-swap 1)                ; [ bs; len; t ]
-;;        (cg-vector-data stack)     ; [ data; len; t ]
-;;        (op 'LOG1)                 ; [ ]
-;;        )
-;;   )
+(define (%-log0-fixnum x)
+  (asm (save (const 32)))                  ; [ 32 ]
+  (intro-var x)                            ; [ x ; 32 ]
+  (asm (save (op 'add (const #x20) stack)) ; [ x'; 32 ]
+       (evm 'LOG0))                         ; [ ]
+  )
+(define (%-log1 bs t)
+  (intro-var t)                            ; [ t ]
+  (intro-var bs)                           ; [ bs; t ]
+  (asm (evm 'DUP1)                         ; [ bs; bs; t ]
+       (save (op 'add (const #x20) stack)) ; [ len; bs; t ]
+       (evm 'SWAP1)                        ; [ bs; len; t ]
+       (save (op 'add (const #x40) stack)) ; [ data; len; t ]
+       (evm 'LOG1)                         ; [ ]
+       )
+  )
+
+(define (%#-log1 ptr len t)
+  (intro-var t)   ; [ t ]
+  (intro-var len) ; [ len; t ]
+  (intro-var ptr) ; [ ptr; len; t ]
+  (asm (evm 'LOG1))
+  )
+
+(define (%#-log2 ptr len t1 t2)
+  (intro-var t2)
+  (intro-var t1)
+  (intro-var len)
+  (intro-var ptr)
+  (asm (evm 'LOG2))
+  )
 
 (define (%-origin)               (nullop (evm 'ORIGIN)))
 (define (%-caller)               (nullop (evm 'CALLER)))
@@ -164,6 +183,12 @@
 (defmacro (%#-bool->word x)
   `(begin ,x
           (asm (save (op 'bool->unboxed (reg 'val)))
+               (restore 'val))
+          ))
+
+(defmacro (%#-coerce-word x)
+  `(begin ,x
+          (asm (save (op 'any->unboxed (reg 'val)))
                (restore 'val))
           ))
 
@@ -234,7 +259,7 @@
 (define (%#-memcpy to from size)
   (define size-words (%#-bytes->words size))
   (define (loop n)
-    (if (%#->= n size-words)
+    (if (%#-u>= n size-words)
         to
         (begin (%#-mem-write! to n (%#-mem-read from n))
                (loop (%#-+ n (%-unbox 1))))))
@@ -248,3 +273,14 @@
         [(%-character? a) (%-unbox-character a)]
         [(%-symbol?    a) (%-unbox-symbol    a)]
         ))
+
+; ioctl debug helpers
+
+(define (%#-ioctl-print-word x)
+  (define ptr (asm (save (op 'allocate (const 32)))
+                   (restore 'val)))
+  (intro-var x)
+  (intro-var ptr)
+  (asm (perform (op 'write-memory stack (const 0) stack)))
+  (%#-log2 ptr (%-unbox 32) (%-unbox 0) (%-unbox 0))
+  )

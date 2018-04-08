@@ -14,24 +14,24 @@
 (provide (all-defined-out)
          (all-from-out (submod "types.rkt" ast))
          sequence->exp)
-  
+
 (module unsafe typed/racket/no-check
   (require typed/racket/unsafe)
   (require (submod "types.rkt" ast))
   (require "globals.rkt")
   (require "parser.rkt")
-  
+
   (unsafe-provide (all-defined-out))
 
   ;(provide (all-defined-out))
 
   ; Typed Racket has trouble applying arbitrary procedures to an argument list.
   ; So we put those operations in this module.
-  
+
   (: lookup-macro (-> Symbol PyrMacro))
   (define (lookup-macro name)
     (namespace-variable-value name #t #f (*available-macros*)))
-  
+
   (: expand-macro (-> pyr-macro-application Pyramid))
   (define (expand-macro exp)
     (let* ((name (pyr-macro-application-name exp))
@@ -75,9 +75,9 @@
 (: transform-ast-children (-> Pyramid (-> Pyramid Pyramid) Pyramid))
 (define (transform-ast-children x f)
   (match x
-    [(struct pyr-const (v))              x]
-    [(struct pyr-variable (v))           x]
-    [(struct pyr-quoted (exp))           x]
+    [(struct pyr-const _)                x]
+    [(struct pyr-variable _)             x]
+    [(struct pyr-quoted _)               x]
     [(struct pyr-assign (name value))    (pyr-assign name (f value))]
     [(struct pyr-definition (name body)) (pyr-definition name (f body))]
     [(struct pyr-lambda (vars body))     (pyr-lambda vars (f body))]

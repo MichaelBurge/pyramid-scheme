@@ -45,7 +45,7 @@ The relocation is generated at the data, not the PUSH instruction.
     ,(opcode #x10 'LT         2 1)
     ,(opcode #x11 'GT         2 1)
     ,(opcode #x12 'SLT        2 1)
-    ,(opcode #x13 'LGT        2 1)
+    ,(opcode #x13 'SGT        2 1)
     ,(opcode #x14 'EQ         2 1)
     ,(opcode #x15 'ISZERO     1 1)
     ,(opcode #x16 'AND        2 1)
@@ -262,7 +262,7 @@ The relocation is generated at the data, not the PUSH instruction.
 (define (remember-label! lbl)
   (let ([ sym (label-name lbl) ]
         [ os  (+ (*byte-offset*) (label-definition-offset lbl))])
-    (hash-set! (*symbol-table*) sym (assert-0..∞ os))))
+    (hash-set! (*symbol-table*) sym (assert-natural os))))
 
 (: push-true-value (-> evm-push Integer))
 #| push-true-value:
@@ -314,7 +314,7 @@ Either a label or integer can be pushed onto the stack.
 (: wrap-loader (-> Bytes Bytes))
 (define (wrap-loader bs)
   (let* ((len (bytes-length bs))
-         (offset : (Parameterof 0..∞) (make-parameter 0))
+         (offset : (Parameterof Natural) (make-parameter 0))
          (pps (apply append (map (patchpoint-injection offset) (*patchpoints*)))) ; (instructions-size pps)
          (afterLoader (+ 1 (integer-bytes len) 2 2 1 (instructions-size pps) 1 (integer-bytes len) 2 1))
          (loader
@@ -344,7 +344,7 @@ Either a label or integer can be pushed onto the stack.
       (cast (- (opcode-byte op) #x5f) Byte)
       0))
 
-(: instruction-size (-> EthInstruction 0..∞))
+(: instruction-size (-> EthInstruction Natural))
 (define (instruction-size i)
   (cond [(evm-push?  i) (+ 1 (push-true-size i))]
         [(evm-bytes? i) (bytes-length (evm-bytes-bytes i))]
@@ -354,9 +354,9 @@ Either a label or integer can be pushed onto the stack.
         [else (error "instruction-size: Unhandled case" i)]
         ))
 
-(: instructions-size (-> EthInstructions 0..∞))
+(: instructions-size (-> EthInstructions Natural))
 (define (instructions-size is)
-  (for/sum : 0..∞ ([ i is ])
+  (for/sum : Natural ([ i is ])
     (instruction-size i)))
 
 (: reset-serializer-globals! (-> Void))

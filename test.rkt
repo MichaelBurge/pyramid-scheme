@@ -152,7 +152,7 @@
 (define (apply-init-modifier! exp txn)
   (match exp
     [(list 'value val)
-     (begin (assert val 0..∞?)
+     (begin (assert val natural?)
             (set-vm-txn-value! txn val)
             null)]
     [(list 'sender (list 'quote name))
@@ -165,7 +165,7 @@
 (define (apply-txn-modifier! exp txn)
   (match exp
     [(list 'value val)
-     (begin (assert val 0..∞?)
+     (begin (assert val natural?)
             (set-vm-txn-value! txn val)
             null)]
     [(list 'sender (list 'quote name))
@@ -178,7 +178,7 @@
               (set-vm-txn-data! txn (integer->bytes addr 32 #f #t)))
             null)]
     [(list 'assert-balance (list 'quote addr-name) val)
-     (begin (assert val 0..∞?)
+     (begin (assert val natural?)
             (assert addr-name symbol?)
             (list (expectation-account-value addr-name val)))]
     [(list 'assert-return expected)

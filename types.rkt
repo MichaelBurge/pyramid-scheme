@@ -14,17 +14,15 @@
   (provide (all-defined-out)
            register-value?)
 
-  (define-type 0..∞ Nonnegative-Integer)
-  (define-type 1..∞ Positive-Integer)
-  (define-predicate 0..∞? 0..∞)
-  (define-predicate 1..∞? 1..∞)
-  (define-type Offset 0..∞)
-  (define-type Counter 0..∞)
-  (define-type Size 0..∞)
+  (define-type Offset Natural)
+  (define-type Counter Natural)
+  (define-type Size Natural)
   (define-type Anys (Listof Any))
   (define-type Symbols (Listof Symbol))
-  (define-type EthWord 0..∞)
+  (define-type EthWord Natural)
   (define-type EthWords (Listof EthWord))
+  (define-type EthInt Integer)
+  (define-type EthInts (Listof EthInt))
   (struct label ([ name : Symbol ]) #:transparent)
   (struct label-definition label ([ offset : Integer ] [ virtual? : Boolean ]) #:transparent)
   (define-type RegisterValue (U Boolean Symbol Integer String Char (Listof Integer) (Listof Symbol) (Listof String) (Vectorof Integer)))
@@ -39,7 +37,7 @@
           (vector? x)))
     )
   (unsafe-require/typed 'unsafe
-    [ register-value? (-> Any Boolean : RegisterValue) ])
+     [ register-value? (-> Any Boolean : RegisterValue) ])
   (define-type Verbosity Fixnum)
   (define-type SourceMap (HashTable Symbol Symbols))
   (define-type labels (Listof label))
@@ -52,7 +50,7 @@
   (require (submod ".." common))
   (provide (all-defined-out))
 
-  (struct opcode ([ byte : Byte ] [ name : Symbol ] [ num-reads : 0..∞] [ num-writes : 0..∞ ]) #:transparent)
+  (struct opcode ([ byte : Byte ] [ name : Symbol ] [ num-reads : Natural] [ num-writes : Natural ]) #:transparent)
   (struct evm-op      ([ name : Symbol ]) #:transparent)
   (struct evm-push    ([ size : (U 'shrink Byte) ] [ value : (U Integer Symbol label) ]) #:transparent)
   (struct evm-bytes   ([ bytes : Bytes ]) #:transparent)
@@ -67,7 +65,7 @@
   (struct relocation ([ pos : Integer ] [ symbol : Symbol ]) #:transparent)
   (struct patchpoint ([ symbol : Symbol ] [ initializer : EthInstructions ]) #:transparent)
   (define-type SymbolTable (Mutable-HashTable Symbol Offset))
-  (define-type ReverseSymbolTable (Mutable-HashTable 0..∞ Symbol))
+  (define-type ReverseSymbolTable (Mutable-HashTable Natural Symbol))
   (define-type RelocationTable (Setof relocation))
   (define-type LinkedOffset Offset)
   (define-type UnlinkedOffset Offset)
@@ -175,13 +173,13 @@
                         label))
   (define-type v-frames (Listof v-frame))
   (define-type values (Listof value))
-  (struct machine ([pc : 0..∞]
+  (struct machine ([pc : Natural]
                    [env : v-environment]
                    [proc : v-callable]
                    [continue : label]
                    [argl : value]
                    [val : value]
-                   [stack-size : 0..∞]
+                   [stack-size : Natural]
                    [stack : values]
                    [halted? : Boolean])
     #:transparent #:mutable)
@@ -194,7 +192,7 @@
   (provide (all-defined-out)
            (all-from-out (submod ".." common)))
 
-  (struct pyr-const ([ value : RegisterValue ]) #:transparent)
+  (struct pyr-const ([ value : RegisterValue ] [ boxed? : Boolean ]) #:transparent)
   (struct pyr-variable ([ name : Symbol ]) #:transparent)
   (struct pyr-quoted ([ exp : Pyramid ]) #:transparent)
   (struct pyr-assign ([ name : VariableName ] [ value : Pyramid ]) #:transparent)
@@ -265,8 +263,8 @@
   (struct exn:evm:return exn:evm ([ result : Bytes ]) #:transparent)
   (struct exn:evm:misaligned-addr exn:evm ([ addr : EthWord ]) #:transparent)
   (struct exn:evm:throw exn:evm ([ value : Bytes ]) #:transparent)
-  (struct exn:evm:did-not-halt exn:evm ([ max-iterations : 0..∞ ]) #:transparent)
-  (struct exn:evm:stack-underflow exn:evm ([ ethi : EthInstruction ] [ num-elements : 0..∞ ] [ stack : (Listof EthWord )]) #:transparent)
+  (struct exn:evm:did-not-halt exn:evm ([ max-iterations : Natural ]) #:transparent)
+  (struct exn:evm:stack-underflow exn:evm ([ ethi : EthInstruction ] [ num-elements : Natural ] [ stack : (Listof EthWord )]) #:transparent)
   (struct exn:evm:misaligned-jump exn:evm ([ addr : EthWord ]) #:transparent)
 
   (struct simulation-result ([ vm : vm-exec ] [ val : Bytes ] [ txn-receipt : vm-txn-receipt ]) #:transparent)
@@ -282,15 +280,15 @@
   (: make-address-table (-> AddressTable))
   (define (make-address-table) (make-hash))
 
-  (struct vm-account ([ nonce : 0..∞ ] [ balance : EthWord ] [ storage-root : StorageRoot ] [ code-hash : CodeHash ]) #:mutable #:transparent)
-  (struct vm-txn ([ nonce : 0..∞ ]
-                  [ gas-price : 0..∞ ]
-                  [ gas-limit : 0..∞ ]
+  (struct vm-account ([ nonce : Natural ] [ balance : EthWord ] [ storage-root : StorageRoot ] [ code-hash : CodeHash ]) #:mutable #:transparent)
+  (struct vm-txn ([ nonce : Natural ]
+                  [ gas-price : Natural ]
+                  [ gas-limit : Natural ]
                   [ to : AddressEx ]
-                  [ value : 0..∞ ]
+                  [ value : Natural ]
                   [ v : Fixnum ]
-                  [ r : 0..∞ ]
-                  [ s : 0..∞ ]
+                  [ r : Natural ]
+                  [ s : Natural ]
                   [ data : Bytes ])
     #:transparent
     #:mutable
@@ -315,13 +313,13 @@
                     [ timestamp : Fixnum ]
                     [ extra-data : EthWord ]
                     [ mix-hash : EthWord ]
-                    [ nonce : 0..∞ ])
+                    [ nonce : Natural ])
     #:transparent
     )
 
   (struct vm-txn-receipt (; EVM spec
                           [ post-transaction : vm-world ]
-                          [ cumulative-gas : 0..∞ ]
+                          [ cumulative-gas : Natural ]
                           [ log-bloom : Undefined ]
                           [ logs : (Listof vm-log) ]
                           ; Additional fields
@@ -338,15 +336,15 @@
                                [ value : EthWord ]
                                [ bytecode : Bytes ]
                                [ header : vm-block ]
-                               [ depth : 0..∞ ]
+                               [ depth : Natural ]
                                [ writable? : Boolean ])
     #:transparent
     )
-  (struct vm-exec ([ step : 0..∞ ]
-                   [ pc : 0..∞ ]
+  (struct vm-exec ([ step : Natural ]
+                   [ pc : Natural ]
                    [ stack : (Listof EthWord) ]
                    [ memory : Bytes ]
-                   [ gas : 0..∞ ]
+                   [ gas : Natural ]
                    [ largest-accessed-memory : MemoryOffset ]
                    [ env : vm-exec-environment ]
                    [ sim : simulator ]

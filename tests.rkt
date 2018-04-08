@@ -6,9 +6,15 @@
 ;; (require "globals.rkt")
 ;; (require "ast.rkt")
 (require "types.rkt")
-(require (submod "parser.rkt" macros))
+(require "parser.rkt")
+; (require (submod "parser.rkt" macros))
 ;(require "simplifier.rkt")
 ;(require "io.rkt")
+
+(shrink-pyramid (expand-pyramid (shrink-pyramid (expand-pyramid (shrink-pyramid (expand-pyramid '(%-unbox 'B)))))))
+(expand-pyramid (shrink-pyramid (expand-pyramid (shrink-pyramid (expand-pyramid '(%-unbox 'B))))))
+
+(expand-pyramid '(%-unbox B))
 
 ;(sequence->exp (list (pyr-variable 'a)))
 
@@ -16,7 +22,7 @@
 
 ; (print-ast (pass-expand-macros (expand-pyramid '((5)))))
 
-(quasiquote-pyramid `(begin 15 20 ,(pyr-begin (list (pyr-const 5) (pyr-const 10))) 25))
+; (quasiquote-pyramid `(begin 15 20 ,(pyr-begin (list (pyr-const 5) (pyr-const 10))) 25))
 
 ;; (print-ast
 ;; (pass-expand-macros

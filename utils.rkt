@@ -7,6 +7,7 @@
          (all-from-out 'struct))
 
 (define WORDLIMIT (arithmetic-shift 1 256))
+(define SIGNEDLIMIT (arithmetic-shift 1 255))
 
 (: maybe->list (All (A) (-> Boolean A (Listof A))))
 (define (maybe->list pred? x)
@@ -70,10 +71,10 @@
                                  (bytes-length bs)))
             Nonnegative-Integer)))
 
-(: symbol->integer (-> Symbol Integer)) ; TODO: I think the "official" ABI uses a Keccak hash for this.
+(: symbol->integer (-> Symbol Natural)) ; TODO: I think the "official" ABI uses a Keccak hash for this.
 (define (symbol->integer sym)
   (let ((lst (string->list (symbol->string sym))))
-    (: loop (-> (Listof Char) Integer Integer))
+    (: loop (-> (Listof Char) Natural Natural))
     (define (loop lst i)
       (if (null? lst)
           i
@@ -132,11 +133,11 @@
 (require 'struct)
 
 ;(: assert-0..∞ (-> Integer Nonnegative-Integer))
-(define-syntax-rule (assert-0..∞ n) (cast n Nonnegative-Integer))
+(define-syntax-rule (assert-natural n) (cast n Natural))
 
 (: truncate-int (-> Integer Nonnegative-Integer))
 (define (truncate-int x)
-  (assert-0..∞
+  (assert-natural
    (if (>= x WORDLIMIT)
        (- x WORDLIMIT)
        (if (< x 0)
@@ -147,3 +148,9 @@
 (: symbol-append (-> Symbol * Symbol))
 (define (symbol-append . xs)
   (string->symbol (apply string-append (map symbol->string xs))))
+
+(: word->integer (-> Natural Integer))
+(define (word->integer w)
+  (if (>= w SIGNEDLIMIT)
+      (- w WORDLIMIT)
+      w))

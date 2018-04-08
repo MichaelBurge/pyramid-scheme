@@ -20,7 +20,7 @@
 (: compile-pyramid (-> Target Linkage Pyramid inst-seq))
 (define (compile-pyramid target linkage exp)
   (match exp
-    [(struct pyr-const (x))                (compile-const target linkage x)]
+    [(struct pyr-const (x boxed?))         (compile-const target linkage x boxed?)]
     [(struct pyr-quoted (x))               (compile-quoted target linkage x)]
     [(struct pyr-asm _)                    (compile-asm target linkage exp)]
     [(struct pyr-macro-definition _)       (compile-macro-definition target linkage exp)]
@@ -53,9 +53,9 @@
               instruction-sequence
               (compile-linkage linkage)))
 
-(: compile-const (-> Target Linkage RegisterValue inst-seq))
-(define (compile-const target linkage val)
-  (define mexpr (if (boolean? val) (const val) (boxed-const val)))
+(: compile-const (-> Target Linkage RegisterValue Boolean inst-seq))
+(define (compile-const target linkage val boxed?)
+  (define mexpr (if boxed? (boxed-const val) (const val)))
   (end-with-linkage linkage
                     (make-insts '() (list target)
                                 (assign target mexpr))))
@@ -63,7 +63,7 @@
 (: compile-quoted (-> Target Linkage Pyramid inst-seq))
 (define (compile-quoted target linkage exp)
   (match exp
-    [(struct pyr-const (val)) (compile-const target linkage val)]
+    [(struct pyr-const (val boxed?)) (compile-const target linkage val boxed?)]
     [(struct pyr-variable (name))
      (end-with-linkage linkage
                        (make-insts '() (list target)

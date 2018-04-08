@@ -10,7 +10,7 @@
 (require (submod "typed.rkt" dict))
 (provide (all-defined-out))
 
-(: disassemble-one (-> Bytes 0..∞ EthInstruction))
+(: disassemble-one (-> Bytes Natural EthInstruction))
 (define (disassemble-one bs i)
   (let* ([ byte (cast (bytes-or-zero bs i 1) Byte)])
     (if (hash-has-key? opcodes-by-byte byte)
@@ -39,7 +39,7 @@
 (define (print-disassembly bs)
   (define end (- (bytes-length bs) 1))
   (let ((reverse-symbol-table (invert-hash (*symbol-table*))))
-    (: loop (-> 0..∞ Void))
+    (: loop (-> Natural Void))
     (define (loop n)
       (if (>= n end)
           (void)

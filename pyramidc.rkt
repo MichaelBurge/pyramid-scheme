@@ -22,6 +22,7 @@
 
 (module unsafe typed/racket/no-check
   (require "globals.rkt")
+  (require "debugger.rkt")
   (provide file-to-compile)
   (: file-to-compile String)
   (define file-to-compile
@@ -33,6 +34,8 @@
      #:once-each
      [("-g")             "Compile with debug symbols"
                          (*use-debug-symbols?* #t)]
+     [("-d")             "Print LOGN debug messages"
+                         (*on-log* on-log-print)]
      [("-t")             "Run file as a test"
                          (*test?* #t)]
      [("-m")             "Minify the source"

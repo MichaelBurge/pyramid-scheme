@@ -38,7 +38,7 @@
           input             ; input
           ))
 
-(: alloc-txn-nonce (-> 0..∞ ))
+(: alloc-txn-nonce (-> Natural ))
 (define (alloc-txn-nonce) (tick-counter! *txn-nonce*))
 
 ; TODO: Deduce this from v,r,s

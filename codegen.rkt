@@ -194,11 +194,11 @@ These optimizations are currently unimplemented:
 (define-generator (cg-perform i)
   (cg-mexpr (perform-action i))) ; TODO: Watch the number of stack writes here to pop them.
 
-(: reg-address (-> reg 0..∞))
+(: reg-address (-> reg Natural))
 (define (reg-address r)
   (register-address (reg-name r)))
 
-(: register-address (-> RegisterName 0..∞))
+(: register-address (-> RegisterName Natural))
 (define (register-address r)
   (match r
     ['env        MEM-ENV]

@@ -24,19 +24,19 @@
                      0 ; stack-size
                      null ; stack
                      #f)) ; halted?
-(: *abstract-symbol-table* (HashTable Symbol 0..∞))
+(: *abstract-symbol-table* (HashTable Symbol Natural))
 (define *abstract-symbol-table* (make-hash))
-(: *evm-symbol-table* (HashTable Symbol 0..∞))
+(: *evm-symbol-table* (HashTable Symbol Natural))
 (define *evm-symbol-table* (make-hash))
 (: *current-instruction* (Parameterof Instruction))
 (define *current-instruction* (make-parameter (assign 'val (const 0))))
 (: *current-evm-instruction* (Parameterof EthInstruction))
 (define *current-evm-instruction* (make-parameter (evm-op 'UNSET)))
 
-(: *evm-pc* (Parameterof 0..∞))
+(: *evm-pc* (Parameterof Natural))
 (define *evm-pc* (make-parameter 0))
 
-(: *num-iterations* (Parameterof 0..∞))
+(: *num-iterations* (Parameterof Natural))
 (define *num-iterations* (make-parameter 0))
 
 (module unsafe typed/racket
@@ -152,12 +152,12 @@
     (error "tick-iteration!: Didn't stop after iterations" n))
   (*num-iterations* (+ 1 n)))
 
-(: build-symbol-table (All (A) (-> (Listof (U A label-definition)) (HashTable Symbol 0..∞))))
+(: build-symbol-table (All (A) (-> (Listof (U A label-definition)) (HashTable Symbol Natural))))
 (define (build-symbol-table is)
-  (: ret (HashTable Symbol 0..∞))
+  (: ret (HashTable Symbol Natural))
   (define ret (make-hash))
   (for ([i is]
-        [ id : 0..∞ (in-range (length is))])
+        [ id : Natural (in-range (length is))])
     (match i
       [(struct label-definition (name offset virtual?)) (hash-set! ret name id)]
       [_ (void)]))
@@ -205,8 +205,8 @@
     ['argl       (set-machine-argl!       *m* v)]
     ['val        (set-machine-val!        *m* v)]
     ['stack-size (begin
-                   (assert v exact-integer?)
-                   (set-machine-stack-size! *m* (cast v 0..∞))
+                   (assert v natural?)
+                   (set-machine-stack-size! *m* v)
                    (let ([ size (length (machine-stack *m*))])
                      (unless (= size v)
                        (error "write-reg: Attempted to write an incorrect stack size" v size))))]
@@ -341,18 +341,24 @@
     (match (pop-stack)
       [(? integer? x) x]
       [(? boolean? x) (if x 1 0)]
-      [x (error "eval-evm-op: Expected an integer or boolean" x)]
+      [(? symbol?  x) (symbol->integer x)]
+      [x (error "eval-evm-op: Expected an unboxed value" x)]
       ))
+  (: overflow-value (-> value value))
+  (define (overflow-value x)
+    (if (exact-integer? x)
+        (truncate-int x)
+        x))
   (: binop (-> (-> Integer Integer value) value))
   (define (binop  f)
     (let* ([ a (pop-integer) ]
            [ b (pop-integer) ])
-      (f a b)))
+      (overflow-value (f a b))))
   (: binop* (-> (-> Integer Integer value) value))
   (define (binop* f)
     (let* ([ a (pop-integer*) ]
            [ b (pop-integer*) ])
-      (f a b )))
+      (overflow-value (f a b))))
   (: unop (-> (-> Integer value) value))
   (define (unop f) (f (pop-integer)))
   (: unop* (-> (-> Integer value) value))
@@ -368,8 +374,8 @@
     ['EQ  (binop* =)]
     ['GT  (binop >)]
     ['LT  (binop <)]
-    ['GE  (binop >=)]
-    ['LE  (binop <=)]
+    ['SLT (binop >)] ; TODO: Signed < should differ from unsigned <
+    ['SGT (binop <)]
     ['AND (binop* bitwise-and)]
     ['OR  (binop* bitwise-ior)]
     ['XOR (binop* bitwise-xor)]
@@ -382,6 +388,11 @@
     ['DIV    (binop (λ (a b) (if (equal? 0 b) 0 (exact-floor (/ a b)))))]
     ['MOD    (binop (λ (a b) (if (equal? 0 b) 0 (modulo a b))))]
     ['JUMP (jump-evm (pop-stack))]
+    ['LOG0 (proc 2)]
+    ['LOG1 (proc 3)]
+    ['LOG2 (proc 4)]
+    ['LOG3 (proc 5)]
+    ['LOG4 (proc 6)]
     ; TODO: Everything below is a stub until we get an SMT solver or something
     ['ADDRESS 1234]
     ['CALLER  4321]
@@ -669,4 +680,11 @@
     [0  #f]
     [#f #f]
     [x  #t]
+    ))
+
+(: eval-op-any->unboxed (-> value EthWord))
+(define (eval-op-any->unboxed x)
+  (match x
+    [(? symbol?) (symbol->integer x)]
+    [_ (error "eval-op-any->unboxed: Unsupported type" x)]
     ))
