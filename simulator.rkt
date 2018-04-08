@@ -53,7 +53,7 @@
                                           (create-account! sim addr val bs)
                                           (sim-lookup-bytecode sim addr)
                                           (simulation-result vm bs receipt)))])
-      (simulate! vm MAX-ITERATIONS)
+      (simulate! vm (*max-simulation-steps*))
       (error "apply-txn-create!: Reached end of function without explicit termination")
     )))
 
@@ -72,7 +72,7 @@
                                           (simulation-result vm bs (vm->receipt vm bs))))]
                     [ exn:evm? (λ ([ x : exn:evm ]) x)])
       (transfer-value! vm txn)
-      (simulate! vm MAX-ITERATIONS)
+      (simulate! vm (*max-simulation-steps*))
       (error "apply-txn-message!: Reached end of function without explicit termination")
       )))
 

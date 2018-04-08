@@ -215,3 +215,15 @@ Functions defined here are available to Pyramid programs within macros.
 (define (%-register-patchpoint! sym ethis)
   (define pp (patchpoint sym ethis))
   (*patchpoints* (cons pp (*patchpoints*))))
+
+(: %#-set-max-iterations! (-> Natural Void))
+(define (%#-set-max-iterations! x)
+  (*max-simulation-steps* x)
+  )
+
+(: %#-get-const-integer (-> PyramidQ Integer))
+(define (%#-get-const-integer x)
+  (match x
+    [`(%-unbox ,(? exact-integer? n)) n]
+    [(? exact-integer? n) n]
+    ))

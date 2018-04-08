@@ -148,7 +148,8 @@
 (: tick-iteration! (-> Void))
 (define (tick-iteration!)
   (define n (*num-iterations*))
-  (when (>= n MAX-ITERATIONS)
+  (define max-iterations (*max-simulation-steps*))
+  (when (>= n max-iterations)
     (error "tick-iteration!: Didn't stop after iterations" n))
   (*num-iterations* (+ 1 n)))
 
