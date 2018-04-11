@@ -21,6 +21,7 @@
         ((< n 65536)      2)
         ((< n 16777216)   3)
         ((< n 4294967296) 4)
+        ; TODO: Fill in this table to 32
         (else            32)))
 
 (: invert-hash (All (A B) (-> (Mutable-HashTable A B) (Mutable-HashTable B A))))
@@ -62,14 +63,22 @@
       #t
       #f))
 
+(: byte-or-zero (-> Bytes Nonnegative-Integer Byte))
+(define (byte-or-zero bs i)
+  (if (>= i (bytes-length bs))
+      0
+      (bytes-ref bs i)
+      ))
+
 (: bytes-or-zero (-> Bytes Nonnegative-Integer Nonnegative-Integer Nonnegative-Integer))
 (define (bytes-or-zero bs i len)
   (if (>= i (bytes-length bs))
       0
-      (cast (bytes->integer bs #f #t i
-                            (min (+ i len)
-                                 (bytes-length bs)))
-            Nonnegative-Integer)))
+      (let ([result (bytes->integer bs #f #t i
+                                    (min (+ i len)
+                                         (bytes-length bs)))])
+        (assert result exact-nonnegative-integer?)
+        result)))
 
 (: symbol->integer (-> Symbol Natural)) ; TODO: I think the "official" ABI uses a Keccak hash for this.
 (define (symbol->integer sym)

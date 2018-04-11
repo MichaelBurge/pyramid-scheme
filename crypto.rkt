@@ -15,4 +15,4 @@
 
 (: keccak-256-word (-> Bytes Nonnegative-Integer))
 (define (keccak-256-word bs)
-  (bytes->nonnegative bs))
+  (bytes->nonnegative (keccak-256 bs)))

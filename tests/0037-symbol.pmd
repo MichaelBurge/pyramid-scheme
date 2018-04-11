@@ -1,0 +1,5 @@
+#lang pyramid
+
+(set-test-result! 'derp)
+
+'derp

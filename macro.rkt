@@ -14,6 +14,7 @@
 (require "transaction.rkt")
 (require "abi.rkt")
 (require "compiler.rkt")
+(require "simplifier.rkt")
 (require racket/match)
 
 (require (submod "typed.rkt" binaryio))
@@ -23,7 +24,10 @@
          make-label-name
          *assumed-label-size*
          label-name
-         maybe->list)
+         maybe->list
+         shrink-pyramid
+         expand-pyramid
+         simplify)
 
 #|
 This module is required into the namespace used to evaluate Pyramid macros.
@@ -146,7 +150,7 @@ Functions defined here are available to Pyramid programs within macros.
              '()
              (test-txn null null)
              (list (test-txn (list `(assert-return ,expected))
-                             (list (test-expectation "assert-return" expected (make-parser expected)))))))))
+                             (list (test-expectation "assert-return" (unwrap-quote expected) (make-parser expected)))))))))
 
 (: make-test-account (-> PyramidQ test-account))
 (define (make-test-account exp)
@@ -226,4 +230,11 @@ Functions defined here are available to Pyramid programs within macros.
   (match x
     [`(%-unbox ,(? exact-integer? n)) n]
     [(? exact-integer? n) n]
+    ))
+
+(: unwrap-quote (-> PyramidQ PyramidQ))
+(define (unwrap-quote x)
+  (match x
+    [`(quote ,y) y]
+    [_ x]
     ))

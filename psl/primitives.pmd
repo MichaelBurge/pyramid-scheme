@@ -289,3 +289,14 @@
   (%#-set-max-iterations! x)
   '(begin)
   )
+
+(defmacro (%-with-lexical-named-value key value x)
+  (with-continuation-mark key value (shrink-pyramid (simplify (expand-pyramid x)))))
+
+(defmacro (%-print-continuation-mark-set key)
+  (displayln `("== Continuation marks for" ,key))
+  (for ([ mark (continuation-mark-set-list (current-continuation-marks))])
+    (println mark)))
+
+(defmacro (%-lexical-value key)
+  (continuation-mark-set-first (current-continuation-marks) key))

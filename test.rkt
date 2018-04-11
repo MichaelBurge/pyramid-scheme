@@ -192,7 +192,7 @@
 
 (: expectation-result (-> Any test-expectation))
 (define (expectation-result expected)
-  (test-expectation "return" expected (make-parser expected)))
+  (test-expectation "return" (unwrap-quote expected) (make-parser expected)))
 
 (: expectation-account-value (-> Symbol Integer test-expectation))
 (define (expectation-account-value sym expected)

@@ -44,15 +44,14 @@
 (define (apply-txn-create! sim txn)
   (let ([ vm (make-vm-exec sim txn (vm-txn-data txn)) ])
     (with-handlers ([ exn:evm:return? (λ ([ x : exn:evm:return ])
-                                        (let* ([ bs (exn:evm:return-result x )]
-                                               [ receipt (vm->receipt vm bs) ]
-                                               [ addr : AddressEx (vm-txn-receipt-contract-address receipt )]
-                                               [ val (vm-txn-value txn) ]
-                                               )
-                                          (assert addr integer?)
-                                          (create-account! sim addr val bs)
-                                          (sim-lookup-bytecode sim addr)
-                                          (simulation-result vm bs receipt)))])
+                                        (define bs (exn:evm:return-result x ))
+                                        (define receipt (vm->receipt vm bs))
+                                        (define addr (vm-txn-receipt-contract-address receipt ))
+                                        (define val (vm-txn-value txn))
+                                        (assert addr integer?)
+                                        (create-account! sim addr val bs)
+                                        (sim-lookup-bytecode sim addr)
+                                        (simulation-result vm bs receipt))])
       (simulate! vm (*max-simulation-steps*))
       (error "apply-txn-create!: Reached end of function without explicit termination")
     )))
@@ -187,11 +186,9 @@
 
 (: simulate! (-> vm-exec Natural Void))
 (define (simulate! vm max-iterations)
-  (if (<= max-iterations 0)
-      (raise (exn:evm:did-not-halt "run-until-return" (current-continuation-marks) vm max-iterations))
-      (begin
-        (simulate-one! vm (next-instruction vm))
-        (simulate! vm (- max-iterations 1)))))
+  (for ([ i (in-range max-iterations)])
+    (simulate-one! vm (next-instruction vm)))
+  (raise (exn:evm:did-not-halt "run-until-return" (current-continuation-marks) vm max-iterations)))
 
 (: instruction-at (-> vm-exec Natural EthInstruction))
 (define (instruction-at vm addr)
@@ -542,18 +539,16 @@
 (: L (-> Integer EthWord))
 (define (L n) (assert-natural (- n (exact-floor (/ n 64)))))
 
-(: logb (-> Number Number Real))
-(define (logb b x) (cast (/ (log x) (log b)) Real))
-
 (: instruction-gas (-> vm-exec EthInstruction Natural))
 (define (instruction-gas vm i)
+  (: C_sstore (-> Natural))
   (define (C_sstore)
     (let ([ addr ( get-stack vm 0) ]
           [ val  ( get-stack vm 1) ])
       (if (and (= (read-storage vm addr) 0) (> val 0))
           G_sset
           G_sreset)))
-  (: C_call (-> Integer))
+  (: C_call (-> Natural))
   (define (C_call)
     (let* ([ gas       (get-stack vm 0) ]
            [ addr      (get-stack vm 1) ]
@@ -574,40 +569,39 @@
   (define (is-asm sym) (equal? i (evm-op sym)))
   (: is-asms (-> Symbols Boolean))
   (define (is-asms syms) (ormap is-asm syms))
-  (assert-natural
-   (cond ((is-asm 'SSTORE) (C_sstore))
-         ((is-asm 'EXP)
-          (if (eq? 0 (get-stack vm 1))
-              G_exp
-              (+ G_exp (* G_expbyte (+ 1 (exact-floor (logb 256 (get-stack vm 1))))))))
-         ((is-asms '(CALLDATACOPY CODECOPY)) (+ G_verylow (* G_copy (ceiling (/ (get-stack vm 2) 32)))))
-         ((is-asm 'EXTCODECOPY) (+ G_extcode (* G_copy (ceiling (/ (get-stack vm 3) 32)))))
-         ((is-asm 'LOG0) (+ G_log (* G_logdata (get-stack vm 1)) (* 0 G_logtopic)))
-         ((is-asm 'LOG1) (+ G_log (* G_logdata (get-stack vm 1)) (* 1 G_logtopic)))
-         ((is-asm 'LOG2) (+ G_log (* G_logdata (get-stack vm 1)) (* 2 G_logtopic)))
-         ((is-asm 'LOG3) (+ G_log (* G_logdata (get-stack vm 1)) (* 3 G_logtopic)))
-         ((is-asm 'LOG4) (+ G_log (* G_logdata (get-stack vm 1)) (* 4 G_logtopic)))
-         ((is-asms '(CALL CALLCODE DELEGATECALL)) (C_call))
-         ((is-asm 'SUICIDE)   (C_suicide))
-         ((is-asm 'CREATE)    G_create)
-         ((is-asm 'SHA3)      (+ G_sha3 (* G_sha3word (ceiling (/ (get-stack vm 1) 32)))))
-         ((is-asm 'JUMPDEST)  G_jumpdest)
-         ((is-asm 'SLOAD)     G_sload)
-         ((is-asms W_zero)    G_zero)
-         ((is-asms W_base)    G_base)
-         ((is-asms W_verylow) G_verylow)
-         ((is-asms dups)      G_verylow)
-         ((is-asms swaps)     G_verylow)
-         ((evm-push? i)       G_verylow)
-         ((is-asms W_low)     G_low)
-         ((is-asms W_mid)     G_mid)
-         ((is-asms W_high)    G_high)
-         ((is-asms W_extcode) G_extcode)
-         ((is-asm 'BALANCE)   G_balance)
-         ((is-asm 'BLOCKHASH) G_blockhash)
-         ((is-asm 'REVERT)    0)
-         (else
-          (error "Unknown instruction - instruction-gas:" i)))))
+  (cond ((is-asm 'SSTORE) (C_sstore))
+        ((is-asm 'EXP)
+         (if (eq? 0 (get-stack vm 1))
+             G_exp
+             (+ G_exp (* G_expbyte (integer-bytes (get-stack vm 1))))))
+        ((is-asms '(CALLDATACOPY CODECOPY)) (+ G_verylow (* G_copy (ceiling (/ (get-stack vm 2) 32)))))
+        ((is-asm 'EXTCODECOPY) (+ G_extcode (* G_copy (ceiling (/ (get-stack vm 3) 32)))))
+        ((is-asm 'LOG0) (+ G_log (* G_logdata (get-stack vm 1)) (* 0 G_logtopic)))
+        ((is-asm 'LOG1) (+ G_log (* G_logdata (get-stack vm 1)) (* 1 G_logtopic)))
+        ((is-asm 'LOG2) (+ G_log (* G_logdata (get-stack vm 1)) (* 2 G_logtopic)))
+        ((is-asm 'LOG3) (+ G_log (* G_logdata (get-stack vm 1)) (* 3 G_logtopic)))
+        ((is-asm 'LOG4) (+ G_log (* G_logdata (get-stack vm 1)) (* 4 G_logtopic)))
+        ((is-asms '(CALL CALLCODE DELEGATECALL)) (C_call))
+        ((is-asm 'SUICIDE)   (C_suicide))
+        ((is-asm 'CREATE)    G_create)
+        ((is-asm 'SHA3)      (+ G_sha3 (* G_sha3word (ceiling (/ (get-stack vm 1) 32)))))
+        ((is-asm 'JUMPDEST)  G_jumpdest)
+        ((is-asm 'SLOAD)     G_sload)
+        ((is-asms W_zero)    G_zero)
+        ((is-asms W_base)    G_base)
+        ((is-asms W_verylow) G_verylow)
+        ((is-asms dups)      G_verylow)
+        ((is-asms swaps)     G_verylow)
+        ((evm-push? i)       G_verylow)
+        ((is-asms W_low)     G_low)
+        ((is-asms W_mid)     G_mid)
+        ((is-asms W_high)    G_high)
+        ((is-asms W_extcode) G_extcode)
+        ((is-asm 'BALANCE)   G_balance)
+        ((is-asm 'BLOCKHASH) G_blockhash)
+        ((is-asm 'REVERT)    0)
+        (else
+         (error "Unknown instruction - instruction-gas:" i))))
 
 (: assert-landing-pad (-> vm-exec Address Void))
 (define (assert-landing-pad vm addr)
@@ -673,17 +667,17 @@
 
 (: create-account! (-> simulator Address EthWord Bytes vm-account))
 (define (create-account! sim addr val bs)
-  (let* ([ hash (make-code-hash bs)]
-         [ store-root (store-get-root (simulator-store sim)) ]
-         [ account (vm-account (tick-counter! *account-nonce*) ; nonce
-                               val                             ; initial balance
-                               store-root                      ; storage root
-                               hash                            ; code hash
-                               )])
-    (hash-set! (simulator-accounts sim) addr account)
-    (hash-set! (simulator-code-db sim) hash bs)
-    account
-    ))
+  (define hash (make-code-hash bs))
+  (define store-root (store-get-root (simulator-store sim)))
+  (define account (vm-account (tick-counter! *account-nonce*) ; nonce
+                              val                             ; initial balance
+                              store-root                      ; storage root
+                              hash                            ; code hash
+                              ))
+  (hash-set! (simulator-accounts sim) addr account)
+  (hash-set! (simulator-code-db sim) hash bs)
+  account
+  )
 
 (: account-value (-> simulator Address EthWord))
 (define (account-value sim addr)

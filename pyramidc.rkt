@@ -74,6 +74,7 @@
 
 (: main (-> String Void))
 (define (main filename)
+  (current-output-port (current-error-port))
   (install-primops!)
   (%-install-macro-library!)
   (let ([ prog (read-file filename #:execute? #t)])

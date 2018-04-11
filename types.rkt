@@ -357,7 +357,7 @@
   (define-type history-storage (HashTable StorageRoot world-storage)) ; All historical commit checkpoints
   (define-type MemoryOffset Offset)
 
-  (define-type AbiType (U "void" "uint256" "uint256[]" "bool" "bytes" "string"))
+  (define-type AbiType (U "void" "uint256" "uint256[]" "bool" "bytes" "string" "symbol"))
 
   (struct vm-store ([ history : history-storage ]
                     [ world : world-storage ]

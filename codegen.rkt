@@ -560,9 +560,7 @@ These optimizations are currently unimplemented:
 (: cg-mexpr-boxed-const (Generator boxed-const))
 (define-generator (cg-mexpr-boxed-const exp)
   (let ([ val (boxed-const-value exp) ])
-    (cond [(symbol? val)
-           (let ((int (symbol->integer (cast val Symbol))))
-             (cg-make-symbol (const (integer-bytes int))))]
+    (cond [(symbol? val)  (cg-make-symbol (const (symbol->integer val)))]
           [(integer? val) (cg-make-fixnum (const val))]
           [(list? val)    (cg-make-list (map const val) #t)]
           [(vector? val)  (cg-make-vector (const (vector-length val)) (map boxed-const (vector->list val)))]
@@ -1234,6 +1232,10 @@ These optimizations are currently unimplemented:
      (asm 'DUP1)                     ; [ tag; tag; exp ]
      (cg-eq? (const TAG-PAIR) stack) ;  [ pred; tag; exp ]
      (cg-branch label-list stack)    ; [ tag; exp ]
+
+     (asm 'DUP1)                       ; [ tag; tag; exp ]
+     (cg-eq? (const TAG-SYMBOL) stack) ; [ pred; tag; exp ]
+     (cg-branch label-uint256 stack)   ; [ tag; exp ]
 
      (asm 'DUP1)                       ; [ tag; tag; exp ]
      (cg-eq? (const TAG-VECTOR) stack) ; [ pred; tag; exp ]

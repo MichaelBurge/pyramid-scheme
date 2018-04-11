@@ -1,5 +1,7 @@
 #lang typed/racket
 
+(require "utils.rkt")
+
 (require (submod "types.rkt" common))
 (require (submod "types.rkt" simulator))
 (require (submod "typed.rkt" binaryio))
@@ -24,6 +26,7 @@
     ["bool" (= (parse-uint256 bs) 1)]
     ["bytes" bs]
     ["string" (bytes->string/utf-8 bs)]
+    ["symbol" (string->symbol (integer->string (parse-uint256 bs)))]
     [_ (error "parse-type: Unsupported type:" type)]
     ))
 
@@ -47,6 +50,7 @@
     [(? boolean?) "bool"]
     [(? fixnum?) "uint256"]
     [(? null?) "void"]
+    [`(quote ,(? symbol?)) "symbol"]
     [`(%-unbox ,y) (infer-type y)]
     [(? list?) (match (infer-type (car x))
                  ["uint256" "uint256[]"]

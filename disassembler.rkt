@@ -12,7 +12,7 @@
 
 (: disassemble-one (-> Bytes Natural EthInstruction))
 (define (disassemble-one bs i)
-  (let* ([ byte (cast (bytes-or-zero bs i 1) Byte)])
+  (let* ([ byte (byte-or-zero bs i)])
     (if (hash-has-key? opcodes-by-byte byte)
         (disassemble-opcode bs i (hash-ref opcodes-by-byte byte))
         (evm-bytes (bytes byte)))))
