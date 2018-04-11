@@ -276,14 +276,25 @@
 
 ; ioctl debug helpers
 
-(define (%#-ioctl-print-word x)
-  (define ptr (asm (save (op 'allocate (const 32)))
-                   (restore 'val)))
+(define (%#-allocate-word x)
   (intro-var x)
-  (intro-var ptr)
-  (asm (perform (op 'write-memory stack (const 0) stack)))
+  (asm (save (op 'allocate (const 32)))
+       (restore 'val))
+  (asm (save (op 'any->unboxed stack)))
+  (asm (perform (op 'write-memory (reg 'val) (const 0) stack)))
+  )
+
+(define (%#-ioctl-print-word x)
+  (define ptr (%#-allocate-word x))
   (%#-log2 ptr (%-unbox 32) (%-unbox 0) (%-unbox 0))
   )
+
+(define (%#-ioctl-print-symbol x)
+  (define ptr (%#-allocate-word x))
+  (%#-log2 ptr (%-unbox 32) (%-unbox 0) (%-unbox 1))
+  )
+
+; Compile-time macros
 
 (defmacro (%-set-max-iterations! x)
   (%#-set-max-iterations! x)
@@ -293,12 +304,6 @@
 (defmacro (%-with-lexical-named-value key value x)
   (with-lexical (unwrap-quote key) value x)
   )
-
-(defmacro (%-print-continuation-mark-set key)
-  (println `(DEBUG2 ,key))
-  (displayln `("== Continuation marks for" ,key))
-  (for ([ mark (continuation-mark-set-list (current-continuation-marks))])
-    (println mark)))
 
 (defmacro (%-lexical-value key)
   ((lexical-parameter (unwrap-quote key)))

@@ -27,7 +27,8 @@
          maybe->list
          shrink-pyramid
          expand-pyramid
-         simplify)
+         simplify-macros
+         )
 
 #|
 This module is required into the namespace used to evaluate Pyramid macros.
@@ -253,4 +254,4 @@ Functions defined here are available to Pyramid programs within macros.
 (define (with-lexical key value x)
   (define lex-p (lexical-parameter key))
   (parameterize ([ lex-p value ])
-    (shrink-pyramid (simplify (expand-pyramid x)))))
+    (shrink-pyramid (simplify-macros (expand-pyramid x)))))
