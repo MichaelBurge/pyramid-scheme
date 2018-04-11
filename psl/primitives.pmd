@@ -291,12 +291,15 @@
   )
 
 (defmacro (%-with-lexical-named-value key value x)
-  (with-continuation-mark key value (shrink-pyramid (simplify (expand-pyramid x)))))
+  (with-lexical (unwrap-quote key) value x)
+  )
 
 (defmacro (%-print-continuation-mark-set key)
+  (println `(DEBUG2 ,key))
   (displayln `("== Continuation marks for" ,key))
   (for ([ mark (continuation-mark-set-list (current-continuation-marks))])
     (println mark)))
 
 (defmacro (%-lexical-value key)
-  (continuation-mark-set-first (current-continuation-marks) key))
+  ((lexical-parameter (unwrap-quote key)))
+  )

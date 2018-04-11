@@ -238,3 +238,19 @@ Functions defined here are available to Pyramid programs within macros.
     [`(quote ,y) y]
     [_ x]
     ))
+
+(: lexical-parameter (-> Symbol Lexical))
+(define (lexical-parameter key)
+  (: lex-tbl LexicalTable)
+  (define lex-tbl (*compile-time-lexicals*))
+  (if (hash-has-key? lex-tbl key)
+      (hash-ref lex-tbl key)
+      (let ([ p (make-parameter (ann #f PyramidQ)) ])
+        (hash-set! lex-tbl key p)
+        p)))
+
+(: with-lexical (-> Symbol PyramidQ PyramidQ PyramidQ))
+(define (with-lexical key value x)
+  (define lex-p (lexical-parameter key))
+  (parameterize ([ lex-p value ])
+    (shrink-pyramid (simplify (expand-pyramid x)))))

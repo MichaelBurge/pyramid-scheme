@@ -243,6 +243,11 @@
   (define-type pyr-macro-applications (Listof pyr-macro-application))
   (define-type pyr-macro-definitions (Listof pyr-macro-definition))
   (define-type pyr-asms (Listof pyr-asm))
+
+  (define-type LexicalTable (HashTable Symbol Lexical))
+  (define-type Lexical (Parameterof PyramidQ))
+  (: make-lexical-table (-> LexicalTable))
+  (define make-lexical-table make-hash)
   )
 
 ; simulator.rkt

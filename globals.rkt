@@ -8,6 +8,7 @@
 (require (submod "types.rkt" simulator))
 (require (submod "types.rkt" abstract-machine))
 (require (submod "types.rkt" pyramidc))
+(require (submod "types.rkt" ast))
 
 (provide (all-defined-out))
 
@@ -128,6 +129,9 @@
 
 (: *max-simulation-steps* (Parameterof Natural))
 (define *max-simulation-steps* (make-parameter 1000000))
+
+(: *compile-time-lexicals* (Parameterof LexicalTable))
+(define *compile-time-lexicals* (make-parameter (make-lexical-table)))
 
 ; Constants
 (define assumed-label-size 3) ; TODO: Number of bytes to leave behind for label relocations. This makes it difficult to write programs larger than 65536 bytes.

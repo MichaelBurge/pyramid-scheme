@@ -1,0 +1,8 @@
+#lang pyramid
+
+(require psl "primitives.pmd")
+
+(set-test-result! 'derp)
+
+(%-with-lexical-named-value 'x 'derp
+                            (%-lexical-value 'x))
