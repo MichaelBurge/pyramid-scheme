@@ -1,16 +1,6 @@
-#lang pyramid
-
-; The (asm) language primitive executes ordinary Racket code within the codegen.rkt module, where
-; the cg-* helpers are defined.
+#lang pyramid/core
 
 ; Helpers
-
-(defmacro (cond . cases)
-  (match cases
-    ['() '(%-unreachable)]
-    [`((else ,x)) x]
-    [`((,pred ,cons) . ,rest) `(if ,pred ,cons (cond ,@rest))]
-    ))
 
 (defmacro (%-unreachable) `(%-throw))
 
@@ -199,6 +189,10 @@
           (save (op 'make-fixnum stack))
           (restore 'val))
      ))
+
+(defmacro (%-throw-error sym)
+  `(begin (%#-ioctl-print-symbol (%-unbox ,(unwrap-quote sym)))
+          (%-throw)))
 
 (define (%-throw) (nullproc (evm 'REVERT)))
 

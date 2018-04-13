@@ -39,6 +39,8 @@
 (: *num-iterations* (Parameterof Natural))
 (define *num-iterations* (make-parameter 0))
 
+(define infinity 99999999999999)
+
 (module unsafe typed/racket
   (require typed/racket/unsafe)
   (require (submod "types.rkt" abstract-machine))
@@ -394,6 +396,7 @@
     ['LOG2 (proc 4)]
     ['LOG3 (proc 5)]
     ['LOG4 (proc 6)]
+    ; ['REVERT (set-machine-halted?! *m* #t)]
     ; TODO: Everything below is a stub until we get an SMT solver or something
     ['ADDRESS 1234]
     ['CALLER  4321]

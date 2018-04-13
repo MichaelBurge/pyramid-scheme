@@ -133,6 +133,9 @@
 (: *compile-time-lexicals* (Parameterof LexicalTable))
 (define *compile-time-lexicals* (make-parameter (make-lexical-table)))
 
+(: *parser-literals-boxed?* (Parameterof Boolean))
+(define *parser-literals-boxed?* (make-parameter #t))
+
 ; Constants
 (define assumed-label-size 3) ; TODO: Number of bytes to leave behind for label relocations. This makes it difficult to write programs larger than 65536 bytes.
 (define *assumed-label-size* assumed-label-size)

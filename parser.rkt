@@ -50,13 +50,14 @@
 
 (: expand-pyramid (-> PyramidQ Pyramid))
 (define (expand-pyramid x)
+  (define default-boxed (*parser-literals-boxed?*))
   (with-parser-frame 'expand-pyramid x
   (match x
     [(? boolean?) (pyr-const x #f)]
-    [(? exact-integer?) (pyr-const x #t)]
-    [(? string?) (pyr-const x #t)]
-    [(? char?)   (pyr-const x #t)]
-    [(? vector?) (pyr-const (vector->register-value x) #t)]
+    [(? exact-integer?) (pyr-const x default-boxed)]
+    [(? string?) (pyr-const x default-boxed)]
+    [(? char?)   (pyr-const x default-boxed)]
+    [(? vector?) (pyr-const (vector->register-value x) default-boxed)]
     [`(%-unbox (quote ,(? symbol? x))) (pyr-const x #f)]
     [`(%-unbox ,(? exact-integer? x)) (pyr-const x #f)]
     [`(%-box (quote ,(? symbol? x))) (pyr-const x #t)]

@@ -73,3 +73,10 @@
 
 (defmacro (%#-case e . xs)
   `(generic-case %#-= ,e ,@xs))
+
+(defmacro (cond . cases)
+  (match cases
+    ['() '(%-unreachable)]
+    [`((else ,x)) x]
+    [`((,pred ,cons) . ,rest) `(if ,pred ,cons (cond ,@rest))]
+    ))

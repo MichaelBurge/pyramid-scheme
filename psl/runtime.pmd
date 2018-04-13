@@ -24,3 +24,21 @@
         '(%-null)
         `(pair ,(car lst) (list ,@(cdr lst)))))
   (loop xs))
+
+(defmacro (%-lift-binop op a b)
+  `(box (,op (unbox ,a) (unbox ,b))))
+
+(defmacro (%-lift-boolop op a b)
+  `(,op (unbox ,a) (unbox ,b)))
+
+(define (+ a b) (%-lift-binop %#-+ a b))
+(define (* a b) (%-lift-binop %#-* a b))
+(define (- a b) (%-lift-binop %#-- a b))
+(define (/ a b) (%-lift-binop %#-u/ a b))
+(define (mod a b) (%-lift-binop %#-u% a b))
+
+(define (= a b) (%-lift-boolop %#-= a b))
+(define (> a b) (%-lift-boolop %#-u> a b))
+(define (< a b) (%-lift-boolop %#-u< a b))
+(define (>= a b) (%-lift-boolop %#-u>= a b))
+(define (<= a b) (%-lift-boolop %#-u<= a b))
