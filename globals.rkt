@@ -133,8 +133,8 @@
 (: *compile-time-lexicals* (Parameterof LexicalTable))
 (define *compile-time-lexicals* (make-parameter (make-lexical-table)))
 
-(: *parser-literals-boxed?* (Parameterof Boolean))
-(define *parser-literals-boxed?* (make-parameter #t))
+(: *expander-options* (Parameterof expander-options))
+(define *expander-options* (make-parameter (expander-options #t)))
 
 ; Constants
 (define assumed-label-size 3) ; TODO: Number of bytes to leave behind for label relocations. This makes it difficult to write programs larger than 65536 bytes.
@@ -145,3 +145,5 @@
 (define ALLOCATION-RANGE-PADDING 1000) ; Length of gaps between abstract analyzer's address space allocations. Catches most out-of-range writes.
 (define WORD #x20) ; 256-bit words / 8 bit granularity addresses = 32 8-bit words, or 0x20.
 (define IOCTL-TAG 0)
+
+(define STXPROP-OUT-OPTIONS 'out-options)

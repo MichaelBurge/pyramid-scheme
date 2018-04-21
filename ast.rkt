@@ -3,7 +3,7 @@
 (require typed/racket/unsafe)
 (require (submod "types.rkt" ast))
 (require "globals.rkt")
-(require "parser.rkt")
+(require (submod "expander.rkt" primitive-ast))
 (require "utils.rkt")
 
 (unsafe-provide lookup-macro
@@ -13,59 +13,64 @@
 
 (provide (all-defined-out)
          (all-from-out (submod "types.rkt" ast))
-         sequence->exp)
+         (all-from-out (submod "expander.rkt" primitive-ast)))
 
 (module unsafe typed/racket/no-check
   (require typed/racket/unsafe)
   (require (submod "types.rkt" ast))
   (require "globals.rkt")
-  (require "parser.rkt")
+  (require (submod "expander.rkt" expanders))
+  (require (submod "expander.rkt" shrinkers))
 
   (unsafe-provide (all-defined-out))
-
-  ;(provide (all-defined-out))
 
   ; Typed Racket has trouble applying arbitrary procedures to an argument list.
   ; So we put those operations in this module.
 
-  (: lookup-macro (-> Symbol PyrMacro))
+  (: lookup-macro (-> Symbol pyr-macro))
   (define (lookup-macro name)
     (namespace-variable-value name #t #f (*available-macros*)))
 
   (: expand-macro (-> pyr-macro-application Pyramid))
   (define (expand-macro exp)
-    (let* ((name (pyr-macro-application-name exp))
-           (macro (lookup-macro name))
-           (result (parameterize ([ current-namespace (*macro-namespace*) ])
-                     (let ([ args (map shrink-pyramid (pyr-macro-application-operands exp))])
-                       (apply macro args))))
+    (let* ([name (pyr-macro-application-name exp)]
+           [macro (lookup-macro name)]
+           [macro-func (pyr-macro-func macro)]
+           [macro-opts (pyr-macro-out-options macro)]
+           [result (parameterize ([ current-namespace (*macro-namespace*) ])
+                     (let ([ stx (pyr-macro-application-app-syntax exp)])
+                       (macro-func stx)))]
            )
-      (expand-pyramid result))) ; Reparse it to allow macros to return quoted forms.
+      (expand-pyramid result #:options macro-opts))) ; Reparse it to allow macros to return quoted forms.
 
-  (: install-macro! (-> Symbol PyrMacro Void))
-  (define (install-macro! name func)
-    (namespace-set-variable-value! name func #t (*available-macros*)))
+  (: install-macro! (-> Symbol pyr-macro Void))
+  (define (install-macro! name mac)
+    (namespace-set-variable-value! name mac #t (*available-macros*)))
 
   (: install-macro-exp! (-> pyr-macro-definition Void))
   (define (install-macro-exp! exp)
     (let* ([ name (pyr-macro-definition-name exp)]
            [ args (pyr-macro-definition-parameters exp)]
            [ body (pyr-macro-definition-body exp)]
-           [ macro-exp `(lambda (,@args) ,body)]
-           [ macro (begin
-                     ;(debug-print 'install-macro-exp name macro-exp)
-                     (eval macro-exp (*macro-namespace*)))]
+           [ macro-exp #`(lambda (#,@args) #,body)]
+           [ macro-func (eval macro-exp (*macro-namespace*))]
+           [ macro-out-opts (pyr-macro-definition-out-options exp)]
+           [ macro (pyr-macro macro-func macro-out-opts)]
            )
       (install-macro! name macro)
       ))
 )
 
 (unsafe-require/typed 'unsafe
-  [ lookup-macro (-> Symbol PyrMacro)]
+  [ lookup-macro (-> Symbol pyr-macro)]
   [ expand-macro (-> pyr-macro-application Pyramid)]
-  [ install-macro! (-> Symbol PyrMacro Void)]
+  [ install-macro! (-> Symbol pyr-macro Void)]
   [ install-macro-exp! (-> pyr-macro-definition Void)]
   )
+
+(: install-macro-function! (-> Symbol PyrMacroFunction Void))
+(define (install-macro-function! name func)
+  (install-macro! name (pyr-macro func (*expander-options*))))
 
 (: macro? (-> Symbol Boolean))
 (define (macro? x) (namespace-contains? (*available-macros*) x))
@@ -84,10 +89,10 @@
     [(struct pyr-if (pred cons alt))     (pyr-if (f pred) (f cons) (f alt))]
     [(struct pyr-begin (actions))        (sequence->exp (map f actions))]
     [(struct pyr-macro-definition _)     x]
-    [(struct pyr-macro-application _)    x] ; TODO: Should we recurse into a macro's args?
+    [(struct pyr-macro-application _)    x] ; NOTE: Macros are simplification boundaries until expanded.
     [(struct pyr-asm _)                  x]
-    [(struct pyr-application (op xs))    (pyr-application (f op) (map f xs))]
-    [_ (error "transform-ast-children: Unknown syntax" x)]
+    [(struct pyr-application (op xs dot)) (pyr-application (f op) (map f xs) (if dot (f dot) #f))]
+    [(struct pyr-unknown-application _) x]
     ))
 
 (: ast-map-on (All (A) (-> (-> Pyramid Boolean : #:+ A) (-> A Pyramid) (-> Pyramid Pyramid))))
@@ -98,16 +103,13 @@
 (define (transform-ast-descendants x f)
   (f (transform-ast-children x (λ (x) (transform-ast-descendants x f)))))
 
-
 (: transform-ast-children-on (All (A) (-> Pyramid (-> Pyramid Boolean : #:+ A) (-> A Pyramid) Pyramid)))
 (define (transform-ast-children-on prog pred f)
   (transform-ast-children prog (ast-map-on pred f)))
 
-
 (: transform-ast-descendants-on (All (A) (-> Pyramid (-> Pyramid Boolean : #:+ A) (-> A Pyramid) Pyramid)))
 (define (transform-ast-descendants-on prog pred f)
   (transform-ast-descendants prog (ast-map-on pred f)))
-
 
 (: children (-> Pyramid Pyramids))
 (define (children prog)
@@ -152,13 +154,6 @@
 
 (: all-assigns (-> Pyramid pyr-assigns))
 (define (all-assigns prog) (all-syntax pyr-assign? prog))
-
-(: application->macro-application (-> pyr-application pyr-macro-application))
-(define (application->macro-application app)
-  (define op (cast (pyr-application-operator app) pyr-variable))
-  (define name (pyr-variable-name op))
-  (assert name macro?)
-  (pyr-macro-application name (pyr-application-operands app)))
 
 (define (new-label-number) (tick-counter! *label-counter*))
 

@@ -1,6 +1,8 @@
 #lang pyramid
 
+(require psl "runtime.pmd")
 (require psl "contract.pmd")
+
 
 (test-suite
  (case "withdraw-amounts"

@@ -5,6 +5,7 @@
 
 (require (submod "types.rkt" simulator))
 (require (submod "types.rkt" test))
+(require (submod "types.rkt" pyramidc))
 (require "ast.rkt")
 (require "compiler.rkt")
 (require "io.rkt")
@@ -13,7 +14,7 @@
 (require "disassembler.rkt")
 (require "utils.rkt")
 (require "simulator.rkt")
-(require "analysis.rkt")
+(require "compiler-stages.rkt")
 (require (except-in "macro.rkt" make-label))
 (require "globals.rkt")
 (require "storage.rkt")
@@ -119,7 +120,7 @@
   (set! expectations
         (append expectations
                 (apply-modifiers! (test-txn-mods (test-case-deploy-txn cs))
-                                  apply-init-modifier!
+                                  apply-txn-modifier!
                                   txn)))
   (list expectations txn))
 
@@ -139,62 +140,44 @@
     (list expectations txn))
   (map make-msg-txn ttxns))
 
-(: apply-modifiers! (All (A B) (-> PyramidQs (-> PyramidQ A (Listof B)) A (Listof B))))
+(: apply-modifiers! (All (A B) (-> test-mods (-> test-mod A (Listof B)) A (Listof B))))
 (define (apply-modifiers! xs f! acc)
   (: ret (Listof (Listof B)))
-  (define ret (map (λ ([ x : PyramidQ ])
+  (define ret (map (λ ([ x : test-mod ])
                      (f! x acc))
                    xs))
   (apply append ret)
   )
 
-(: apply-init-modifier! (-> PyramidQ vm-txn test-expectations))
-(define (apply-init-modifier! exp txn)
-  (match exp
-    [(list 'value val)
-     (begin (assert val natural?)
-            (set-vm-txn-value! txn val)
-            null)]
-    [(list 'sender (list 'quote name))
-     (begin (assert name symbol?)
-            (force-txn-sender! txn name)
-            null)]
-    [_ (error "apply-init-modifier: Unexpected syntax" exp)]))
-
-(: apply-txn-modifier! (-> PyramidQ vm-txn test-expectations))
+(: apply-txn-modifier! (-> test-mod vm-txn test-expectations))
 (define (apply-txn-modifier! exp txn)
   (match exp
-    [(list 'value val)
-     (begin (assert val natural?)
-            (set-vm-txn-value! txn val)
-            null)]
-    [(list 'sender (list 'quote name))
-     (begin (assert name symbol?)
-            (force-txn-sender! txn name)
-            null)]
-    [(list 'data (list 'sender (list 'quote name)))
-     (begin (assert name symbol?)
-            (let ([ addr (find-name name)])
-              (set-vm-txn-data! txn (integer->bytes addr 32 #f #t)))
-            null)]
-    [(list 'assert-balance (list 'quote addr-name) val)
-     (begin (assert val natural?)
-            (assert addr-name symbol?)
-            (list (expectation-account-value addr-name val)))]
-    [(list 'assert-return expected)
-     (list (expectation-result expected))]
-    [_ (error "apply-txn-modifier: Unexpected syntax" exp)]))
+    [(struct test-mod-value (val))
+     (set-vm-txn-value! txn val)
+     null]
+    [(struct test-mod-sender (name))
+     (force-txn-sender! txn name)
+     null]
+    [(struct test-mod-data-sender (name))
+     (let ([ addr (find-name name)])
+       (set-vm-txn-data! txn (integer->bytes addr 32 #f #t)))
+     null]
+    [(struct test-mod-assert-balance (addr-name amount))
+     (list (make-expectation-account-value addr-name amount))]
+    [(struct test-mod-assert-return (expected))
+     (list (make-expectation-result expected))]
+    ))
 
 (: add-test-expectation! (-> test-txn test-expectation Void))
 (define (add-test-expectation! txn expect)
   (set-test-txn-tests! txn (cons expect (test-txn-tests txn))))
 
-(: expectation-result (-> Any test-expectation))
-(define (expectation-result expected)
-  (test-expectation "return" (unwrap-quote expected) (make-parser expected)))
+(: make-expectation-result (-> Any test-expectation))
+(define (make-expectation-result expected)
+  (test-expectation "return" expected (make-parser expected)))
 
-(: expectation-account-value (-> Symbol Integer test-expectation))
-(define (expectation-account-value sym expected)
+(: make-expectation-account-value (-> Symbol Integer test-expectation))
+(define (make-expectation-account-value sym expected)
   (test-expectation (string-append (symbol->string sym) " account value(wei)")
                     expected
                     (λ (res)

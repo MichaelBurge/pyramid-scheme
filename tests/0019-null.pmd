@@ -4,4 +4,4 @@
 
 (require psl "runtime.pmd")
 
-(%-bool->fixnum (null? (%-null)))
+(%#-bool->fixnum (null? null))

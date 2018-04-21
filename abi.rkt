@@ -11,7 +11,7 @@
 
 ; https://solidity.readthedocs.io/en/develop/abi-spec.html
 
-(: parse-type (-> AbiType Bytes Any))
+(: parse-type (-> AbiType Bytes ContractReturnValue))
 (define (parse-type type bs)
   (: assert-size (-> Integer Void))
   (define (assert-size n)
@@ -38,7 +38,7 @@
 (: parse-uint256 (-> Bytes EthWord))
 (define (parse-uint256 bs) (bytes->nonnegative bs))
 
-(: parse-array (-> AbiType Bytes Any))
+(: parse-array (-> AbiType Bytes ContractReturnValue))
 (define (parse-array type bs)
   (for/list : EthWords ([ i (in-range 0 (bytes-length bs) 32) ])
     (let ([ bs2 (subbytes bs i (+ i 32)) ])
@@ -50,7 +50,7 @@
     [(? boolean?) "bool"]
     [(? fixnum?) "uint256"]
     [(? null?) "void"]
-    [`(quote ,(? symbol?)) "symbol"]
+    [(? symbol?) "symbol"]
     [`(%-unbox ,y) (infer-type y)]
     [(? list?) (match (infer-type (car x))
                  ["uint256" "uint256[]"]

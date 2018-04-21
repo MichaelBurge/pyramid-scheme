@@ -2,7 +2,7 @@
 
 (set-test-result! 120)
 
-(include psl "arith.pmd")
+(include psl "runtime.pmd")
 
 ; TODO: Implement apply
 ;; (define Y (λ (h) ((λ (x) (x x))

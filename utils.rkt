@@ -1,10 +1,15 @@
 #lang typed/racket
 
+(require typed/racket/unsafe)
+(require (submod "types.rkt" common))
 (require (submod "typed.rkt" binaryio))
 (require (submod "typed.rkt" dict))
 
 (provide (all-defined-out)
-         (all-from-out 'struct))
+         (all-from-out 'struct)
+         dotted-map
+         list->dottable
+         )
 
 (define WORDLIMIT (arithmetic-shift 1 256))
 (define SIGNEDLIMIT (arithmetic-shift 1 255))
@@ -163,3 +168,27 @@
   (if (>= w SIGNEDLIMIT)
       (- w WORDLIMIT)
       w))
+
+(module syntax-parse racket
+  (require syntax/parse)
+  (provide datum)
+  (define-syntax-rule (datum x)
+    (syntax->datum (attribute x)))
+  )
+
+(module unsafe racket
+  (provide (all-defined-out))
+  (define (dotted-map f xs)
+    (match xs
+      ['() '()]
+      [`(,x) `(,(f x))]
+      [(cons #{a : A} (? pair? b)) (cons (f a) (dotted-map f b))]
+      [(cons a b) (cons (f a) (f b))]
+      ))
+  (define (list->dottable xs) xs)
+  )
+
+(unsafe-require/typed 'unsafe
+                      [ dotted-map (All (A B) (-> (-> A B) (DottableListof A A) (DottableListof B B)))]
+                      [ list->dottable (All (A B) (-> (Listof A) (DottableListof A B)))]
+                      )

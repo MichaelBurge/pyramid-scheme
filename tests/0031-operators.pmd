@@ -5,21 +5,22 @@
 
 (set-test-result! 1)
 
-(let ([ x (%-unbox 10)]
-      [ y (%-unbox 4)])
-  (syntax-fold
-   %#-and
-   (%#-= (%-unbox 14)  (%#-+ x y))
-   (%#-= (%-unbox 6)   (%#-- x y))
-   (%#-= (%-unbox 40)  (%#-* x y))
-   (%#-= (%-unbox 2)   (%#-u/ x y))
-   (%#-= (%-unbox 2)   (%#-u% x y))
-   (%#-= (%-unbox 0)   (%#-and x y))
-   (%#-= (%-unbox 14)  (%#-or x y))
-   (%#-= (%-unbox 14)  (%#-xor x y))
-   (%#-= (%-unbox 160) (%#-bitshiftl x y))
-   (%#-= (%-unbox 0)   (%#-bitshiftr x y))
-   (%#-= (%-unbox 0)   (%#-= x y))
-   (%#-= (%-unbox 0)   (%#-not x))
-   (%#-= x             (%#-negate (%#-negate x)))
-   ))
+(%#-box
+ (let ([ x #u10]
+       [ y #u4])
+   (syntax-fold
+    %#-and
+    (%#-= #u14  (%#-+ x y))
+    (%#-= #u6   (%#-- x y))
+    (%#-= #u40  (%#-* x y))
+    (%#-= #u2   (%#-u/ x y))
+    (%#-= #u2   (%#-u% x y))
+    (%#-= #u0   (%#-and x y))
+    (%#-= #u14  (%#-or x y))
+    (%#-= #u14  (%#-xor x y))
+    (%#-= #u160 (%#-bitshiftl x y))
+    (%#-= #u0   (%#-bitshiftr x y))
+    (%#-= #u0   (%#-= x y))
+    (%#-= #u0   (%#-not x))
+    (%#-= x   (%#-negate (%#-negate x)))
+    )))

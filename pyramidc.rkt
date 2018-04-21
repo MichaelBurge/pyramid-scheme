@@ -5,14 +5,16 @@
 (require "ast.rkt")
 (require "serializer.rkt")
 (require "compiler.rkt")
-(require "types.rkt")
+(require (submod "types.rkt" ast))
+(require (submod "types.rkt" pyramidc))
 (require "io.rkt")
 (require "disassembler.rkt")
 (require "test.rkt")
-(require "analysis.rkt")
 (require "globals.rkt")
-(require "parser.rkt")
+(require "expander.rkt")
+(require "loader.rkt")
 (require (except-in "macro.rkt" make-label))
+(require "compiler-stages.rkt")
 (require/typed "primops.rkt"
   [ make-primop-table (-> PrimopTable)])
 
@@ -47,7 +49,7 @@
      #:args (filename) ; expect one command-line argument: <filename>
      filename)))
 
-(: verbose-output (-> PyramidQ Void))
+(: verbose-output (-> Syntax Void))
 (define (verbose-output prog)
   (match (full-compile prog)
     [(struct full-compile-result (bs abstract-is eth-is))

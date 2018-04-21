@@ -1,0 +1,10 @@
+#lang pyramid
+
+(require psl "runtime.pmd")
+
+(set-test-result! 6)
+
+(define x '(1 2 . 3))
+(+ (car x)
+   (+ (car (cdr x))
+      (cdr (cdr x))))

@@ -1,7 +1,7 @@
 #lang pyramid
 
 (set-test-result! 120)
-(include psl "arith.pmd")
+(include psl "runtime.pmd")
 
 (define (factorial n)
   (if (= n 1)

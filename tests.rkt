@@ -1,20 +1,40 @@
-#lang typed/racket
+#lang racket
 
 ;(require "minimize.rkt")
 ;; (require "test.rkt")
 ;(require "macro.rkt")
 ;; (require "globals.rkt")
 ;; (require "ast.rkt")
-(require "types.rkt")
-(require "parser.rkt")
+(require (submod "types.rkt" common))
+(require (submod "expander.rkt" expanders))
+(require "utils.rkt")
+(require syntax/parse)
+
+;; (syntax-parse #'(set-test-result! 5)
+;;   [x:pyramid-quoted #'x])
+
+;; (: x (DottableListof Integer))
+;; (define x (list->dottable '(1 2 3 4)))
+(syntax-parse #'(b)
+  [(head:identifier tail:expr ...) (syntax-property this-syntax 'some-key 'some-value)]
+  )
+
+;; (expand-pyramid #'(set-test-result! 5))
+;; (expand-pyramid #'(begin (set-test-result! '(1 2 . 3)) '(1 2 . 3)))
+
+;; (syntax-parse #'(begin (1 . 2))
+;;   [x:pyramid #'x])
+
 ; (require (submod "parser.rkt" macros))
 ;(require "simplifier.rkt")
 ;(require "io.rkt")
 
-(shrink-pyramid (expand-pyramid (shrink-pyramid (expand-pyramid (shrink-pyramid (expand-pyramid '(%-unbox 'B)))))))
-(expand-pyramid (shrink-pyramid (expand-pyramid (shrink-pyramid (expand-pyramid '(%-unbox 'B))))))
+;(expand-pyramid '(begin (set-test-result! 4) (define (f x) x) (f 4)) #:box-literals? #t)
 
-(expand-pyramid '(%-unbox B))
+;; (shrink-pyramid (expand-pyramid (shrink-pyramid (expand-pyramid (shrink-pyramid (expand-pyramid '(%-unbox 'B)))))))
+;; (expand-pyramid (shrink-pyramid (expand-pyramid (shrink-pyramid (expand-pyramid '(%-unbox 'B))))))
+
+;; (expand-pyramid '(%-unbox B))
 
 ;(sequence->exp (list (pyr-variable 'a)))
 

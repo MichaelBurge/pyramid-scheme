@@ -2,7 +2,7 @@
 
 (set-test-result! 8)
 
-(require psl "arith.pmd")
+(require psl "runtime.pmd")
 (require psl "syntax.pmd")
 
 ;; (call/cc

@@ -1,0 +1,9 @@
+#lang pyramid
+
+(define-syntax (defmacro stx)
+  (syntax-case stx ()
+    [(_ (name . args) body ...)
+     #`(define-syntax (name stx2)
+         (define f (λ args body ...))
+         (datum->syntax stx2
+                        (apply f (cdr (map syntax->datum (syntax->list stx2))))))]))

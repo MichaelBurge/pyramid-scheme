@@ -1,6 +1,6 @@
 #lang pyramid
 
-(require psl "arith.pmd")
+(require psl "runtime.pmd")
 
 (set-test-result! 1)
 

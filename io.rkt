@@ -5,7 +5,7 @@
 (require (submod "types.rkt" evm-assembly))
 (require (submod "types.rkt" simulator))
 (require "globals.rkt")
-(require "parser.rkt")
+(require "expander.rkt")
 (require "wallet.rkt")
 
 (require (submod "typed.rkt" binaryio))
@@ -18,7 +18,7 @@
 (define (display-abstract-instruction i)
   (match i
     [(struct pyr-asm _) (print `(,(*abstract-offset*) ,(format-ast i)))]
-    [_                  (print `(,(*abstract-offset*) ,(shrink-asm i)))]))
+    [_                  (print `(,(*abstract-offset*) ,(asm->datum i)))]))
 
 
 (: display-abstract-instructions (-> (U inst-seq Instructions) Void))
@@ -83,7 +83,7 @@
 
 (: print-ast (-> Pyramid Void))
 (define (print-ast ast)
-  (pretty-print (shrink-pyramid ast)))
+  (pretty-print (syntax->datum (shrink-pyramid ast))))
 
 (: format-ast (-> Pyramid String))
 (define (format-ast ast)

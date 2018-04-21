@@ -2,7 +2,7 @@
 
 (require psl "primitives.pmd")
 (require psl "syntax.pmd")
-(require psl "arith.pmd")
+(require psl "runtime.pmd")
 
 (test-suite
  ; The contract is redeployed before each testcase. Transactions are applied sequentially.

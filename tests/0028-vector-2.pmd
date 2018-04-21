@@ -2,11 +2,11 @@
 
 (set-test-result! 10)
 
-(require psl "primitives.pmd")
+(require psl "runtime.pmd")
 
 (define x #(1 2 3 4))
 
-(set! x (%-vector-write! x 1 7)) ; #(1 7 3 4)
+(set! x (vector-write! x 1 7)) ; #(1 7 3 4)
 
-(%-+ (%-vector-read x 1)
-     (%-vector-read x 2))
+(+ (vector-read x 1)
+   (vector-read x 2))

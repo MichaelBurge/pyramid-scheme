@@ -2,7 +2,7 @@
 
 (set-test-result! 15)
 
-(include psl "arith.pmd")
+(include psl "runtime.pmd")
 
 (define x 5)
 (define (y z) (if (> z 0) 15 20))

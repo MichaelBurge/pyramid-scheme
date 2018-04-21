@@ -3,7 +3,9 @@
 (require "types.rkt")
 (require "ast.rkt")
 (require "io.rkt")
-(require "parser.rkt")
+(require "expander.rkt")
+(require "utils.rkt")
+(require "globals.rkt")
 (require racket/pretty)
 
 (require typed/racket/unsafe)
@@ -12,14 +14,22 @@
    [ set-add! (All (A) (-> (Setof A) A Void))]
    [ mutable-set (All (A) (-> (Setof A)))])
 
+(define *pass-number* 0)
+(: *assume-complete?* Boolean)
+(define *assume-complete?* #f)
+
 (provide simplify
          simplify-macros
          (all-defined-out))
 
 (: simplify Pass)
 (define (simplify prog)
-  (set! prog (fixpass pass-expand-macros prog))
-  ; (pretty-print prog)
+  (set! prog (fixpass (λ ([ prog : Pyramid])
+                          (set! prog (fixpass pass-expand-macros prog))
+                          (set! *assume-complete?* #t)
+                          (set! prog (fixpass pass-determine-unknown-applications prog))
+                          prog)
+                      prog))
   (set! prog (pass-inline-simple-definitions prog))
   (set! prog (fixpass pass-remove-unused-definitions prog))
   (set! prog (pass-collapse-nested-begins prog))
@@ -32,8 +42,19 @@
   prog
   )
 
+(define-syntax-rule (define-pass (name prog) body ...)
+  (define (name prog)
+    (define (pass) body ...)
+    (define new-x (pass))
+    (verbose-section
+     (format "AST pass '~a" (syntax->datum #'name))
+     VERBOSITY-HIGH
+     (pretty-print (pyramid->datum new-x)))
+    (set! *pass-number* (+ *pass-number* 1))
+    new-x))
+
 (: pass-expand-macros Pass)
-(define (pass-expand-macros prog)
+(define-pass (pass-expand-macros prog)
   (define prog2
     (transform-ast-descendants-on prog pyr-macro-definition?
                                   (λ ([ x : pyr-macro-definition ])
@@ -44,7 +65,7 @@
                  (λ (x)
                    (transform-ast-descendants-on x pyr-macro-application? expand-macro))
                  prog2))
-  (define prog4 (pass-deduce-macros prog3))
+  (define prog4 (pass-determine-unknown-applications prog3))
   prog4
   )
 
@@ -52,12 +73,12 @@
 (define simplify-macros pass-expand-macros)
 
 (: pass-remove-unused-definitions Pass)
-(define (pass-remove-unused-definitions prog)
+(define-pass (pass-remove-unused-definitions prog)
   (let ([ unuseds (set-subtract (defined-vars prog) (used-vars prog))])
     (remove-definitions prog unuseds)))
 
 (: pass-error-on-undefined-variables Pass)
-(define (pass-error-on-undefined-variables prog)
+(define-pass (pass-error-on-undefined-variables prog)
   (let ([ undefineds (set-subtract (used-vars prog) (defined-vars prog))])
     (if (set-empty? undefineds)
         prog
@@ -66,7 +87,7 @@
           (error "Undefined variables" undefineds)))))
 
 (: pass-collapse-nested-begins Pass)
-(define (pass-collapse-nested-begins prog)
+(define-pass (pass-collapse-nested-begins prog)
   (transform-ast-descendants-on
    prog
    pyr-begin?
@@ -80,7 +101,7 @@
                   (pyr-begin-body x)))))))
 
 (: pass-inline-simple-definitions Pass)
-(define (pass-inline-simple-definitions prog)
+(define-pass (pass-inline-simple-definitions prog)
   (: nonsimple-definitions (Setof Symbol))
   (define nonsimple-definitions (mutable-set))
   (: simple-definitions (HashTable Symbol Pyramid))
@@ -136,17 +157,23 @@
         x))
   (transform-ast-descendants prog transform))
 
-(: pass-deduce-macros Pass)
-(define (pass-deduce-macros ast)
-  (transform-ast-descendants-on ast pyr-application?
-                                (λ ([ x : pyr-application ])
-                                  (match (pyr-application-operator x)
-                                    [ (struct pyr-variable ((? macro? name)))
-                                      (application->macro-application x)]
-                                    [ _ x]))))
+; assume-complete? means "Are all possible macros defined?".
+; After macro expansion, every unknown application can default to a function application.
+; But during macro expansion, a macro could be defined later even if it isn't now.
+(: pass-determine-unknown-applications Pass)
+(define-pass (pass-determine-unknown-applications ast)
+  (transform-ast-descendants-on ast pyr-unknown-application?
+                                (λ ([ x : pyr-unknown-application ])
+                                  (: x-name VariableName)
+                                  (destruct pyr-unknown-application x)
+                                  (if (macro? x-name)
+                                      (pyr-macro-application x-name x-app-syntax)
+                                      (if *assume-complete?*
+                                          (unknown->application x)
+                                          x)))))
 
 (: pass-remove-empty-asms Pass)
-(define (pass-remove-empty-asms ast)
+(define-pass (pass-remove-empty-asms ast)
   (transform-ast-descendants-on ast pyr-asm?
                                 (λ ([ x : pyr-asm ])
                                   (if (null? (pyr-asm-insts x))

@@ -19,17 +19,19 @@
     (wrap-args args `(begin ,@body))
     ))
 
-(defmacro (static id expr)
-  (let* ([ is (minicompile expr) ]
-         [ lb (make-label id) ]
-         [ sym (label-name lb) ]
-         )
-    (%-register-patchpoint! sym is)
-    `(define ,id (asm (evm (label (quote ,sym) ,2)
-                           (op 'PUSH32)
-                           (bytes 32 0))
-                      (save (op 'make-fixnum stack))
-                      (restore 'val)))
+(define-syntax (static stx)
+  (syntax-case stx ()
+    [(_ id expr)
+     (let* ([ is (minicompile #'expr) ]
+            [ lb (make-label (syntax-e #'id)) ]
+            [ sym (label-name lb) ]
+            )
+       (%-register-patchpoint! sym is)
+       #`(define id (asm (evm (label (quote #,sym) 2)
+                              (op 'PUSH32)
+                              (bytes 32 0))
+                         (save (op 'make-fixnum stack))
+                         (restore 'val))))]
     ))
 
 (define (void) (begin))
@@ -47,7 +49,7 @@
   (loop lst))
 
 (define (call/cc f)
-  (%-call-with-current-continuation f))
+  (%#-call-with-current-continuation f))
 
 (defmacro (syntax-fold f . xs)
   (match xs
@@ -79,4 +81,22 @@
     ['() '(%-unreachable)]
     [`((else ,x)) x]
     [`((,pred ,cons) . ,rest) `(if ,pred ,cons (cond ,@rest))]
+    ))
+
+(define-syntax (or stx)
+  (syntax-case stx ()
+    [(_) #'false]
+    [(_ x) #'x]
+    [(_ x xs ...) #`(if x
+                        true
+                        (or xs ...))]
+    ))
+
+(define-syntax (and stx)
+  (syntax-case stx ()
+    [(_) #'true]
+    [(_ x) #'x]
+    [(_ x xs ...) #`(if x
+                        (and xs ...)
+                        false)]
     ))

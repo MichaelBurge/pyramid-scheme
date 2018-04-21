@@ -1,88 +1,85 @@
-#lang pyramid/core
+#lang pyramid
+
+(require psl "compatibility.pmd")
 
 ; Helpers
 
-(defmacro (%-unreachable) `(%-throw))
+(defmacro (%#-unreachable) `(%#-throw))
 
 (defmacro (intro-var v1 . fs)
   (list* 'asm
          `(save (op 'lookup-variable-value (const (quote ,v1)) (reg 'env)))
          (map (λ (f) `(save (op ,f stack))) fs)))
 
-(defmacro (make-arities)
-  (define vs "abcdefghijklmnopqrstuvwxyz")
-  (define (arity reads writes box-output? unbox-input?)
-    (define uq 'unquote)
-    (define qq 'quasiquote)
-    (define (intro c) `(intro-var ,c ,@(maybe->list unbox-input? ''fixnum-value)))
-    (define intros (reverse (for/list ([ c (in-string vs 0 reads)])
-                              (intro (string->symbol (string c))))))
-    (define write? (equal? writes 1))
-    `(,qq (begin ,@intros
-                 (asm ,(if write? `(save (,uq x)) `(perform (,uq x)))
-                      ,@(maybe->list box-output? '(save (op 'make-fixnum stack)))
-                      ,@(maybe->list write? `(restore 'val))))))
-  `(begin            ;                    R W BO BI
-     (defmacro (nullop x)            ,(arity 0 1 #t #t))
-     (defmacro (nullop-unboxed x)    ,(arity 0 1 #f #f))
-     (defmacro (nullproc x)          ,(arity 0 0 #f #f))
-     (defmacro (unop x)              ,(arity 1 1 #t #t))
-     (defmacro (unproc x)            ,(arity 1 0 #f #t))
-     (defmacro (unop-unboxed-o x)    ,(arity 1 1 #f #t))
-     (defmacro (unop-unboxed x)      ,(arity 1 1 #f #f))
-     (defmacro (binop x)             ,(arity 2 1 #t #t))
-     (defmacro (binop-unboxed-o x)   ,(arity 2 1 #f #t))
-     (defmacro (binop-unboxed x)     ,(arity 2 1 #f #f))
-     (defmacro (biproc x)            ,(arity 2 0 #f #t))
-     (defmacro (triop x)             ,(arity 3 1 #t #t))
-     (defmacro (triproc x)           ,(arity 3 0 #f #t))
-     (defmacro (triproc-unboxed-o x) ,(arity 3 0 #f #t))
-     (defmacro (triproc-unboxed x)   ,(arity 3 0 #f #f))
-     (defmacro (stackop x)           ,(arity 0 0 #f #f))
-     ))
+(define-syntax (nullproc stx)
+  (syntax-case stx ()
+    [(_ body) #'(asm body)]
+    ))
 
-(make-arities)
+(define-syntax (nullop stx)
+  (syntax-case stx ()
+    [(_ body) #'(asm (save body)
+                     (restore 'val))]
+    ))
+
+
+(define-syntax (unop stx)
+  (syntax-case stx ()
+    [(_ body) #`(begin (intro-var a)
+                       (asm (save body)
+                            (restore 'val)))]
+    ))
+
+(define-syntax (binop stx)
+  (syntax-case stx ()
+    [(_ body) #`(begin (intro-var b)
+                       (intro-var a)
+                       (asm (save body)
+                            (restore 'val)))]
+    ))
+
+(define-syntax (biproc stx)
+  (syntax-case stx ()
+    [(_ body) #`(begin (intro-var b)
+                       (intro-var a)
+                       (asm (perform body)))]
+    ))
+
+(define-syntax (triproc stx)
+  (syntax-case stx ()
+    [(_ body) #'(begin (intro-var c)
+                       (intro-var b)
+                       (intro-var a)
+                       (asm (perform body)))]
+    ))
 
 ; Primitives table
-(define (%-+ a b)     (binop (evm 'ADD)))
-(define (%-* a b)     (binop (evm 'MUL)))
-(define (%-- a b)     (binop (evm 'SUB)))
-(define (%-/ a b)     (binop (evm 'DIV)))
-(define (%-mod a b)   (binop (evm 'MOD)))
-(define (%-= a b)     (binop-unboxed-o (evm 'EQ)))
-(define (%-> a b)     (binop-unboxed-o (evm 'GT)))
-(define (%-< a b)     (binop-unboxed-o (evm 'LT)))
-(define (%->= a b)    (binop-unboxed-o (evm 'GE)))
-(define (%-<= a b)    (binop-unboxed-o (evm 'LE)))
 
-(define (%#-not a)     (unop-unboxed  (evm 'ISZERO)))
-(define (%#-+ a b)     (binop-unboxed (evm 'ADD)))
-(define (%#-* a b)     (binop-unboxed (evm 'MUL)))
-(define (%#-- a b)     (binop-unboxed (evm 'SUB)))
-(define (%#-u/ a b)    (binop-unboxed (evm 'DIV)))
-(define (%#-u% a b)    (binop-unboxed (evm 'MOD)))
-(define (%#-= a b)     (binop-unboxed (evm 'EQ)))
-(define (%#-u> a b)     (binop-unboxed (evm 'GT)))
-(define (%#-u< a b)     (binop-unboxed (evm 'LT)))
-(define (%#-u>= a b)    (%#-not (%#-u< a b)))
-(define (%#-u<= a b)    (%#-u>= b a))
-(define (%#-s> a b)     (binop-unboxed (evm 'SGT)))
-(define (%#-s< a b)     (binop-unboxed (evm 'SLT)))
-(define (%#-s>= a b)    (%#-not (%#-s< a b)))
-(define (%#-s<= a b)    (%#-s>= b a))
-(define (%#-exp a b)   (binop-unboxed (evm 'EXP)))
-(define (%#-and a b)   (binop-unboxed (evm 'AND)))
-(define (%#-or a b)    (binop-unboxed (evm 'OR)))
-(define (%#-xor a b)   (binop-unboxed (evm 'XOR)))
-(define (%#-negate a)  (unop-unboxed (evm 'NOT)))
+(define (%#-not a)     (unop  (evm 'ISZERO)))
+(define (%#-+ a b)     (binop (evm 'ADD)))
+(define (%#-* a b)     (binop (evm 'MUL)))
+(define (%#-- a b)     (binop (evm 'SUB)))
+(define (%#-u/ a b)    (binop (evm 'DIV)))
+(define (%#-u% a b)    (binop (evm 'MOD)))
+(define (%#-= a b)     (binop (evm 'EQ)))
+(define (%#-u> a b)    (binop (evm 'GT)))
+(define (%#-u< a b)    (binop (evm 'LT)))
+(define (%#-u>= a b)   (%#-not (%#-u< a b)))
+(define (%#-u<= a b)   (%#-u>= b a))
+(define (%#-s> a b)    (binop (evm 'SGT)))
+(define (%#-s< a b)    (binop (evm 'SLT)))
+(define (%#-s>= a b)   (%#-not (%#-s< a b)))
+(define (%#-s<= a b)   (%#-s>= b a))
+(define (%#-exp a b)   (binop (evm 'EXP)))
+(define (%#-and a b)   (binop (evm 'AND)))
+(define (%#-or a b)    (binop (evm 'OR)))
+(define (%#-xor a b)   (binop (evm 'XOR)))
+(define (%#-negate a)  (unop (evm 'NOT)))
 (define (%#-bitshiftl a b)
-  (%#-* a (%#-exp (%-unbox 2) b)))
+  (%#-* a (%#-exp #u2 b)))
 (define (%#-bitshiftr a b)
-  (%#-u/ a (%#-exp (%-unbox 2) b)))
+  (%#-u/ a (%#-exp #u2 b)))
 
-(define (%-suicide a) (unproc (evm 'SUICIDE)))
-(define (%-address)   (nullop (evm 'ADDRESS)))
-(define (%-balance a) (unop   (evm 'BALANCE)))
 (define (%-log0-fixnum x)
   (asm (save (const 32)))                  ; [ 32 ]
   (intro-var x)                            ; [ x ; 32 ]
@@ -115,60 +112,37 @@
   (asm (evm 'LOG2))
   )
 
-(define (%-origin)               (nullop (evm 'ORIGIN)))
-(define (%-caller)               (nullop (evm 'CALLER)))
-(define (%-callvalue)            (nullop (evm 'CALLVALUE)))
-(define (%-calldataload a)       (unop   (evm 'CALLDATALOAD)))
-(define (%-calldatasize)         (nullop (evm 'CALLDATASIZE)))
-(define (%-calldatacopy a b c)   (triop  (evm 'CALLDATACOPY)))
-(define (%-timestamp)            (nullop (evm 'TIMESTAMP)))
+(define (%#-tag a)             (unop (op 'type stack)))
+(define (%#-box a)             (unop (op 'make-fixnum stack)))
+(define (%#-unbox-fixnum a)    (unop (op 'fixnum-value stack)))
+(define (%#-unbox-character a) (unop (op 'character-value stack)))
+(define (%#-unbox-symbol a)    (unop (op 'symbol-value stack)))
 
-(define (%#-tag a)            (unop-unboxed (op 'type stack)))
-(define (%-store-read a)      (unop    (evm 'SLOAD)))
-(define (%-store-write! a b)  (biproc  (evm 'SSTORE)))
-(define (%-box a)             (unop-unboxed (op 'make-fixnum stack)))
-(define (%-unbox-fixnum a)    (unop-unboxed (op 'fixnum-value stack)))
-(define (%-unbox-character a) (unop-unboxed (op 'character-value stack)))
-(define (%-unbox-symbol a)    (unop-unboxed (op 'symbol-value stack)))
+(define (%#-word->pointer a)   (unop (op 'word->pointer stack)))
+(define (%#-mem-alloc a)       (unop (op 'allocate stack)))
 
-(define (%-fixnum-lvalue x)  (%-word->pointer (%-unbox-fixnum (%-+ (%-box x) WORD))))
-(define (%-word->pointer a)  (unop-unboxed (op 'word->pointer stack)))
-(define (%#-mem-alloc a)      (unop-unboxed (op 'allocate stack)))
+(define (%#-mem-read a b)      (binop (op 'read-memory stack stack)))
+(define (%#-mem-write! a b c)  (triproc (op 'write-memory stack stack stack)))
 
-(define (%#-mem-read a b) (binop-unboxed (op 'read-memory stack stack)))
-(define (%#-mem-write! a b c) (triproc-unboxed (op 'write-memory stack stack stack)))
-
-(defmacro (%#-unbox-arguments f . xs)
-  `(,f ,@(for/list ([ x xs])
-           (if (exact-integer? x)
-               `(%-unbox ,x)
-               x))))
+(define (%#-sstore a b)     (biproc (evm 'SSTORE)))
+(define (%#-sload a)        (unop   (evm 'SLOAD)))
+(define (%#-caller)         (nullop (evm 'CALLER)))
+(define (%#-balance a)      (unop   (evm 'BALANCE)))
+(define (%#-address)        (nullop (evm 'ADDRESS)))
+(define (%#-calldataload a) (unop   (evm 'CALLDATALOAD)))
+(define (%#-callvalue)      (nullop (evm 'CALLVALUE)))
 
 (defmacro (%#-mem-alloc-init a . xs)
   `((λ ()
       (define ptr (%#-mem-alloc ,a))
       ,@(for/list ([ x xs ]
                    [ n (in-naturals)])
-          `(%#-mem-write! ptr (%-unbox ,n) ,x))
+          `(%#-mem-write! ptr (unbox ,n) ,x))
       ptr)))
 
-(define (%-vector-read a b)
-  (asm (save (op 'lookup-variable-value (const 'b) (reg 'env)))
-       (save (op 'fixnum-value          stack))
-       (save (op 'lookup-variable-value (const 'a) (reg 'env)))
-       (save (op 'read-vector           stack stack))
-       (restore 'val)
-       ))
+(define (%#-vector-read a b) (binop (op 'read-vector stack stack)))
 
-(define (%-vector-write! a b c)
-  (asm (save (op 'lookup-variable-value (const 'c) (reg 'env)))
-       (save (op 'lookup-variable-value (const 'b) (reg 'env)))
-       (save (op 'fixnum-value          stack))
-       (save (op 'lookup-variable-value (const 'a) (reg 'env)))
-       (perform (op 'write-vector       stack stack stack))
-       (save (op 'lookup-variable-value (const 'a) (reg 'env)))
-       (restore 'val)
-       ))
+(define (%#-vector-write! a b c) (triproc (op 'write-vector stack stack stack)))
 
 (defmacro (%#-bool->word x)
   `(begin ,x
@@ -182,7 +156,7 @@
                (restore 'val))
           ))
 
-(defmacro (%-bool->fixnum a)
+(defmacro (%#-bool->fixnum a)
   `(begin
      ,a
      (asm (save (op 'bool->unboxed (reg 'val)))
@@ -190,11 +164,11 @@
           (restore 'val))
      ))
 
-(defmacro (%-throw-error sym)
-  `(begin (%#-ioctl-print-symbol (%-unbox ,(unwrap-quote sym)))
-          (%-throw)))
+(defmacro (%#-throw-error sym)
+  `(begin (%#-ioctl-print-symbol ,(unwrap-quote sym))
+          (%#-throw)))
 
-(define (%-throw) (nullproc (evm 'REVERT)))
+(define (%#-throw) (nullproc (evm 'REVERT)))
 
 (define (%-call gas to value in-offset in-size out-offset out-size)
   (intro-var out-size   'fixnum-value)
@@ -208,41 +182,41 @@
        (save (op 'make-fixnum stack))
        (restore 'val)))
 
-(define %#-TAG-FIXNUM              (%-unbox-fixnum 0))
-(define %#-TAG-SYMBOL              (%-unbox-fixnum 1))
-(define %#-TAG-COMPILED-PROCEDURE  (%-unbox-fixnum 2))
-(define %#-TAG-PRIMITIVE-PROCEDURE (%-unbox-fixnum 3))
-(define %#-TAG-PAIR                (%-unbox-fixnum 4))
-(define %#-TAG-VECTOR              (%-unbox-fixnum 5))
-(define %#-TAG-NIL                 (%-unbox-fixnum 6))
-(define %#-TAG-CONTINUATION        (%-unbox-fixnum 7))
-(define %#-TAG-FRAME               (%-unbox-fixnum 8))
-(define %#-TAG-ENVIRONMENT         (%-unbox-fixnum 9))
-(define %#-TAG-CHARACTER           (%-unbox-fixnum 10))
+(define %#-TAG-FIXNUM              #u0)
+(define %#-TAG-SYMBOL              #u1)
+(define %#-TAG-COMPILED-PROCEDURE  #u2)
+(define %#-TAG-PRIMITIVE-PROCEDURE #u3)
+(define %#-TAG-PAIR                #u4)
+(define %#-TAG-VECTOR              #u5)
+(define %#-TAG-NIL                 #u6)
+(define %#-TAG-CONTINUATION        #u7)
+(define %#-TAG-FRAME               #u8)
+(define %#-TAG-ENVIRONMENT         #u9)
+(define %#-TAG-CHARACTER           #u10)
 
-(define %-MEM-ENV            #x20)
-(define %-MEM-PROC           #x40)
-(define %-MEM-CONTINUE       #x60)
-(define %-MEM-ARGL           #x80)
-(define %-MEM-VAL            #xa0)
-(define %-MEM-NIL            #xc0)
-(define %-MEM-ALLOCATOR      #xe0)
-(define %-MEM-DYNAMIC-START #x100)
+(define %#-MEM-ENV            (unbox #x20))
+(define %#-MEM-PROC           (unbox #x40))
+(define %#-MEM-CONTINUE       (unbox #x60))
+(define %#-MEM-ARGL           (unbox #x80))
+(define %#-MEM-VAL            (unbox #xa0))
+(define %#-MEM-NIL            (unbox #xc0))
+(define %#-MEM-ALLOCATOR      (unbox #xe0))
+(define %#-MEM-DYNAMIC-START  (unbox #x100))
 
-(define WORD #x20)
+(define %#-WORD (unbox #x20))
 
 ; Runtime support
-(define (%-symbol?    x) (%#-= (%#-tag x) %#-TAG-SYMBOL))
-(define (%-fixnum?    x) (%#-= (%#-tag x) %#-TAG-FIXNUM))
-(define (%-character? x) (%#-= (%#-tag x) %#-TAG-CHARACTER))
+(define (%#-symbol?    x) (%#-= (%#-tag x) %#-TAG-SYMBOL))
+(define (%#-fixnum?    x) (%#-= (%#-tag x) %#-TAG-FIXNUM))
+(define (%#-character? x) (%#-= (%#-tag x) %#-TAG-CHARACTER))
 
-(define (%-pair a b) (binop-unboxed (op 'pair stack stack)))
-(define (%-left a)   (unop-unboxed (op 'left stack)))
-(define (%-right a)  (unop-unboxed (op 'right stack)))
-(define (%-null? a)  (unop-unboxed (op 'null? stack)))
-(define (%-null)     (nullop-unboxed (op 'null)))
+(define (%#-pair a b) (binop (op 'pair stack stack)))
+(define (%#-left a)   (unop (op 'left stack)))
+(define (%#-right a)  (unop (op 'right stack)))
+(define (%#-null? a)  (unop (op 'null? stack)))
+(define (%#-null)     (nullop (op 'null)))
 
-(defmacro (%-call-with-current-continuation f)
+(defmacro (%#-call-with-current-continuation f)
   `(begin (define cont (asm
                         (save (op 'save-continuation))
                         (restore 'val)))
@@ -256,17 +230,17 @@
     (if (%#-u>= n size-words)
         to
         (begin (%#-mem-write! to n (%#-mem-read from n))
-               (loop (%#-+ n (%-unbox 1))))))
-  (loop (%-unbox 0)))
+               (loop (%#-+ n #u1)))))
+  (loop0))
 
 (define (%#-bytes->words x)
-  (%#-u/ x (%-unbox WORD)))
+  (%#-u/ x %#-WORD))
 
-(define (%-unbox a)
-  (cond [(%-fixnum?    a) (%-unbox-fixnum    a)]
-        [(%-character? a) (%-unbox-character a)]
-        [(%-symbol?    a) (%-unbox-symbol    a)]
-        ))
+(define (%#-unbox a)
+  (if (%#-fixnum?    a) (%#-unbox-fixnum    a)
+  (if (%#-character? a) (%#-unbox-character a)
+  (if (%#-symbol?    a) (%#-unbox-symbol    a)
+                        (%#-throw-error 'something)))))
 
 ; ioctl debug helpers
 
@@ -280,24 +254,24 @@
 
 (define (%#-ioctl-print-word x)
   (define ptr (%#-allocate-word x))
-  (%#-log2 ptr (%-unbox 32) (%-unbox 0) (%-unbox 0))
+  (%#-log2 ptr #u32 #u0 #u0)
   )
 
 (define (%#-ioctl-print-symbol x)
   (define ptr (%#-allocate-word x))
-  (%#-log2 ptr (%-unbox 32) (%-unbox 0) (%-unbox 1))
+  (%#-log2 ptr #u32 #u0 #u1)
   )
 
 ; Compile-time macros
 
-(defmacro (%-set-max-iterations! x)
+(defmacro (%#-set-max-iterations! x)
   (%#-set-max-iterations! x)
   '(begin)
   )
 
-(defmacro (%-with-lexical-named-value key value x)
-  (with-lexical (unwrap-quote key) value x)
-  )
+(define-syntax (%-with-lexical-named-value stx)
+  (syntax-case stx ()
+    [(_ key value x) (with-lexical #'key #'value #'x)]))
 
 (defmacro (%-lexical-value key)
   ((lexical-parameter (unwrap-quote key)))

@@ -1,7 +1,7 @@
 #lang pyramid
 
 (require psl "syntax.pmd")
-(require psl "arith.pmd")
+(require psl "runtime.pmd")
 
 ; Transactions have fresh addresses allocated for initialization and each message.
 ; So the caller should be different during initialization and the test simulation.
@@ -10,6 +10,6 @@
 (static creator (asm (evm 'CALLER)))
 (define sender (%-caller))
 
-(%-bool->fixnum (= creator sender))
+(%#-bool->fixnum (= creator sender))
 
 (set-test-result! 0)

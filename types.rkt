@@ -43,6 +43,7 @@
   (define-type labels (Listof label))
   (: make-source-map (-> SourceMap))
   (define (make-source-map) (make-hash))
+  (define-type (DottableListof A B) (U Null (Pairof A (U B (DottableListof A B)))))
   )
 
 ; codegen.rkt
@@ -187,10 +188,11 @@
 
 ; ast.rkt
 (module ast typed/racket
+  (require typed/racket/unsafe)
   (require (submod ".." common))
   (require (submod ".." abstract-machine))
-  (provide (all-defined-out)
-           (all-from-out (submod ".." common)))
+  (unsafe-provide (all-defined-out)
+                  (all-from-out (submod ".." common)))
 
   (struct pyr-const ([ value : RegisterValue ] [ boxed? : Boolean ]) #:transparent)
   (struct pyr-variable ([ name : Symbol ]) #:transparent)
@@ -200,10 +202,11 @@
   (struct pyr-if ([ predicate : Pyramid ] [ consequent : Pyramid ] [ alternative : Pyramid ]) #:transparent)
   (struct pyr-lambda ([ names : VariableNames ] [ body : Pyramid ]) #:transparent)
   (struct pyr-begin ([ body : Pyramids ]) #:transparent)
-  (struct pyr-application ([ operator : Pyramid ] [ operands : Pyramids ]) #:transparent)
-  (struct pyr-macro-application ([ name : VariableName ] [ operands : Pyramids ]) #:transparent)
-  (struct pyr-macro-definition ([ name : VariableName ] [ parameters : DottableParameters ] [ body : Racket ]) #:transparent)
+  (struct pyr-application ([ operator : Pyramid ] [ operands : Pyramids ] [ rest : (Option Pyramid) ]) #:transparent)
+  (struct pyr-macro-application ([ name : VariableName ] [ app-syntax : PyramidQ ]) #:transparent)
+  (struct pyr-macro-definition ([ name : VariableName ] [ parameters : DottableParameters ] [ body : PyramidQs ] [ out-options : expander-options ]) #:transparent)
   (struct pyr-asm ([ insts : Instructions]) #:transparent)
+  (struct pyr-unknown-application ([ name : VariableName ] [ app-syntax : PyramidQ ]) #:transparent)
   (define-type Pyramid (U pyr-const
                           pyr-variable
                           pyr-quoted
@@ -216,18 +219,22 @@
                           pyr-macro-application
                           pyr-macro-definition
                           pyr-asm
+                          pyr-unknown-application
                           ))
+  (define-predicate pyramid? Pyramid)
   (define-type VariableName Symbol)
   (define-type VariableNames (Listof VariableName))
-  (define-type PyramidQ (Sexpof (U Any PyramidQ)))
+  (define-type PyramidQ Syntax)
   (define-type PyramidQs (Listof PyramidQ))
   (define-type DottableParameters Any)
   (define-type Racket Any)
   (define-type Rackets (Listof Any))
   (define-type Value Any)
   (define-type Pyramids (Listof Pyramid))
+  (define-type DottedPyramids (DottableListof Pyramid Pyramid))
   (define-type Assertion Any)
-  (define-type PyrMacro Procedure)
+  (define-type PyrMacroFunction (-> PyramidQ PyramidQ))
+  (struct pyr-macro ([ func : PyrMacroFunction ] [ out-options : expander-options ]) #:transparent)
 
   (define-type Pass (-> Pyramid Pyramid))
 
@@ -248,6 +255,8 @@
   (define-type Lexical (Parameterof PyramidQ))
   (: make-lexical-table (-> LexicalTable))
   (define make-lexical-table make-hash)
+
+  (struct expander-options ([ box-literals? : Boolean ]) #:transparent)
   )
 
 ; simulator.rkt
@@ -363,6 +372,7 @@
   (define-type MemoryOffset Offset)
 
   (define-type AbiType (U "void" "uint256" "uint256[]" "bool" "bytes" "string" "symbol"))
+  (define-type ContractReturnValue (U Boolean Integer Symbol String Bytes (DottableListof ContractReturnValue ContractReturnValue)))
 
   (struct vm-store ([ history : history-storage ]
                     [ world : world-storage ]
@@ -372,16 +382,24 @@
 
 ; test.rkt
 (module test typed/racket
+  (require typed/racket/unsafe)
   (require (submod ".." common))
   (require (submod ".." ast))
   (require (submod ".." simulator))
-  (provide (all-defined-out))
+  (unsafe-provide (all-defined-out))
 
-  (define-type test-mod (-> test-txn Void))
+  (struct test-mod-value ([ value : Natural ]) #:transparent)
+  (struct test-mod-sender ([ sender : Symbol ]) #:transparent)
+  (struct test-mod-data-sender ([ sender : Symbol ]) #:transparent)
+  (struct test-mod-assert-balance ([ account : Symbol ] [ amount : Natural ]) #:transparent)
+  (struct test-mod-assert-return ([ value : Any ]) #:transparent)
+
+  (define-type init-mod (U test-mod-value test-mod-sender))
+  (define-type test-mod (U test-mod-value test-mod-sender test-mod-data-sender test-mod-assert-balance test-mod-assert-return))
   (define-type test-mods (Listof test-mod))
 
   (struct test-expectation ([ name : String ] [ expected : Any ] [ actual : (-> simulation-result-ex Any)]) #:transparent)
-  (struct test-txn ([ mods : PyramidQs ] [ tests : (Listof test-expectation) ]) #:transparent #:mutable)
+  (struct test-txn ([ mods : test-mods ] [ tests : (Listof test-expectation) ]) #:transparent #:mutable)
   (struct test-account ([ name : Symbol ] [ balance : EthWord ]) #:transparent)
   (struct test-case ([ name : String ] [ accounts : test-accounts ] [ deploy-txn : test-txn ] [ msg-txns : test-txns]) #:transparent #:mutable)
   (struct test-suite ([ name : String ] [ cases : (Listof test-case) ]) #:transparent)
@@ -395,15 +413,18 @@
 (module pyramidc typed/racket
   (require typed/racket/unsafe)
   (require (submod ".." ast))
+  (require (submod ".." abstract-machine))
+  (require (submod ".." evm-assembly))
   (unsafe-provide (all-defined-out))
 
   (struct translation-unit ([ language : Symbol ]
                             [ source-code : Sexp ]
                             [ abstract-syntax : Any ]
-                            [ compiled : Pyramid ]
+                            [ pyramid-ast : Pyramid ]
                             [ dependencies : translation-units ]
                             )
     #:transparent
     )
+  (struct full-compile-result ([ bytes : Bytes ] [ abstract-insts : Instructions ] [ eth-insts : EthInstructions ]) #:transparent)
   (define-type translation-units (Listof translation-unit))
   )

@@ -3,19 +3,19 @@
 (require psl "primitives.pmd")
 (require psl "syntax.pmd")
 
-(define vec (%#-unbox-arguments %#-mem-alloc-init (%#-* (%-unbox WORD) (%-unbox 10)) 3 1 4 1 5 9 2 6 5 3))
+(define vec (%#-mem-alloc-init (%#-* %#-WORD #u10) #u3 #u1 #u4 #u1 #u5 #u9 #u2 #u6 #u5 #u3))
 
-(%-box (syntax-fold %#-+
-                    (%#-mem-read vec (%-unbox 0)) ; + 3 = 3
-                    (%#-mem-read vec (%-unbox 1)) ; + 1 = 4
-                    (%#-mem-read vec (%-unbox 2)) ; + 4 = 8
-                    (%#-mem-read vec (%-unbox 3)) ; + 1 = 9
-                    (%#-mem-read vec (%-unbox 4)) ; + 5 = 14
-                    (%#-mem-read vec (%-unbox 5)) ; + 9 = 23
-                    (%#-mem-read vec (%-unbox 6)) ; + 2 = 25
-                    (%#-mem-read vec (%-unbox 7)) ; + 6 = 31
-                    (%#-mem-read vec (%-unbox 8)) ; + 5 = 36
-                    (%#-mem-read vec (%-unbox 9)) ; + 3 = 39
+(%#-box (syntax-fold %#-+
+                    (%#-mem-read vec #u0) ; + 3 = 3
+                    (%#-mem-read vec #u1) ; + 1 = 4
+                    (%#-mem-read vec #u2) ; + 4 = 8
+                    (%#-mem-read vec #u3) ; + 1 = 9
+                    (%#-mem-read vec #u4) ; + 5 = 14
+                    (%#-mem-read vec #u5) ; + 9 = 23
+                    (%#-mem-read vec #u6) ; + 2 = 25
+                    (%#-mem-read vec #u7) ; + 6 = 31
+                    (%#-mem-read vec #u8) ; + 5 = 36
+                    (%#-mem-read vec #u9) ; + 3 = 39
                     ))
 
 (set-test-result! 39)

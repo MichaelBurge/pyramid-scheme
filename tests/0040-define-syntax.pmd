@@ -1,0 +1,18 @@
+#lang pyramid
+
+(set-test-result! 10)
+
+; (defmacro (f x) 5)
+; (defmacro (g . xs) (for/sum ([ i xs ]) i))
+(define-syntax (f stx)
+  (syntax-case stx ()
+    [(_ _) #'5]
+    ))
+
+(define-syntax (g stx)
+  (datum->syntax
+   stx
+   (for/sum ([ i (cdr (syntax-e stx)) ])
+     (syntax-e i))))
+
+(g 1 2 3 4)

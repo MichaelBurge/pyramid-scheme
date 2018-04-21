@@ -20,19 +20,21 @@
 (: compile-pyramid (-> Target Linkage Pyramid inst-seq))
 (define (compile-pyramid target linkage exp)
   (match exp
-    [(struct pyr-const (x boxed?))         (compile-const target linkage x boxed?)]
-    [(struct pyr-quoted (x))               (compile-quoted target linkage x)]
-    [(struct pyr-asm _)                    (compile-asm target linkage exp)]
-    [(struct pyr-macro-definition _)       (compile-macro-definition target linkage exp)]
-    [(struct pyr-variable (name))          (compile-variable target linkage name)]
-    [(struct pyr-assign (name val))        (compile-assignment target linkage name val )]
-    [(struct pyr-definition (name val))    (compile-definition target linkage name val )]
-    [(struct pyr-if (pred cons alt))       (compile-if target linkage pred cons alt)]
-    [(struct pyr-lambda (parameters body)) (compile-lambda target linkage parameters body)]
-    [(struct pyr-begin (actions))          (compile-sequence target linkage actions)]
-    [(struct pyr-macro-application _)      (compile-macro-application target linkage exp)]
-    [(struct pyr-application (op args))    (compile-application target linkage op args)]
-    [_ (error "compile-pyramid: Unknown expression" exp)]))
+    [(struct pyr-const (x boxed?))          (compile-const target linkage x boxed?)]
+    [(struct pyr-quoted (x))                (compile-quoted target linkage x)]
+    [(struct pyr-asm _)                     (compile-asm target linkage exp)]
+    [(struct pyr-macro-definition _)        (compile-macro-definition target linkage exp)]
+    [(struct pyr-variable (name))           (compile-variable target linkage name)]
+    [(struct pyr-assign (name val))         (compile-assignment target linkage name val )]
+    [(struct pyr-definition (name val))     (compile-definition target linkage name val )]
+    [(struct pyr-if (pred cons alt))        (compile-if target linkage pred cons alt)]
+    [(struct pyr-lambda (parameters body))  (compile-lambda target linkage parameters body)]
+    [(struct pyr-begin (actions))           (compile-sequence target linkage actions)]
+    [(struct pyr-macro-application _)       (compile-macro-application target linkage exp)]
+    [(struct pyr-application (op args #f))  (compile-application target linkage op args)]
+    [(struct pyr-application (op args dot)) (error "compile-pyramid: Attempted to compile a dotted function application" exp)]
+    [(struct pyr-unknown-application _)     (error "compile-pyramid: Must disambiguate macro vs. function application before compiling" exp)]
+    ))
 
 (: empty-instruction-sequence (-> inst-seq))
 (define (empty-instruction-sequence)
@@ -68,11 +70,9 @@
      (end-with-linkage linkage
                        (make-insts '() (list target)
                                    (assign target (boxed-const name))))]
-    [(struct pyr-application (hd tl))
+    [(struct pyr-application (hd tl dot))
      (end-with-linkage linkage
-                       (append-instruction-sequences (construct-arglist (map (λ ([ x : Pyramid ])
-                                                                               (compile-quoted 'val 'next x))
-                                                                             (reverse (cons hd tl))))
+                       (append-instruction-sequences (construct-list (cons hd tl) dot)
                                                      (make-insts '(argl) (listof target)
                                                                  (assign target (reg 'argl)))))]
     [else (error "compile-quoted: Unhandled case" exp)]))
@@ -179,7 +179,7 @@
                proc-entry
                (assign 'env (op 'compiled-procedure-env `(,(reg 'proc))))
                (assign 'env (op 'extend-environment
-                                `(,(const (reverse formals))
+                                `(,(const formals)
                                   ,(reg 'argl)
                                   ,(reg 'env)))))
    (compile-pyramid 'val 'return body)))
@@ -187,54 +187,69 @@
 
 (: compile-application (-> Target Linkage Pyramid Pyramids inst-seq))
 (define (compile-application target linkage op args)
-  (let ([proc-code (compile-pyramid 'proc 'next op)]
-        [operand-codes
-         (map (λ ([ arg : Pyramid ])
-                (compile-pyramid 'val 'next arg))
-              args)])
+  (let ([proc-code (compile-pyramid 'proc 'next op)])
     (preserving '(env continue)
                 proc-code
                 (preserving '(proc continue)
-                            (construct-arglist operand-codes)
+                            (construct-list args #f)
                             (compile-procedure-call target linkage)))))
 
 (: compile-macro-application (-> Target Linkage pyr-macro-application inst-seq))
 (define (compile-macro-application target linkage exp)
     (compile-pyramid target linkage (expand-macro exp)))
 
-(: construct-arglist (-> (Listof inst-seq) inst-seq))
-(define (construct-arglist operand-codes)
-  (if (null? operand-codes)
-      (make-insts '() '(argl)
-                  (assign 'argl (const '())))
-      (let ((code-to-get-last-arg
-             (append-instruction-sequences
-              (car operand-codes)
-              (make-insts '(val) '(argl)
-                          (assign 'argl (op 'singleton `(,(reg 'val))))))))
-        (if (null? (cdr operand-codes))
-            code-to-get-last-arg
-            (preserving '(env)
-                        code-to-get-last-arg
-                        (code-to-get-rest-args
-                         (cdr operand-codes)))))))
+(: construct-list (-> Pyramids (Option Pyramid) inst-seq))
+(define (construct-list xs dot)
+  (: pair-codes (-> inst-seq inst-seq inst-seq))
+  (define (pair-codes a b)
+    (preserving '(env)
+                b
+                (preserving '(argl env)
+                            a
+                            (make-insts '(val argl) '(argl)
+                                        (assign 'argl (op 'pair `(,(reg 'val) ,(reg 'argl))))))))
 
-(: code-to-get-rest-args (-> (Listof inst-seq) inst-seq))
-(define (code-to-get-rest-args operand-codes)
-  (let ((code-for-next-arg
-         (preserving '(argl)
-                     (car operand-codes)
-                     (make-insts '(val argl) '(argl)
-                                 (assign 'argl
-                                         (op 'pair
-                                             `(,(reg 'val)
-                                               ,(reg 'argl))))))))
+  (match xs
+    ['() (if dot
+             (compile-pyramid 'argl 'next dot)
+             (make-insts '() '(argl) (assign 'argl (const '()))))]
+    [(cons a b)
+     (let ([ code-b (construct-list b dot) ]
+           [ code-a (compile-pyramid 'val 'next a) ])
+       (pair-codes code-a code-b))]
+    ))
 
-    (if (null? (cdr operand-codes))
-        code-for-next-arg
-        (preserving '(env)
-                    code-for-next-arg
-                    (code-to-get-rest-args (cdr operand-codes))))))
+;;   (if (pair? operand-codes)
+;;   (if (not null? operand-codes)
+;;       (let ((code-to-get-last-arg
+;;              (append-instruction-sequences
+;;               (car operand-codes)
+;;               (make-insts '(val) '(argl)
+;;                           (assign 'argl (op 'singleton `(,(reg 'val))))))))
+;;         (if (null? (cdr operand-codes))
+;;             code-to-get-last-arg
+;;             (preserving '(env)
+;;                         code-to-get-last-arg
+;;                         (preserving '(env)
+;;                                     (code-to-get-rest-args
+;;                          (cdr operand-codes)))))))
+
+;; (: code-to-get-rest-args (-> (Listof inst-seq) inst-seq))
+;; (define (code-to-get-rest-args operand-codes)
+;;   (let ((code-for-next-arg
+;;          (preserving '(argl)
+;;                      (car operand-codes)
+;;                      (make-insts '(val argl) '(argl)
+;;                                  (assign 'argl
+;;                                          (op 'pair
+;;                                              `(,(reg 'val)
+;;                                                ,(reg 'argl))))))))
+
+;;     (if (null? (cdr operand-codes))
+;;         code-for-next-arg
+;;         (preserving '(env)
+;;                     code-for-next-arg
+;;                     (code-to-get-rest-args (cdr operand-codes))))))
 
 (: compile-procedure-call (-> Target Linkage inst-seq))
 (define (compile-procedure-call target linkage)

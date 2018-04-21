@@ -1,0 +1,9 @@
+#lang pyramid
+
+
+(define (equal? a b)
+  (or (ptr-= a b)
+      (and (eq? (%-tag a) (%-tag b))
+           (cond ((fixnum? x) (equal-fixnum? x))
+                 ((symbol? x) (equal-fixnum? x))
+                 (else (%-throw))))))

@@ -7,7 +7,7 @@
 
 (require "globals.rkt")
 (require "utils.rkt")
-(require "parser.rkt")
+(require "expander.rkt")
 (require (submod "types.rkt" common))
 (require (submod "types.rkt" abstract-machine))
 (require (submod "types.rkt" evm-assembly))
@@ -282,6 +282,7 @@
     [(struct reg (name))      (read-reg name)]
     [(struct const (v))       (cond [(v-unboxed? v) v]
                                     [(list? v)      (list->v-list (cast v (Listof value)))]
+                                    [(char? v)      (char->integer v)]
                                     [else (error "eval-mexpr: Unhandled type" v)])]
     [(struct boxed-const (v)) (v-box v)]
     [(struct op _)            (eval-op eval-mexpr x)]
@@ -626,14 +627,14 @@
           (match (*evm-pc*)
             [-1 pc]
             [x  (format "~a:~a" pc (*evm-pc*))])
-          (shrink-asm (*current-instruction*))
-          (map shrink-value (machine-stack *m*))
-          (shrink-value (machine-val      *m*))
-          (shrink-value (machine-continue *m*))
-          (shrink-value (machine-proc     *m*))
-          (shrink-value (machine-argl     *m*))
-          (shrink-value (machine-stack-size *m*))
-          (shrink-value (machine-env      *m*) #:env? (verbose? VERBOSITY-HIGH))
+          (asm->datum (*current-instruction*))
+          (map value->datum (machine-stack *m*))
+          (value->datum (machine-val      *m*))
+          (value->datum (machine-continue *m*))
+          (value->datum (machine-proc     *m*))
+          (value->datum (machine-argl     *m*))
+          (value->datum (machine-stack-size *m*))
+          (value->datum (machine-env      *m*) #:env? (verbose? VERBOSITY-HIGH))
           (if (verbose? VERBOSITY-MEDIUM) (*allocation-ranges*) '())
           (if (verbose? VERBOSITY-MEDIUM) (*allocation-fixnums*) '())
           ))

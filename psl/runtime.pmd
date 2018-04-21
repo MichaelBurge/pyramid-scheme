@@ -2,43 +2,67 @@
 
 (require psl "primitives.pmd")
 (require psl "syntax.pmd")
-(require psl "arith.pmd")
 
 ; Primitives
-(define null (%-null))
-(define null? %-null?)
-
-(define fixnum %-box)
+(define null (%#-null))
+(define null? %#-null?)
 
 ; (fixnum? x) implies x = (fixnum (unbox x))
 ; (symbol? x) implies x = (symbol (unbox x))
-(define unbox %-unbox)
+(define %-unbox %#-unbox)
 
-(define pair %-pair)
-(define l %-left)
-(define r %-right)
+(define pair %#-pair)
+(define l %#-left)
+(define r %#-right)
+(define car %#-left)
+(define cdr %#-right)
 
 (defmacro (list . xs)
   (define (loop lst)
     (if (null? xs)
-        '(%-null)
+        'null
         `(pair ,(car lst) (list ,@(cdr lst)))))
   (loop xs))
 
-(defmacro (%-lift-binop op a b)
-  `(box (,op (unbox ,a) (unbox ,b))))
+(define ptr-= %#-=)
 
-(defmacro (%-lift-boolop op a b)
-  `(,op (unbox ,a) (unbox ,b)))
+(define-syntax (define-primop stx)
+  (syntax-case stx ()
+    [(_ (name args ...) primitive) #'(define (name args ...) (%#-box (primitive (%#-unbox-fixnum args) ...)))]
+    ))
 
-(define (+ a b) (%-lift-binop %#-+ a b))
-(define (* a b) (%-lift-binop %#-* a b))
-(define (- a b) (%-lift-binop %#-- a b))
-(define (/ a b) (%-lift-binop %#-u/ a b))
-(define (mod a b) (%-lift-binop %#-u% a b))
+(define-syntax (define-primproc stx)
+  (syntax-case stx ()
+    [(_ (name args ...) primitive body ...) #'(define (name args ...) (primitive (%#-unbox-fixnum args) ...) body ...)]
+    ))
 
-(define (= a b) (%-lift-boolop %#-= a b))
-(define (> a b) (%-lift-boolop %#-u> a b))
-(define (< a b) (%-lift-boolop %#-u< a b))
-(define (>= a b) (%-lift-boolop %#-u>= a b))
-(define (<= a b) (%-lift-boolop %#-u<= a b))
+(define-primop (+ a b) %#-+)
+(define-primop (* a b) %#-*)
+(define-primop (- a b) %#--)
+(define-primop (/ a b) %#-u/)
+(define-primop (% a b) %#-u%)
+
+(define-primproc (= a b) %#-=)
+(define-primproc (> a b) %#-u>)
+(define-primproc (< a b) %#-u<)
+(define-primproc (>= a b) %#-u>=)
+(define-primproc (<= a b) %#-u<=)
+
+(define-primproc (%-suicide a)          %#-suicide)
+(define-primop   (%-address)            %#-address)
+(define-primop   (%-balance a)          %#-balance)
+(define-primop   (%-origin)             %#-origin)
+(define-primop   (%-caller)             %#-caller)
+(define-primop   (%-callvalue)          %#-callvalue)
+(define-primop   (%-calldatasize)       %#-calldatasize)
+(define-primop   (%-timestamp)          %#-timestamp)
+(define-primop   (%-calldataload a)     %#-calldataload)
+(define-primop   (%-calldatacopy a b c) %#-calldatacopy)
+(define-primop   (%-address)            %#-address)
+(define-primop   (%-balance a)          %#-balance)
+
+(define-primop   (%-store-read a)       %#-sload)
+(define-primproc (%-store-write! a b)   %#-sstore)
+
+(define (vector-read a b) (%#-vector-read a (%#-unbox-fixnum b)))
+(define (vector-write! a b c) (%#-vector-write! a (%#-unbox-fixnum b) c) a)

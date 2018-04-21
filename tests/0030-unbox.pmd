@@ -5,8 +5,8 @@
 
 (set-test-result! 70)
 
-(%-box
- (%#-+ (%-unbox #\A)   ; 65
- (%#-+ (%-unbox 5)     ; 5
- (let ([ b (%#-coerce-word (%-unbox 'B)) ]) ; Don't care about 'B, just that we can unbox it.
+(%#-box
+ (%#-+ (unbox #\A)   ; 65
+ (%#-+ (unbox 5)     ; 5
+ (let ([ b (%#-coerce-word (unbox 'B)) ]) ; Don't care about 'B, just that we can unbox it.
    (%#-- b b)))))

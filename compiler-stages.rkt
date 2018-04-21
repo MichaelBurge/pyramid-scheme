@@ -1,7 +1,5 @@
 #lang typed/racket
 
-; "Analysis" refers to the layer that handles the full compilation pipeline from Pyramid to Bytecode.
-
 (require racket/pretty)
 
 (require "abstract-analyzer.rkt")
@@ -15,11 +13,11 @@
 (require "io.rkt")
 ; (require "minimize.rkt")
 (require "simplifier.rkt")
-(require "parser.rkt")
+(require (submod "expander.rkt" typed))
+(require (submod "types.rkt" ast))
+(require (submod "types.rkt" pyramidc))
 
 (provide (all-defined-out))
-
-(struct full-compile-result ([ bytes : Bytes ] [ abstract-insts : Instructions ] [ eth-insts : EthInstructions ]) #:transparent)
 
 (: maybe-link (-> Bytes Bytes))
 (define (maybe-link bs)
@@ -60,16 +58,16 @@
   (for ([ p (sort-source-map map)])
     (printf "~a\t~a\n" (car p) (cdr p))))
 
-(: full-compile (-> PyramidQ full-compile-result))
+(: full-compile (-> Syntax full-compile-result))
 (define (full-compile prog)
   ; (reinitialize-globals!)
   (verbose-section "Program" VERBOSITY-LOW
-                   (pretty-print prog))
+                   (pretty-print (syntax->datum prog)))
   (let ([ expanded (expand-pyramid prog)])
     (verbose-section "Expanded" VERBOSITY-MEDIUM
                      (pretty-print expanded))
     (verbose-section "Reshrunk" VERBOSITY-HIGH
-                     (pretty-print (shrink-pyramid expanded)))
+                     (print-ast expanded))
     (let ([ simplified (if (*simplify?*) (simplify expanded) expanded) ])
       (verbose-section "Simplified" VERBOSITY-LOW
                        (print-ast simplified))

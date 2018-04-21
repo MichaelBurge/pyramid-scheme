@@ -2,8 +2,7 @@
 
 (set-test-result! 10)
 
-(include psl "syntax.pmd")
-(include psl "arith.pmd")
+(require psl "syntax.pmd")
 
 (let ([ x 5 ]
       [ y 5 ])

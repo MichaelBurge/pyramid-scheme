@@ -14,7 +14,7 @@
 (require "wallet.rkt")
 (require "transaction.rkt")
 (require "utils.rkt")
-(require "parser.rkt")
+(require "expander.rkt")
 (require "abstract-analyzer.rkt")
 (require typed/racket/unsafe)
 (require math)

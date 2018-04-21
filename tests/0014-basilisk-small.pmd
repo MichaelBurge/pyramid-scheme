@@ -1,7 +1,7 @@
 #lang pyramid
 
 (require psl "primitives.pmd")
-(require psl "arith.pmd")
+(require psl "runtime.pmd")
 (require psl "syntax.pmd")
 (require psl "contract.pmd")
 
