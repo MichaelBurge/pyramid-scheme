@@ -27,17 +27,15 @@
 
   (define-syntax (quasiquote-pyramid stx)
     (define (loop stx)
-      (match stx
-        [(list 'unquote y) `(,'unquote (shrink-pyramid ,y))]
-        [(list 'unquote-splicing ys) `(,'unquote-splicing (map shrink-pyramid ,ys))]
-        [`(quasiquote  ,y) `(expand-pyramid (,'quasiquote ,(loop y)))]
-        [(? list? xs)       (map loop xs)]
-        [y y]
+      (syntax-case stx (unquote unquote-splicing quasiquote)
+        [(unquote y)           #'(unsyntax (shrink-pyramid y))]
+        [(unquote-splicing ys) #'(unsyntax-splicing (map shrink-pyramid ys))]
+        [(quasiquote y)        #`(expand-pyramid (#,#'quasisyntax #,(loop #'y)))]
+        [(xs ...) #`(#,@(map loop (syntax-e #'(xs ...))))]
+        [x #'x]
         ))
     (syntax-case stx ()
-      [(_ exp)
-       (let ([ ret (loop (syntax->datum #'exp))])
-         (datum->syntax #'exp ret))]))
+      [(_ exp) (loop #'exp)]))
   )
 
 (module primitive-ast typed/racket
@@ -463,7 +461,8 @@
                   unknown->application
                   )
   (unsafe-require/typed (submod ".." expanders)
-                        [ expand-pyramid (-> PyramidQ Pyramid)]
+                        [ expand-pyramid (case-> (-> PyramidQ Pyramid)
+                                                 (-> (Syntaxof Any) Pyramid))]
                         [ unknown->application (-> pyr-unknown-application pyr-application)]
                         )
   (unsafe-require/typed (submod ".." shrinkers)

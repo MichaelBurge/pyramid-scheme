@@ -3,7 +3,7 @@
 (define-syntax (defmacro stx)
   (syntax-case stx ()
     [(_ (name . args) body ...)
-     #`(define-syntax (name stx2)
-         (define f (λ args body ...))
+     #'(define-syntax (name stx2)
+         (define name (λ args body ...))
          (datum->syntax stx2
-                        (apply f (cdr (map syntax->datum (syntax->list stx2))))))]))
+                        (apply name (cdr (map syntax->datum (syntax->list stx2))))))]))

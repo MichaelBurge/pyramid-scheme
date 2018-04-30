@@ -9,6 +9,7 @@
          (all-from-out 'struct)
          dotted-map
          list->dottable
+         unsafe-cast
          )
 
 (define WORDLIMIT (arithmetic-shift 1 256))
@@ -186,9 +187,11 @@
       [(cons a b) (cons (f a) (f b))]
       ))
   (define (list->dottable xs) xs)
+  (define (unsafe-cast x) x)
   )
 
 (unsafe-require/typed 'unsafe
                       [ dotted-map (All (A B) (-> (-> A B) (DottableListof A A) (DottableListof B B)))]
                       [ list->dottable (All (A B) (-> (Listof A) (DottableListof A B)))]
+                      [ unsafe-cast (All (A B) (-> A B))]
                       )

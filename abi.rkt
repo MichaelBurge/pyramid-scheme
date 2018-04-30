@@ -51,13 +51,13 @@
     [(? fixnum?) "uint256"]
     [(? null?) "void"]
     [(? symbol?) "symbol"]
-    [`(%-unbox ,y) (infer-type y)]
+    [`(unbox ,y) (infer-type y)]
     [(? list?) (match (infer-type (car x))
                  ["uint256" "uint256[]"]
-                 [t (error "infer-type: Unexpected list type" t)])]
+                 [t (error "infer-type: Unexpected list type" t x)])]
     [(? vector?) (match (infer-type (vector-ref x 0))
                    ["uint256" "uint256[]"]
-                   [t (error "infer-type: Unexpected vector typed" t)])]
+                   [t (error "infer-type: Unexpected vector type" t x)])]
     [(? string?) "string"]
     [_ (error "infer-type: Unknown type" x)]
     ))

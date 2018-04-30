@@ -6,10 +6,12 @@
 
 (defmacro (%#-unreachable) `(%#-throw))
 
-(defmacro (intro-var v1 . fs)
-  (list* 'asm
-         `(save (op 'lookup-variable-value (const (quote ,v1)) (reg 'env)))
-         (map (λ (f) `(save (op ,f stack))) fs)))
+(define-syntax (intro-var stx)
+  (syntax-case stx ()
+    [(_ v1 f ...)
+     #'(asm (save (op 'lookup-variable-value (const 'v1) (reg 'env)))
+            (save (op f stack)) ...)]
+    ))
 
 (define-syntax (nullproc stx)
   (syntax-case stx ()
@@ -231,7 +233,7 @@
         to
         (begin (%#-mem-write! to n (%#-mem-read from n))
                (loop (%#-+ n #u1)))))
-  (loop0))
+  (loop (unbox 0)))
 
 (define (%#-bytes->words x)
   (%#-u/ x %#-WORD))
@@ -240,7 +242,7 @@
   (if (%#-fixnum?    a) (%#-unbox-fixnum    a)
   (if (%#-character? a) (%#-unbox-character a)
   (if (%#-symbol?    a) (%#-unbox-symbol    a)
-                        (%#-throw-error 'something)))))
+                        (%#-throw-error '%#-unbox)))))
 
 ; ioctl debug helpers
 

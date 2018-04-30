@@ -175,3 +175,10 @@
                     offset
                     virtual?
                     ))
+(: make-macro-application (-> (Syntaxof Any) pyr-macro-application))
+(define (make-macro-application stx)
+  ; (some-macro . anything)
+  (: name Symbol)
+  (define name (car (cast (syntax->datum stx) (Pairof Symbol Any))))
+  (pyr-macro-application name (unsafe-cast stx))
+  )

@@ -172,8 +172,13 @@ See %-install-macro-library for the namespace creation code.
 
   (: %-test-result PyrMacroFunction)
   (define (%-test-result exp)
-    (syntax-case exp ()
-      [(_ value) (set-test-suite! (make-simple-test-suite (unwrap-quote (syntax->datum #'value))))]
+    (define (set-value value)
+      (set-test-suite! (make-simple-test-suite (syntax->datum value))))
+    (syntax-case exp (box unbox)
+      [(_ (box   value)) (set-value #'value)]
+      [(_ (unbox value)) (set-value #'value)]
+      [(_ (quote value)) (set-value #'value)]
+      [(_ value)         (set-value #'value)]
       )
     #'(begin))
 
