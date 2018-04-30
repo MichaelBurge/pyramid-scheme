@@ -266,9 +266,11 @@
 
 ; Compile-time macros
 
-(defmacro (%#-set-max-iterations! x)
-  (%#-set-max-iterations! x)
-  '(begin)
+(define-syntax (%#-set-max-iterations! stx)
+  (syntax-case stx ()
+    [(_ n) (set-max-iterations! (syntax->integer #'n))]
+    )
+  #'(begin)
   )
 
 (define-syntax (%-with-lexical-named-value stx)

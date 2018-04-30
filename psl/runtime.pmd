@@ -10,6 +10,7 @@
 ; (fixnum? x) implies x = (fixnum (unbox x))
 ; (symbol? x) implies x = (symbol (unbox x))
 (define %-unbox %#-unbox)
+(define %-throw %#-throw)
 
 (define pair %#-pair)
 (define l %#-left)

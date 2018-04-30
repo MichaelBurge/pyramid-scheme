@@ -37,6 +37,7 @@
 
 ; TODO: Syntax-related functions must be unsafely provided, due to https://github.com/racket/typed-racket/issues/338
 (unsafe-provide minicompile
+                syntax->integer
                 )
 
 #|
@@ -240,6 +241,12 @@ See %-install-macro-library for the namespace creation code.
       [(_ collection mod) (include-unless-cached (get-collection-directory (syntax-e #'collection))
                                                  (syntax-e #'mod))]
       ))
+  (: syntax->integer (-> PyramidQ Integer))
+  (define (syntax->integer stx)
+    (match (syntax->datum stx)
+      [`(unbox ,(? exact-integer? n)) n]
+      [(? exact-integer? n) n]
+      ))
   )
 
 (require (submod 'syntax-manipulators typeable))
@@ -251,6 +258,7 @@ See %-install-macro-library for the namespace creation code.
   [ %-require     PyrMacroFunction]
   [ make-simple-test-suite (-> PyramidQ test-suite)]
   [ make-parser (-> Any (-> simulation-result-ex Any)) ]
+  [ syntax->integer (-> PyramidQ Integer)]
   )
 
 ;; (define (%-selector sig) (keccak-256 (string->bytes/utf-8 (%-sig-str sig))))
@@ -261,17 +269,10 @@ See %-install-macro-library for the namespace creation code.
   (define pp (patchpoint sym ethis))
   (*patchpoints* (cons pp (*patchpoints*))))
 
-(: %#-set-max-iterations! (-> Natural Void))
-(define (%#-set-max-iterations! x)
+(: set-max-iterations! (-> Natural Void))
+(define (set-max-iterations! x)
   (*max-simulation-steps* x)
   )
-
-(: %#-get-const-integer (-> PyramidQ Integer))
-(define (%#-get-const-integer x)
-  (match x
-    [`(%-unbox ,(? exact-integer? n)) n]
-    [(? exact-integer? n) n]
-    ))
 
 (define (%-install-macro-library!)
   (: base-ns Namespace)
