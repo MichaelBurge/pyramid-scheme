@@ -436,7 +436,7 @@
       [(struct v-continuation (cont env stack)) #`(λ-> #,(shrink-value cont) ,stack)]
       [(struct v-frame (mappings)) #`(quote #,mappings)]
       [(struct v-environment (frames)) #`(env #,@(if env? (map shrink-value frames) null))]
-      [(struct v-bytes (bs)) #`(bytes #,bs)]
+      [(struct v-bytes (ptr)) #`(bytes #,ptr)]
       [(struct label (name)) #`(quote #,(label-name e))]
       [(? v-unboxed? _) #`(quote #,e)]
       ))

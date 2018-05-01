@@ -554,6 +554,7 @@ These optimizations are currently unimplemented:
           [(boolean? val) (cg-mexpr-const (const (if val 1 0)))]
           [(vector?  val) (cg-make-vector (const (vector-length val)) (map const (vector->list val)))]
           [(char?    val) (list (evm-push 'shrink (char->integer val)))]
+          [(string?  val) (cg-make-bytes-literal (string->bytes/utf-8 val) #f)]
           [else           (error "cg-mexpr-const: Unsupported constant" exp)])))
 
 
@@ -565,7 +566,7 @@ These optimizations are currently unimplemented:
           [(list? val)    (cg-make-list (map const val) #t)]
           [(vector? val)  (cg-make-vector (const (vector-length val)) (map boxed-const (vector->list val)))]
           [(char? val)    (cg-make-char (const val))]
-          [(string? val)  (cg-make-bytes-literal (string->bytes/utf-8 val))]
+          [(string? val)  (cg-make-bytes-literal (string->bytes/utf-8 val) #t)]
           [else           (error "cg-mexpr-boxed-const: Unsupported constant" exp)])))
 
 (unsafe-require/typed "unsafe.rkt"
@@ -1546,30 +1547,36 @@ SWAP1 -> [ x1; x2; x3; c ]
 (define-generator (cg-symbol-value x)
   (cg-fixnum-value x))
 
+(: cg-codecopy (Generator3 MExpr label MExpr))
+(define-generator (cg-codecopy dest-ptr lbl-data num-bytes)
+  (cg-intros (list dest-ptr lbl-data num-bytes)) ; [ mem-ptr; code-ptr; size ]
+  (asm 'CODECOPY)                                ; [ ]
+  )
+
 ; TODO: Move literals to the end of the program to avoid generating a JUMP
-(: cg-make-bytes-literal (Generator Bytes))
-(define-generator (cg-make-bytes-literal bs)
+(: cg-make-bytes-literal (Generator2 Bytes Boolean))
+(define-generator (cg-make-bytes-literal bs boxed?)
   (let ([ lbl-data (make-label 'literal 1)]
-        [ lbl-after (make-label 'literal-after)])
+        [ lbl-after (make-label 'literal-after)]
+        [ size-bytes (bytes-length bs)])
     (append (cg-goto lbl-after)
             `(,lbl-data)
             (list (evm-bytes bs))
             `(,lbl-after) ; [ ]
-            (cg-allocate (const (+ 2 (bytes-length bs)))) ; [ mem-ptr ]
-            (asm 'DUP1)                             ; [ mem-ptr; mem-ptr ]
-            (cg-write-address stack (const TAG-BYTES)) ; [ mem-ptr ]
-            (asm 'DUP1)                             ; [ mem-ptr; mem-ptr ]
-            (cg-add stack (const WORD))             ; [ mem-ptr+; mem-ptr]
-            (cg-write-address stack (const (bytes-length bs))) ; [ mem-ptr ]
-            (list
-             (evm-push 'shrink (bytes-length bs)) ; [ size; mem-ptr ]
-             (evm-push 'shrink lbl-data)          ; [ code-ptr; size; mem-ptr ]
-             (evm-op 'DUP3)                       ; [ mem-ptr; code-ptr; size; mem-ptr ]
-             (evm-push 'shrink (* 2 WORD))        ; [ data-offet; mem-ptr; code-ptr; size; mem-ptr ]
-             (evm-op 'ADD)                        ; [ mem-ptr*; code-ptr; size; mem-ptr]
-             (evm-op 'CODECOPY)                   ; [ mem-ptr]
-             ))
-    ))
+            (if boxed?
+                (append (cg-allocate (const (+ 2 size-bytes)))             ; [ mem-ptr ]
+                        (asm 'DUP1)                                        ; [ mem-ptr; mem-ptr ]
+                        (cg-write-address stack (const TAG-BYTES))         ; [ mem-ptr ]
+                        (asm 'DUP1)                                        ; [ mem-ptr; mem-ptr ]
+                        (cg-add stack (const WORD))                        ; [ mem-ptr+; mem-ptr]
+                        (cg-write-address stack (const size-bytes))        ; [ mem-ptr ]
+                        (asm 'DUP1)                                        ; [ mem-ptr; mem-ptr ]
+                        (cg-add stack (const (* 2 WORD)))                  ; [ data-ptr; mem-ptr ]
+                        (cg-codecopy stack lbl-data (const size-bytes)))   ; [ mem-ptr]
+                (append (cg-allocate (const size-bytes))                   ; [ mem-ptr ]
+                        (asm 'DUP1)                                        ; [ mem-ptr; mem-ptr ]
+                        (cg-codecopy stack lbl-data (const size-bytes)))   ; [ mem-ptr]
+            ))))
 
 (: cg-bytes-len (Generator MExpr))
 (define-generator (cg-bytes-len bs)

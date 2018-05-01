@@ -1,0 +1,7 @@
+#lang pyramid
+
+(require psl "primitives.pmd")
+
+(set-test-result! "hello world")
+
+(%#-read-memory-range (unbox "hello world") #u11)

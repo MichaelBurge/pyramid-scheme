@@ -122,7 +122,6 @@
 
 (define (%#-word->pointer a)   (unop (op 'word->pointer stack)))
 (define (%#-mem-alloc a)       (unop (op 'allocate stack)))
-
 (define (%#-mem-read a b)      (binop (op 'read-memory stack stack)))
 (define (%#-mem-write! a b c)  (triproc (op 'write-memory stack stack stack)))
 
@@ -195,6 +194,7 @@
 (define %#-TAG-FRAME               #u8)
 (define %#-TAG-ENVIRONMENT         #u9)
 (define %#-TAG-CHARACTER           #u10)
+(define %#-TAG-BYTES               #u11)
 
 (define %#-MEM-ENV            (unbox #x20))
 (define %#-MEM-PROC           (unbox #x40))
@@ -226,8 +226,8 @@
           ))
 
 ; Common utilities
-(define (%#-memcpy to from size)
-  (define size-words (%#-bytes->words size))
+(define (%#-memcpy to from size-bytes)
+  (define size-words (%#-bytes->words size-bytes))
   (define (loop n)
     (if (%#-u>= n size-words)
         to
@@ -236,7 +236,11 @@
   (loop (unbox 0)))
 
 (define (%#-bytes->words x)
-  (%#-u/ x %#-WORD))
+  (define base (%#-u/ x %#-WORD))
+  (if (%#-= (%#-u% x %#-WORD) #u0)
+      base
+      (%#-+ base #u1))
+  )
 
 (define (%#-unbox a)
   (if (%#-fixnum?    a) (%#-unbox-fixnum    a)
@@ -279,4 +283,18 @@
 
 (defmacro (%-lexical-value key)
   ((lexical-parameter (unwrap-quote key)))
+  )
+
+; Bytes
+(define (%#-words->bytes words)
+  (%#-* %#-WORD words))
+
+(define (%#-ptr-offset ptr os)
+  (%#-+ ptr (%#-words->bytes os)))
+
+(define (%#-read-memory-range src-ptr num-bytes)
+  (define total-num-words (%#-bytes->words (%#-+ num-bytes (%#-words->bytes #u2))))
+  (define bytes-ptr (%#-mem-alloc-init total-num-words %#-TAG-BYTES num-bytes))
+  (%#-memcpy (%#-ptr-offset bytes-ptr #u2) src-ptr num-bytes)
+  bytes-ptr
   )

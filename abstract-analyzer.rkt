@@ -70,7 +70,7 @@
   (require (except-in (submod "types.rkt" abstract-machine) values))
   (provide (all-defined-out))
 
-  (define-type AllocationFixnums (HashTable Integer v-fixnum))
+  (define-type AllocationFixnums (HashTable Natural v-fixnum))
   (define-type AllocationRanges (IntervalMap Bytes))
 
   (: make-allocation-ranges (-> AllocationRanges))
@@ -82,17 +82,17 @@
   (: *allocation-ranges* (Parameterof AllocationRanges))
   (define *allocation-ranges* (make-parameter (make-allocation-ranges)))
 
-  (: *allocation-ptr* (Parameterof Integer))
+  (: *allocation-ptr* (Parameterof Natural))
   (define *allocation-ptr* (make-parameter 1337))
 
   (: *allocation-fixnums* (Parameterof AllocationFixnums))
   (define *allocation-fixnums* (make-parameter (make-allocation-fixnums)))
 
-  (: tick-allocator! (-> Integer Void))
+  (: tick-allocator! (-> Natural Void))
   (define (tick-allocator! size)
     (*allocation-ptr* (+ (*allocation-ptr*) size ALLOCATION-RANGE-PADDING)))
 
-  (: allocate-range! (-> Integer Integer))
+  (: allocate-range! (-> Natural Natural))
   (define (allocate-range! len)
     (define ptr (*allocation-ptr*))
     (interval-map-set! (*allocation-ranges*) ptr (+ ptr len) (make-bytes len))
@@ -100,7 +100,18 @@
     ptr
     )
 
-  (: get-allocation (-> Integer Integer (Values Integer Bytes)))
+  (: pad-num-bytes (-> Natural Natural))
+  (define (pad-num-bytes x)
+    (* WORD (ceiling (/ x WORD))))
+
+  (: allocate-bytes! (-> Bytes Natural))
+  (define (allocate-bytes! ibs)
+    (define ptr (allocate-range! (pad-num-bytes (bytes-length ibs))))
+    (let-values ([(_ obs) (get-allocation ptr 0)])
+      (bytes-copy! obs 0 ibs))
+    ptr)
+
+  (: get-allocation (-> Natural Natural (Values Natural Bytes)))
   (define (get-allocation ptr os)
     (let-values ([(start end bs) (interval-map-ref/bounds (*allocation-ranges*)
                                                           ptr)])
@@ -108,7 +119,7 @@
               bs)
       ))
 
-  (: make-v-fixnum (-> Integer v-fixnum))
+  (: make-v-fixnum (-> Natural v-fixnum))
   (define (make-v-fixnum val)
     (define ptr (*allocation-ptr*))
     (define fx (v-fixnum val ptr))
@@ -119,7 +130,9 @@
 
   (: get-allocated-fixnum (-> Integer (U #f v-fixnum)))
   (define (get-allocated-fixnum addr)
-    (hash-ref (*allocation-fixnums*) addr #f))
+    (if (natural? addr)
+        (hash-ref (*allocation-fixnums*) addr #f)
+        #f))
   )
 
 (require 'allocator)
@@ -283,6 +296,7 @@
     [(struct const (v))       (cond [(v-unboxed? v) v]
                                     [(list? v)      (list->v-list (cast v (Listof value)))]
                                     [(char? v)      (char->integer v)]
+                                    [(string? v)    (v-bytes (allocate-bytes! (string->bytes/utf-8 v)))]
                                     [else (error "eval-mexpr: Unhandled type" v)])]
     [(struct boxed-const (v)) (v-box v)]
     [(struct op _)            (eval-op eval-mexpr x)]
@@ -328,7 +342,7 @@
 (: eval-op-box (-> value value))
 (define (eval-op-box val)
   (match val
-    [(? exact-integer? _) (make-v-fixnum val)]
+    [(? natural? _) (make-v-fixnum val)]
     [_ (error "eval-op-box: Should only box unboxed values")]))
 
 (: eval-evm-op (-> evm-op (U Void value)))
@@ -397,7 +411,7 @@
     ['LOG2 (proc 4)]
     ['LOG3 (proc 5)]
     ['LOG4 (proc 6)]
-    ; ['REVERT (set-machine-halted?! *m* #t)]
+    ['REVERT (set-machine-halted?! *m* #t)]
     ; TODO: Everything below is a stub until we get an SMT solver or something
     ['ADDRESS 1234]
     ['CALLER  4321]
@@ -493,37 +507,37 @@
 
 (: eval-op-allocate (-> value value))
 (define (eval-op-allocate size)
-  (assert size exact-integer?)
-  (allocate-range! size)
+  (assert size natural?)
+  (allocate-range! (* size WORD))
   )
 
 (: eval-op-read-memory (-> value value value))
 (define (eval-op-read-memory ptr os)
-  (with-asserts ([ ptr exact-integer? ]
-                 [ os exact-integer?  ])
-    (match (get-allocated-fixnum (+ ptr os))
-      [#f (let*-values ([(os2 bs) (get-allocation ptr os) ]
+  (: ptr EthWord)
+  (define ptr-val (eval-op-any->unboxed ptr))
+  (with-asserts ([ os natural?])
+    (match (get-allocated-fixnum (+ ptr-val os))
+      [#f (let*-values ([(os2 bs) (get-allocation ptr-val os) ]
                         [(word)   (bytes->integer bs #f #t os2 (+ os2 WORD))])
             word)]
       [fx fx])))
 
 (: eval-op-write-memory (-> value value value value))
 (define (eval-op-write-memory ptr os val)
-
-  (with-asserts ([ ptr exact-integer? ]
-                 [ os  exact-integer? ]
-                 [ val exact-integer? ])
+  (define word-val (eval-op-any->unboxed val))
+  (with-asserts ([ ptr natural? ]
+                 [ os  natural? ])
     (match (get-allocated-fixnum (- ptr WORD))
       [#f (let-values ([(os2 bs) (get-allocation ptr os)])
             ; If (bytes-copy!) triggers an exception, on the EVM this would instead corrupt nearby memory.
-            (bytes-copy! bs os2 (integer->bytes (truncate-int val) 32 #f #t)))]
-      [(? v-fixnum? fx) (set-v-fixnum-value! fx val)])
+            (bytes-copy! bs os2 (integer->bytes (truncate-int word-val) 32 #f #t)))]
+      [(? v-fixnum? fx) (set-v-fixnum-value! fx word-val)])
     ))
 
 (: eval-op-make-fixnum (-> value value))
 (define (eval-op-make-fixnum x)
   (match x
-    [(? exact-integer?) (make-v-fixnum x)]
+    [(? exact-nonnegative-integer?) (make-v-fixnum x)]
     [(? v-fixnum?) (make-v-fixnum (v-fixnum-ptr x))]
     [_ (error "eval-op-make-fixnum: Unknown case" x)]))
 
@@ -611,13 +625,14 @@
 (define (v-box x)
   (match x
     [(? boolean?) (error "v-box: Cannot box a boolean")]
-    [(? exact-integer?) (make-v-fixnum x)]
+    [(? exact-nonnegative-integer?) (make-v-fixnum x)]
+    [(? exact-integer?)             (make-v-fixnum (truncate-int x))]
     [(? symbol?)        (v-symbol x)]
     [(? list?)          (v-pair (v-box (first x))
                                   (v-box (cast (rest x) RegisterValue)))]
     [(? vector?)        (v-vector (vector-map v-box x))]
     [(? char?)          (v-char x)]
-    [(? string?)        (v-bytes (string->bytes/utf-8 x))]
+    [(? string?)        (v-bytes (allocate-bytes! (string->bytes/utf-8 x)))]
     [_ (error "v-box: Unknown type" x)]))
 
 (: print-debug-line (-> Void))
@@ -690,6 +705,9 @@
 (: eval-op-any->unboxed (-> value EthWord))
 (define (eval-op-any->unboxed x)
   (match x
-    [(? symbol?) (symbol->integer x)]
+    [(? natural?)           x]
+    [(? exact-integer?)     (truncate-int x)]
+    [(? symbol?)            (symbol->integer x)]
+    [(struct v-bytes (ptr)) ptr]
     [_ (error "eval-op-any->unboxed: Unsupported type" x)]
     ))
