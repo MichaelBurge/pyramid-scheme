@@ -273,7 +273,7 @@
 
   (define-type Frames (Listof Frame))
 
-  (struct exn:evm exn:fail ([ vm : vm-exec ]) #:transparent)
+  (struct exn:evm exn:fail:user ([ vm : vm-exec ]) #:transparent)
   (struct exn:evm:return exn:evm ([ result : Bytes ]) #:transparent)
   (struct exn:evm:misaligned-addr exn:evm ([ addr : EthWord ]) #:transparent)
   (struct exn:evm:throw exn:evm ([ value : Bytes ]) #:transparent)
@@ -371,7 +371,7 @@
   (define-type history-storage (HashTable StorageRoot world-storage)) ; All historical commit checkpoints
   (define-type MemoryOffset Offset)
 
-  (define-type AbiType (U "void" "uint256" "uint256[]" "bool" "bytes" "string" "symbol"))
+  (define-type AbiType (U "void" "uint256" "uint256[]" "bool" "bytes" "string" "symbol" "int256"))
   (define-type ContractReturnValue (U Boolean Integer Symbol String Bytes (DottableListof ContractReturnValue ContractReturnValue)))
 
   (struct vm-store ([ history : history-storage ]

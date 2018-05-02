@@ -120,6 +120,7 @@
 (: on-simulate-nop (-> vm-exec EthInstruction EthWords Void))
 (define (on-simulate-nop vm i reads) (void))
 (define *on-simulate-instruction* (make-parameter on-simulate-nop))
+(define *on-simulate-error* (make-parameter on-simulate-nop))
 
 (: on-log-nop (-> vm-exec Bytes EthWords Void))
 (define (on-log-nop vm bs tags) (void))
@@ -136,14 +137,20 @@
 (: *expander-options* (Parameterof expander-options))
 (define *expander-options* (make-parameter (expander-options #t)))
 
+(: *simulator-memory-num-bytes* (Parameter Natural))
+(define *simulator-memory-num-bytes* (make-parameter 2000000))
+
+(: *assume-macros-complete?* (Parameterof Boolean))
+(define *assume-macros-complete?* (make-parameter #f))
+
 ; Constants
 (define assumed-label-size 3) ; TODO: Number of bytes to leave behind for label relocations. This makes it difficult to write programs larger than 65536 bytes.
 (define *assumed-label-size* assumed-label-size)
-(define MEMORY-SIZE 2000000)
 (define DEFAULT-GAS-PRICE 10)
 (define DEFAULT-GAS-LIMIT 1000000)
 (define ALLOCATION-RANGE-PADDING 1000) ; Length of gaps between abstract analyzer's address space allocations. Catches most out-of-range writes.
 (define WORD #x20) ; 256-bit words / 8 bit granularity addresses = 32 8-bit words, or 0x20.
 (define IOCTL-TAG 0)
 
+; Syntax properties
 (define STXPROP-OUT-OPTIONS 'out-options)

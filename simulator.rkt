@@ -177,7 +177,7 @@
   (vm-exec 1     ; step
            0     ; pc
            null  ; stack
-           (make-bytes MEMORY-SIZE) ; memory
+           (make-bytes (*simulator-memory-num-bytes*)) ; memory
            0     ; gas
            0     ; largest memory access
            env
@@ -211,14 +211,19 @@
                      (raise (exn:evm:stack-underflow "simulate-one!" (current-continuation-marks) vm i num-reads stk)))]
          )
     ((*on-simulate-instruction*) vm i reads)
-    (match i
-      [(struct label-definition _)          (simulate-nop!  vm)]
-      [(struct evm-push ((? byte? size)
-                         (? exact-nonnegative-integer? val))) (simulate-push! vm size val)]
-      [(struct evm-push _)                  (error "simulate-one!: Can only push integers" i)]
-      [(struct evm-op (sym))                (simulate-asm!  vm (evm-op-name i))]
-      [_                                    (error "Unknown opcode found - simulate-one:" i)]
-      )
+    (with-handlers ([ exn:evm? raise]
+                    [ exn:fail? (λ ([e : exn:fail ])
+                                  (begin (println "Unexpected exception caught")
+                                         ((*on-simulate-error*) vm i reads)
+                                         (raise e)))])
+      (match i
+        [(struct label-definition _)          (simulate-nop!  vm)]
+        [(struct evm-push ((? byte? size)
+                           (? exact-nonnegative-integer? val))) (simulate-push! vm size val)]
+        [(struct evm-push _)                  (error "simulate-one!: Can only push integers" i)]
+        [(struct evm-op (sym))                (simulate-asm!  vm (evm-op-name i))]
+        [_                                    (error "Unknown opcode found - simulate-one:" i)]
+        ))
     (set-vm-exec-pc!   vm (+ (vm-exec-pc   vm) (instruction-size i)))
     (set-vm-exec-gas!  vm (+ (vm-exec-gas  vm) used-gas))
     (set-vm-exec-step! vm (+ (vm-exec-step vm) 1))
@@ -364,8 +369,7 @@
          [ dest      (vm-exec-memory vm) ]
          [ src       (vm-exec-bytecode vm) ]
          )
-    (when (>= (+ len dest-addr) (bytes-length dest))
-      (error "simulate-codecopy!: Exceeded available memory" `(,dest-addr ,len) '>= (bytes-length dest)))
+    (validate-memory-range! vm dest-addr len)
     (touch-memory! vm (+ dest-addr len))
     (bytes-copy! dest dest-addr
                  src src-addr
@@ -462,6 +466,7 @@
 
 (: write-memory! (-> vm-exec EthWord Bytes Void))
 (define (write-memory! vm addr val)
+  (validate-memory-range! vm addr (bytes-length val))
   (touch-memory! vm (+ addr (bytes-length val)))
   (bytes-copy! (vm-exec-memory vm) addr val))
 
@@ -724,3 +729,11 @@
 
 (: vm-exec-bytecode (-> vm-exec Bytes))
 (define (vm-exec-bytecode vm) (vm-exec-environment-bytecode (vm-exec-env vm)))
+
+(: validate-memory-range! (-> vm-exec Address Natural Void))
+(define (validate-memory-range! vm ptr num-bytes)
+  (: memory-size Natural)
+  (define memory-size (bytes-length (vm-exec-memory vm)))
+  (when (>= (+ ptr num-bytes) memory-size)
+    (error "validate-memory-range!: Exceeded available memory"
+           `(,ptr ,num-bytes) '>= memory-size)))

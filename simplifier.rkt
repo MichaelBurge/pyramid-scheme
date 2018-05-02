@@ -15,8 +15,6 @@
    [ mutable-set (All (A) (-> (Setof A)))])
 
 (define *pass-number* 0)
-(: *assume-complete?* Boolean)
-(define *assume-complete?* #f)
 
 (provide simplify
          simplify-macros
@@ -26,7 +24,7 @@
 (define (simplify prog)
   (set! prog (fixpass (λ ([ prog : Pyramid])
                           (set! prog (fixpass pass-expand-macros prog))
-                          (set! *assume-complete?* #t)
+                          (*assume-macros-complete?* #t)
                           (set! prog (fixpass pass-determine-unknown-applications prog))
                           prog)
                       prog))
@@ -70,7 +68,7 @@
   )
 
 (: simplify-macros Pass)
-(define simplify-macros pass-expand-macros)
+(define simplify-macros (λ ([ prog : Pyramid ]) (fixpass pass-expand-macros prog)))
 
 (: pass-remove-unused-definitions Pass)
 (define-pass (pass-remove-unused-definitions prog)
@@ -140,12 +138,19 @@
                             x))))])
         prog))))
 
+(: *fixpass-num-iterations* (Parameterof Integer))
+(define *fixpass-num-iterations* (make-parameter 1000))
+
 (: fixpass (-> Pass Pyramid Pyramid))
 (define (fixpass pass prog)
-  (let ([ newprog (pass prog) ])
-    (if (equal? prog newprog)
-        prog
-        (fixpass pass newprog))))
+  (define n (*fixpass-num-iterations*))
+  (if (< n 0)
+      (error "fixpass: Maximum iterations reached reducing program" prog)
+      (parameterize ([ *fixpass-num-iterations* (- n 1)])
+        (let ([ newprog (pass prog) ])
+          (if (equal? prog newprog)
+              prog
+              (fixpass pass newprog))))))
 
 (: remove-definitions (-> Pyramid (Setof VariableName) Pyramid))
 (define (remove-definitions prog vars)
@@ -157,7 +162,7 @@
         x))
   (transform-ast-descendants prog transform))
 
-; assume-complete? means "Are all possible macros defined?".
+; assume-macros-complete? means "Are all possible macros defined?".
 ; After macro expansion, every unknown application can default to a function application.
 ; But during macro expansion, a macro could be defined later even if it isn't now.
 (: pass-determine-unknown-applications Pass)
@@ -168,7 +173,7 @@
                                   (destruct pyr-unknown-application x)
                                   (if (macro? x-name)
                                       (pyr-macro-application x-name x-app-syntax)
-                                      (if *assume-complete?*
+                                      (if (*assume-macros-complete?*)
                                           (unknown->application x)
                                           x)))))
 

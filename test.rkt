@@ -66,8 +66,10 @@
 
 (: run-test-case (-> String Bytes test-case simulation-result-exs))
 (define (run-test-case name bytecode cs)
+  (define state-tracer (on-simulate-debug (*symbol-table*) (*evm-source-map*)))
   (when (verbose? VERBOSITY-LOW)
-    (*on-simulate-instruction* (on-simulate-debug (*symbol-table*) (*evm-source-map*))))
+    (*on-simulate-instruction* state-tracer))
+  (*on-simulate-error* state-tracer)
   (let* ([ sim            (make-simulator)]
          [ deploy-txn     (second (test-case-deploy-txn->vm-txn cs bytecode))]
          [ deploy-result* (apply-txn-create! sim deploy-txn)]

@@ -629,7 +629,7 @@
     [(? exact-integer?)             (make-v-fixnum (truncate-int x))]
     [(? symbol?)        (v-symbol x)]
     [(? list?)          (v-pair (v-box (first x))
-                                  (v-box (cast (rest x) RegisterValue)))]
+                                (v-box (cast (rest x) RegisterValue)))]
     [(? vector?)        (v-vector (vector-map v-box x))]
     [(? char?)          (v-char x)]
     [(? string?)        (v-bytes (allocate-bytes! (string->bytes/utf-8 x)))]

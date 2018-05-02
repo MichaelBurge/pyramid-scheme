@@ -22,6 +22,9 @@
     ["uint256"
      (assert-size 32)
      (parse-uint256 bs)]
+    ["int256"
+     (assert-size 32)
+     (parse-int256 bs)]
     ["uint256[]" (parse-array "uint256" bs)]
     ["bool" (= (parse-uint256 bs) 1)]
     ["bytes" bs]
@@ -36,7 +39,10 @@
         (else (error "type-size: Unsupported type" type))))
 
 (: parse-uint256 (-> Bytes EthWord))
-(define (parse-uint256 bs) (bytes->nonnegative bs))
+(define (parse-uint256 bs) (truncate-int (bytes->nonnegative bs)))
+
+(: parse-int256 (-> Bytes EthInt))
+(define (parse-int256 bs) (bytes->integer bs #t))
 
 (: parse-array (-> AbiType Bytes ContractReturnValue))
 (define (parse-array type bs)
@@ -48,7 +54,8 @@
 (define (infer-type x)
   (match x
     [(? boolean?) "bool"]
-    [(? fixnum?) "uint256"]
+    [(? exact-nonnegative-integer?) "uint256"]
+    [(? exact-integer?) "int256"]
     [(? null?) "void"]
     [(? symbol?) "symbol"]
     [`(unbox ,y) (infer-type y)]

@@ -277,6 +277,13 @@
   #'(begin)
   )
 
+(define-syntax (%#-set-max-simulator-memory! stx)
+  (syntax-case stx ()
+    [(_ n) (set-max-simulator-memory! (syntax->integer #'n))]
+    )
+  #'(begin)
+  )
+
 (define-syntax (%-with-lexical-named-value stx)
   (syntax-case stx ()
     [(_ key value x) (with-lexical #'key #'value #'x)]))

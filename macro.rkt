@@ -38,6 +38,7 @@
 ; TODO: Syntax-related functions must be unsafely provided, due to https://github.com/racket/typed-racket/issues/338
 (unsafe-provide minicompile
                 syntax->integer
+                simplify-syntax
                 )
 
 #|
@@ -97,6 +98,8 @@ See %-install-macro-library for the namespace creation code.
   (require "abi.rkt")
   (require "loader.rkt")
   (require "io.rkt")
+  (require "expander.rkt")
+  (require "simplifier.rkt")
   (require syntax/parse)
   (require (submod "utils.rkt" syntax-parse))
   (provide (all-defined-out)
@@ -176,9 +179,9 @@ See %-install-macro-library for the namespace creation code.
     (define (set-value value)
       (set-test-suite! (make-simple-test-suite (syntax->datum value))))
     (syntax-case exp (box unbox)
-      [(_ (box   value)) (set-value #'value)]
-      [(_ (unbox value)) (set-value #'value)]
-      [(_ (quote value)) (set-value #'value)]
+      [(_ (box   value)) (%-test-result #'(_ value))]
+      [(_ (unbox value)) (%-test-result #'(_ value))]
+      [(_ (quote value)) (%-test-result #'(_ value))]
       [(_ value)         (set-value #'value)]
       )
     #'(begin))
@@ -241,9 +244,15 @@ See %-install-macro-library for the namespace creation code.
       [(_ collection mod) (include-unless-cached (get-collection-directory (syntax-e #'collection))
                                                  (syntax-e #'mod))]
       ))
+  ; Useful in macros to locally expand a fragment of syntax.
+  (: simplify-syntax (-> PyramidQ PyramidQ))
+  (define (simplify-syntax stx)
+    (parameterize ([ *assume-macros-complete?* #t ])
+      (shrink-pyramid (simplify-macros (expand-pyramid stx)))))
+
   (: syntax->integer (-> PyramidQ Integer))
   (define (syntax->integer stx)
-    (match (syntax->datum stx)
+    (match (syntax->datum (simplify-syntax stx))
       [`(unbox ,(? exact-integer? n)) n]
       [(? exact-integer? n) n]
       ))
@@ -259,6 +268,7 @@ See %-install-macro-library for the namespace creation code.
   [ make-simple-test-suite (-> PyramidQ test-suite)]
   [ make-parser (-> Any (-> simulation-result-ex Any)) ]
   [ syntax->integer (-> PyramidQ Integer)]
+  [ simplify-syntax (-> PyramidQ PyramidQ)]
   )
 
 ;; (define (%-selector sig) (keccak-256 (string->bytes/utf-8 (%-sig-str sig))))
@@ -272,6 +282,11 @@ See %-install-macro-library for the namespace creation code.
 (: set-max-iterations! (-> Natural Void))
 (define (set-max-iterations! x)
   (*max-simulation-steps* x)
+  )
+
+(: set-max-simulator-memory! (-> Natural Void))
+(define (set-max-simulator-memory! x)
+  (*simulator-memory-num-bytes* x)
   )
 
 (define (%-install-macro-library!)
