@@ -171,6 +171,10 @@
       (- w WORDLIMIT)
       w))
 
+(: word->bytes (-> Natural Bytes))
+(define (word->bytes x)
+  (integer->bytes x 32 #f))
+
 ;; xxxxxxxxxxxx11111111 -> 11111111111111111
 ;; xxxxxxxxxxxx01111111 -> 00000000001111111
 (: sign-extend (-> EthWord Natural EthWord))

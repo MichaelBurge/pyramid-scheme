@@ -274,6 +274,14 @@
   (%#-log2 ptr #u32 #u0 #u1)
   )
 
+(define (%#-ioctl-print-string x)
+  (define ptr (%#-bytes-data x))
+  (define size (%#-bytes-size x))
+  (%#-ioctl-print-word ptr)
+  (%#-ioctl-print-word size)
+  (%#-log2 ptr size #u0 #u2)
+  )
+
 ; Compile-time macros
 
 (define-syntax (%#-set-max-iterations! stx)
@@ -311,3 +319,5 @@
   (%#-memcpy (%#-ptr-offset bytes-ptr #u2) src-ptr num-bytes)
   bytes-ptr
   )
+(define (%#-bytes-data x) (%#-+ x (%#-* #u2 %#-WORD)))
+(define (%#-bytes-size x) (%#-mem-read x #u1))

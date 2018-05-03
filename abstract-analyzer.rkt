@@ -8,6 +8,7 @@
 (require "globals.rkt")
 (require "utils.rkt")
 (require "expander.rkt")
+(require (submod "codegen.rkt" constants))
 (require (submod "types.rkt" common))
 (require (submod "types.rkt" abstract-machine))
 (require (submod "types.rkt" evm-assembly))
@@ -635,7 +636,10 @@
                                 (v-box (cast (rest x) RegisterValue)))]
     [(? vector?)        (v-vector (vector-map v-box x))]
     [(? char?)          (v-char x)]
-    [(? string?)        (v-bytes (allocate-bytes! (string->bytes/utf-8 x)))]
+    [(? string?)        (let ([ bs (string->bytes/utf-8 x) ])
+                          (v-bytes (allocate-bytes! (bytes-append (word->bytes TAG-BYTES)
+                                                                  (word->bytes (bytes-length bs))
+                                                                  bs))))]
     [_ (error "v-box: Unknown type" x)]))
 
 (: print-debug-line (-> Void))
