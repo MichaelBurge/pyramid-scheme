@@ -412,6 +412,9 @@
     ['LOG3 (proc 5)]
     ['LOG4 (proc 6)]
     ['REVERT (set-machine-halted?! *m* #t)]
+    ['SIGNEXTEND (binop (λ (a b)
+                          (assert b natural?)
+                          (sign-extend (truncate-int a) b)))]
     ; TODO: Everything below is a stub until we get an SMT solver or something
     ['ADDRESS 1234]
     ['CALLER  4321]

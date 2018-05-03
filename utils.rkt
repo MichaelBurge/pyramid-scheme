@@ -170,6 +170,34 @@
       (- w WORDLIMIT)
       w))
 
+;; xxxxxxxxxxxx11111111 -> 11111111111111111
+;; xxxxxxxxxxxx01111111 -> 00000000001111111
+(: sign-extend (-> EthWord Natural EthWord))
+(define (sign-extend x num-bytes)
+  (define num-bits (* num-bytes 8))
+  (define word-limit (arithmetic-shift 1 num-bits))
+  (define signed-limit (arithmetic-shift 1 (- num-bits 1)))
+  (: signed-x EthInt)
+  (define signed-x (if (>= x signed-limit)
+                       (- (modulo x word-limit) word-limit)
+                       (modulo x signed-limit)))
+  ;; (pretty-print `(DEBUG SIGN
+  ;;                       (x ,x)
+  ;;                       (num-bits ,num-bits)
+  ;;                       (word-limit ,word-limit)
+  ;;                       (signed-limit ,signed-limit)
+  ;;                       (signed-x ,signed-x)))
+  (truncate-int signed-x)
+  )
+(module* test racket
+  (require rackunit)
+  (require (submod ".."))
+  (check-equal? (truncate-int -1) (sign-extend 255 1))
+  (check-equal? (truncate-int -2) (sign-extend 65534 2))
+  (check-equal? 255 (sign-extend 255 2))
+  (check-equal? (truncate-int -1) (sign-extend (truncate-int -1) 1))
+  )
+
 (module syntax-parse racket
   (require syntax/parse)
   (provide datum)

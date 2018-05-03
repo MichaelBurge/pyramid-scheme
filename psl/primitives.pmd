@@ -77,10 +77,16 @@
 (define (%#-or a b)    (binop (evm 'OR)))
 (define (%#-xor a b)   (binop (evm 'XOR)))
 (define (%#-negate a)  (unop (evm 'NOT)))
+(define (%#-sign-extend a b) (binop (evm 'SIGNEXTEND)))
+(define (%#-zero-extend x num-bytes)
+  (%#-and x (%#-- (%#-bitshiftl #u256 num-bytes)
+                  #u1)))
+
 (define (%#-bitshiftl a b)
   (%#-* a (%#-exp #u2 b)))
 (define (%#-bitshiftr a b)
   (%#-u/ a (%#-exp #u2 b)))
+
 
 (define (%-log0-fixnum x)
   (asm (save (const 32)))                  ; [ 32 ]
