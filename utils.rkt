@@ -152,6 +152,7 @@
 
 (: truncate-int (-> Integer Nonnegative-Integer))
 (define (truncate-int x)
+  (set! x (modulo x WORDLIMIT))
   (assert-natural
    (if (>= x WORDLIMIT)
        (- x WORDLIMIT)

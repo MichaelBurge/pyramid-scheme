@@ -1,0 +1,7 @@
+#lang pyramid
+
+(require psl "primitives.pmd")
+
+(set-test-result! 0)
+
+(%#-box (%#-bitshiftl (%#-bitshiftl (unbox 1) (unbox 255)) (unbox 2)))
