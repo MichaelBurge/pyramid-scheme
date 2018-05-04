@@ -79,7 +79,7 @@
 (define (%#-negate a)  (unop (evm 'NOT)))
 (define (%#-sign-extend a b) (binop (evm 'SIGNEXTEND)))
 (define (%#-zero-extend x num-bytes)
-  (%#-and x (%#-- (%#-bitshiftl #u256 num-bytes)
+  (%#-and x (%#-- (%#-bitshiftl #u1 (%#-* num-bytes #u8))
                   #u1)))
 
 (define (%#-bitshiftl a b)

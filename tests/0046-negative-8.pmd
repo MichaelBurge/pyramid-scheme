@@ -1,0 +1,7 @@
+#lang pyramid
+
+(require psl "primitives.pmd")
+
+(set-test-result! 65536)
+
+(%#-box (%#-zero-extend #u65536 (unbox 8)))
