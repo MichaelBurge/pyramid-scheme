@@ -350,11 +350,11 @@
 (define (eval-evm-op x)
   (: pop-integer (-> Integer))
   (define (pop-integer)
-    (: res value)
-    (define res (pop-stack))
-    (if (integer? res)
-        res
-        (error "eval-evm-op: Expected an integer" res)))
+    (match (pop-stack)
+      [(? integer? x) x]
+      [(struct v-bytes (x)) x]
+      [_ (error "eval-evm-op: Expected an integer or bytes")]
+      ))
   (: pop-integer* (-> Integer))
   (define (pop-integer*)
     (match (pop-stack)

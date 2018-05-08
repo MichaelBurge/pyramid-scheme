@@ -66,6 +66,7 @@
     [0 (println `(LOGNUM ,(bytes->integer bs #f)))]
     [1 (println `(LOGSYM ,(string->symbol (integer->string (bytes->integer bs #f)))))]
     [2 (println `(LOGSTR ,bs))]
+    [3 (write-char (integer->char (bytes->integer bs #f)))]
     ))
 
 (: memory-dict (-> vm-exec (Listof (List UnlinkedOffset EthWord))))

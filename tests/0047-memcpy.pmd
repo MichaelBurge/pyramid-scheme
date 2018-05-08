@@ -1,0 +1,14 @@
+#lang pyramid
+
+(require psl "primitives.pmd")
+
+(set-test-result! 5)
+
+(define x (%#-mem-alloc #u64))
+(%#-mem-write! x #u1 #u5)
+
+(define y (%#-mem-alloc #u64))
+
+(%#-memcpy y x #u64)
+
+(%#-box (%#-mem-read y #u1))

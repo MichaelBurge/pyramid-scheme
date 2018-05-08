@@ -213,6 +213,45 @@
 
 (define %#-WORD (unbox #x20))
 
+; ioctl debug helpers
+
+(define (%#-allocate-word x)
+  (intro-var x)
+  (asm (save (op 'allocate (const 32)))
+       (restore 'val))
+  (asm (save (op 'any->unboxed stack)))
+  (asm (perform (op 'write-memory (reg 'val) (const 0) stack)))
+  )
+
+(define %#-log-ioctl #u0)
+(define %#-log-ioctl-print-word #u0)
+(define %#-log-ioctl-print-symbol #u1)
+(define %#-log-ioctl-print-string #u2)
+(define %#-log-ioctl-print-char #u3)
+
+(define (%#-ioctl-print-word x)
+  (define ptr (%#-allocate-word x))
+  (%#-log2 ptr #u32 %#-log-ioctl %#-log-ioctl-print-word)
+  )
+
+(define (%#-ioctl-print-symbol x)
+  (define ptr (%#-allocate-word x))
+  (%#-log2 ptr #u32 %#-log-ioctl %#-log-ioctl-print-symbol)
+  )
+
+(define (%#-ioctl-print-string x)
+  (define ptr (%#-bytes-data x))
+  (define size (%#-bytes-size x))
+  ;(%#-ioctl-print-word ptr)
+  ;(%#-ioctl-print-word size)
+  (%#-log2 ptr size %#-log-ioctl %#-log-ioctl-print-string)
+  )
+
+(define (%#-ioctl-print-char x)
+  (define ptr (%#-allocate-word x))
+  (%#-log2 ptr %#-WORD %#-log-ioctl %#-log-ioctl-print-char)
+  )
+
 ; Runtime support
 (define (%#-symbol?    x) (%#-= (%#-tag x) %#-TAG-SYMBOL))
 (define (%#-fixnum?    x) (%#-= (%#-tag x) %#-TAG-FIXNUM))
@@ -233,13 +272,27 @@
 
 ; Common utilities
 (define (%#-memcpy to from size-bytes)
-  (define size-words (%#-bytes->words size-bytes))
+  (define size-words (%#-u/ size-bytes %#-WORD))
+  (define excess-bytes (%#-u% size-bytes %#-WORD))
   (define (loop n)
     (if (%#-u>= n size-words)
-        to
-        (begin (%#-mem-write! to n (%#-mem-read from n))
+        (if (%#-u> excess-bytes #u0)
+            ; Handle non-aligned bytes
+            (begin (define mask            (%#-- (%#-bitshiftl #u1 (%#-* #u8 (%#-- %#-WORD excess-bytes))) #u1))
+                   (define previous        (%#-mem-read to n))
+                   (define new             (%#-mem-read from n))
+                   (define previous-masked (%#-and mask previous))
+                   (define new-masked      (%#-and (%#-negate mask) new))
+                   (define word            (%#-or previous-masked new-masked))
+                   (%#-mem-write! to n word)
+                   to
+                   )
+            ; Bytes were aligned
+            to)
+        (begin (define word (%#-mem-read from n))
+               (%#-mem-write! to n word)
                (loop (%#-+ n #u1)))))
-  (loop (unbox 0)))
+    (loop (unbox 0)))
 
 (define (%#-bytes->words x)
   (define base (%#-u/ x %#-WORD))
@@ -254,35 +307,7 @@
   (if (%#-symbol?    a) (%#-unbox-symbol    a)
                         (%#-throw-error '%#-unbox)))))
 
-; ioctl debug helpers
-
-(define (%#-allocate-word x)
-  (intro-var x)
-  (asm (save (op 'allocate (const 32)))
-       (restore 'val))
-  (asm (save (op 'any->unboxed stack)))
-  (asm (perform (op 'write-memory (reg 'val) (const 0) stack)))
-  )
-
-(define (%#-ioctl-print-word x)
-  (define ptr (%#-allocate-word x))
-  (%#-log2 ptr #u32 #u0 #u0)
-  )
-
-(define (%#-ioctl-print-symbol x)
-  (define ptr (%#-allocate-word x))
-  (%#-log2 ptr #u32 #u0 #u1)
-  )
-
-(define (%#-ioctl-print-string x)
-  (define ptr (%#-bytes-data x))
-  (define size (%#-bytes-size x))
-  (%#-ioctl-print-word ptr)
-  (%#-ioctl-print-word size)
-  (%#-log2 ptr size #u0 #u2)
-  )
-
-; Compile-time macros
+; compile-time macros
 
 (define-syntax (%#-set-max-iterations! stx)
   (syntax-case stx ()
