@@ -62,7 +62,9 @@
     (list
      (cons 's (vm-exec-step exec-vm))
      (cons 'g (vm-exec-gas exec-vm))
-     (cons 'z (bytes-length (vm-exec-bytecode exec-vm))))))
+     (cons 'z (bytes-length (vm-exec-bytecode exec-vm)))
+     (cons 'm (vm-exec-largest-accessed-memory exec-vm))
+     )))
 
 (: run-test-case (-> String Bytes test-case simulation-result-exs))
 (define (run-test-case name bytecode cs)
